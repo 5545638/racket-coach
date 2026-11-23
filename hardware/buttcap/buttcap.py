@@ -50,7 +50,7 @@ class ButtCapParams:
     # The measured size is the widest part: the rim (barb) at the tip of the
     # collar. `rim_inset` shrinks it per side to fit the handle; the collar
     # body is `rim_protrusion` smaller per side again, so the rim stands proud.
-    rim_inset: float = 0.6
+    rim_inset: float = 0.1
     rim_protrusion: float = 1.0
     rim_height: float = 1.2
     rim_taper: float = 0.5  # per side at the tip, so it lead-ins like a cone
