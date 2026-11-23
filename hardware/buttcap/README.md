@@ -8,7 +8,7 @@ original; the outside carries a cup for the bare Puck.js PCB.
 
 | | |
 | --- | --- |
-| Footprint | 34 × 35 mm: the cup (31.8 mm) never extends past the flange or the grip |
+| Footprint | 35 × 32 mm flange; the cup (31.8 mm) never extends past it or the grip |
 | Added length | ≈ 12 mm |
 | Mass | ≈ 5 g printed + 7 g PCB with coin cell |
 | Material | PETG, 100 % infill, printed as exported (no supports) |
@@ -27,7 +27,7 @@ contact location on the string bed cannot be estimated from the handle.
 ```sh
 pip install -r requirements.txt
 python buttcap.py --fit-test --collar-clearance 0.1   # looser collar
-python buttcap.py --collar-straight-side 12.2 --collar-diagonal-side 10.0
+python buttcap.py --collar-width 30.2 --collar-length 26.1
 pytest -q
 ```
 

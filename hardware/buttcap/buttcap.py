@@ -34,14 +34,17 @@ SEGMENTS = 96
 @dataclass(frozen=True)
 class ButtCapParams:
     # Stock cap — MEASURE (estimates from photos of a Wilson Blade cap).
-    flange_width: float = 34.0  # across the flats, side to side
-    flange_length: float = 35.0  # across the flats, the other direction
-    flange_chamfer: float = 7.5  # leg length of the cut corners
+    # Flange: same orientation as the collar (long axis = width). From photos,
+    # scaled by the measured collar.
+    flange_width: float = 35.0
+    flange_length: float = 32.0
+    flange_chamfer: float = 7.5  # leg length of the 45° cut corners
     flange_thickness: float = 1.8
-    # Collar outline as measured on the stock cap: an octagon with four straight
-    # sides and four shorter diagonal sides (outer faces).
-    collar_straight_side: float = 12.0
-    collar_diagonal_side: float = 10.0
+    # Collar, measured on the stock cap (outer faces): 30 × 26 mm across the
+    # flats, straight sides 14 mm (long) and 10 mm (short), diagonals ≈ 11–12 mm.
+    collar_width: float = 30.0
+    collar_length: float = 26.0
+    collar_chamfer: float = 8.0  # leg length of the 45° cut corners
     collar_wall: float = 2.0
     collar_depth: float = 5.2  # how far it goes into the handle
     # Snap ridge around the tip of the collar, as on the stock cap.
@@ -62,19 +65,6 @@ class ButtCapParams:
     finger_slots: int = 4
     finger_slot_width: float = 1.5
     finger_slot_depth: float = 5.0
-
-    @property
-    def collar_chamfer(self) -> float:
-        return self.collar_diagonal_side / math.sqrt(2)
-
-    @property
-    def collar_width(self) -> float:
-        """Across the flats; the same in both directions."""
-        return self.collar_straight_side + 2 * self.collar_chamfer
-
-    @property
-    def collar_length(self) -> float:
-        return self.collar_width
 
     def cup_outer_diameter(self) -> float:
         return self.pcb_diameter + 2 * (self.radial_clearance + self.cup_wall)
