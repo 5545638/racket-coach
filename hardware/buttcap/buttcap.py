@@ -48,9 +48,11 @@ class ButtCapParams:
     collar_wall: float = 2.0
     collar_depth: float = 5.2  # how far it goes into the handle
     # Snap ridge around the tip of the collar, as on the stock cap.
+    # Off by default: the measured 30 × 26 mm is the widest part of the stock
+    # collar, so a ridge on top of it makes the collar too big for the handle.
     ridge_height: float = 1.0
-    ridge_protrusion: float = 0.3
-    collar_clearance: float = 0.0  # + makes the collar smaller for an easier fit
+    ridge_protrusion: float = 0.0
+    collar_clearance: float = 0.1  # per side; compensates for print expansion
 
     # Puck.js v2 bare PCB with CR2032 fitted (Espruino: 29 mm dia, 9 mm thick).
     pcb_diameter: float = 29.0
