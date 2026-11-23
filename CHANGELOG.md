@@ -1,0 +1,13 @@
+# Changelog
+
+All notable changes are documented here. Versions follow [SemVer](https://semver.org/).
+
+## [0.1.0] — unreleased
+
+### Added
+- Puck.js firmware: swing trigger, pre-trigger buffer, streaming protocol v1.
+- Web app: Web Bluetooth and demo transports, two-pose calibration, stroke
+  metrics, literature-based rules, spoken cues, session statistics, CSV/JSON
+  export, IndexedDB storage.
+- Swing simulator and firmware-in-the-loop tests.
+- Parametric two-part string clamp (TPU housing, PETG plate, M2 screws).

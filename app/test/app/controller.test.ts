@@ -1,0 +1,83 @@
+import { describe, expect, it } from 'vitest';
+import { CoachController } from '../../src/app/controller';
+import { SilentSpeaker } from '../../src/feedback/speech';
+import { SimulatedTransport } from '../../src/transport/simulatedTransport';
+import { InMemoryRepository, immediateScheduler } from '../fakes';
+
+async function setup() {
+  const repository = new InMemoryRepository();
+  const speaker = new SilentSpeaker();
+  let id = 0;
+  const controller = new CoachController({
+    repository,
+    speaker,
+    now: () => 1_700_000_000_000,
+    newId: () => `id-${++id}`,
+  });
+  await controller.init();
+  const transport = new SimulatedTransport(4000, immediateScheduler, 7);
+  await controller.connect(transport);
+  return { controller, repository, speaker, transport };
+}
+
+describe('CoachController end-to-end with the simulated sensor', () => {
+  it('connects, reads status and opens a session', async () => {
+    const { controller } = await setup();
+    expect(controller.connection.value).toBe('connected');
+    expect(controller.status.value?.firmwareVersion).toBe('0.1.0');
+    expect(controller.session.value?.id).toBe('id-1');
+  });
+
+  it('ignores swings until the sensor is calibrated', async () => {
+    const { controller, transport } = await setup();
+    transport.emitSwing();
+    expect(controller.strokes.value).toHaveLength(0);
+    expect(controller.log.value[0]).toContain('calibrate');
+  });
+
+  it('calibrates through the wire protocol, then analyses and voices strokes', async () => {
+    const { controller, repository, speaker, transport } = await setup();
+    await controller.capturePose('faceUp');
+    expect(controller.calibrationStep.value.step).toBe('awaitTipUp');
+    await controller.capturePose('tipUp');
+    expect(controller.calibrationStep.value.step).toBe('done');
+    expect(repository.calibrations.get('RacketCoach (demo)')).toBeDefined();
+
+    for (let i = 0; i < 6; i++) transport.emitSwing();
+    await Promise.resolve();
+
+    expect(controller.strokes.value).toHaveLength(6);
+    expect(repository.strokes).toHaveLength(6);
+    for (const s of controller.strokes.value) {
+      expect(s.metrics.impactDetected).toBe(true);
+      expect(s.metrics.quality.attitudeReliable).toBe(true);
+    }
+    const fixes = controller.strokes.value.filter((s) => s.cue.severity === 'fix').length;
+    expect(speaker.spoken).toHaveLength(fixes);
+  });
+
+  it('stays silent in rally mode', async () => {
+    const { controller, speaker, transport } = await setup();
+    await controller.capturePose('faceUp');
+    await controller.capturePose('tipUp');
+    await controller.updateSettings({ mode: 'rally', speakGood: true });
+    for (let i = 0; i < 4; i++) transport.emitSwing();
+    expect(controller.strokes.value).toHaveLength(4);
+    expect(speaker.spoken).toHaveLength(0);
+  });
+
+  it('refuses the second calibration pose before the first', async () => {
+    const { controller } = await setup();
+    await controller.capturePose('tipUp');
+    expect(controller.calibrationStep.value).toEqual({
+      step: 'failed',
+      reason: 'Do the face-up step first.',
+    });
+  });
+
+  it('disconnects cleanly', async () => {
+    const { controller } = await setup();
+    await controller.disconnect();
+    expect(controller.connection.value).toBe('disconnected');
+  });
+});

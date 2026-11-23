@@ -1,0 +1,237 @@
+:root {
+  --bg: #0f1512;
+  --surface: #18211c;
+  --text: #eef3ef;
+  --muted: #9aa9a0;
+  --accent: #d7f25c;
+  --good: #6fdc8c;
+  --fix: #ffb547;
+  --error: #ff7a7a;
+  --radius: 12px;
+  color-scheme: dark;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid #33403a;
+  background: var(--surface);
+  color: var(--text);
+}
+
+button.primary {
+  background: var(--accent);
+  color: #111;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+button:disabled {
+  opacity: 0.4;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.bar {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  padding: calc(env(safe-area-inset-top) + 0.6rem) 1rem 0.6rem;
+  border-bottom: 1px solid #222c27;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bar-title {
+  flex: 1;
+  font-weight: 600;
+}
+
+.bar-meta {
+  color: var(--muted);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.dot.connected {
+  background: var(--good);
+}
+
+.dot.connecting {
+  background: var(--fix);
+}
+
+.content {
+  flex: 1;
+  padding: 1rem;
+}
+
+.tabs {
+  display: flex;
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
+  border-top: 1px solid #222c27;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tab {
+  flex: 1;
+  border: none;
+  border-radius: 0;
+  background: none;
+  padding: 0.9rem;
+  color: var(--muted);
+}
+
+.tab.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.hint,
+.note {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--error);
+}
+
+.stroke-type {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: flex;
+  justify-content: space-between;
+}
+
+.cue {
+  font-size: clamp(2rem, 11vw, 3.2rem);
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 0.2rem 0 1rem;
+}
+
+.cue.good {
+  color: var(--good);
+}
+
+.cue.fix {
+  color: var(--fix);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.metric {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.8rem;
+}
+
+.metric dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.metric dd {
+  margin: 0.2rem 0 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.target {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 0.8rem;
+  margin-bottom: 0.8rem;
+}
+
+.card .metric {
+  background: var(--bg);
+}
+
+.count {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.steps li {
+  margin-bottom: 0.8rem;
+}
+
+.steps button {
+  display: block;
+  margin-top: 0.4rem;
+}
+
+.field {
+  display: block;
+  margin: 0.8rem 0;
+  border: none;
+  padding: 0;
+}
+
+.field label {
+  display: block;
+  margin: 0.4rem 0;
+}
+
+.field input[type='range'] {
+  display: block;
+  width: 100%;
+}
+
+.log ul {
+  padding-left: 1rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
