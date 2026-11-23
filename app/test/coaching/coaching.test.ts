@@ -4,6 +4,7 @@ import { GUIDANCE, guidanceFor } from '../../src/coaching/guidance';
 import { buildSessionReport } from '../../src/coaching/sessionReport';
 import { NO_READING_CUE, evaluateRules, selectCue } from '../../src/coaching/rules';
 import { statistic, summarize } from '../../src/coaching/summary';
+import { wristHint } from '../../src/coaching/wrist';
 import type { StrokeMetrics, StrokeRecord } from '../../src/domain/types';
 import { GOOD_FOREHAND } from '../fixtures';
 
@@ -173,5 +174,22 @@ describe('session report', () => {
     ];
     expect(buildSessionReport(mostlyGood).focus).toBeNull();
     expect(buildSessionReport([]).byStroke).toEqual([]);
+  });
+});
+
+describe('wrist hint', () => {
+  it('reads racket lag as loose and early acceleration as stiff', () => {
+    expect(wristHint(GOOD_FOREHAND)).toBe('loose');
+    expect(wristHint({ ...GOOD_FOREHAND, peakAccelerationOffsetMs: -220 })).toBe('stiff');
+  });
+
+  it('gives no hint where lag is not meaningful', () => {
+    expect(wristHint({ ...GOOD_FOREHAND, swingSize: 'compact' })).toBeNull();
+    expect(wristHint({ ...GOOD_FOREHAND, strokeType: 'overhead' })).toBeNull();
+  });
+
+  it('agrees with the "Loosen the wrist" rule', () => {
+    const stiff = { ...GOOD_FOREHAND, peakAccelerationOffsetMs: -220 };
+    expect(selectCue(stiff, DEFAULT_RULES).ruleId).toBe('stiff-arm');
   });
 });

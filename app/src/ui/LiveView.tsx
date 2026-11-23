@@ -1,5 +1,6 @@
 import type { CoachController } from '../app/controller';
 import { guidanceFor } from '../coaching/guidance';
+import { wristHint } from '../coaching/wrist';
 import { FaceGauge } from './FaceGauge';
 import { deg, dps, kmh, ms } from './format';
 import { strings } from './strings';
@@ -28,6 +29,7 @@ export function LiveView({ controller }: { readonly controller: CoachController 
   const m = stroke.metrics;
   const groundstroke = m.strokeType !== 'overhead';
   const guidance = guidanceFor(stroke.cue.ruleId, language);
+  const hint = wristHint(m);
   const target = (band: string): string | null => (groundstroke ? `${t.target} ${band}` : null);
 
   return (
@@ -73,9 +75,17 @@ export function LiveView({ controller }: { readonly controller: CoachController 
           value={ms(m.peakSpeedOffsetMs)}
           note={`${t.target} ${TARGETS.timing}`}
         />
+      </dl>
+
+      <h3>{t.group.wrist}</h3>
+      <p class={`wrist ${hint ?? 'unknown'}`}>
+        {hint === 'loose' ? t.wrist.loose : hint === 'stiff' ? t.wrist.stiff : t.wrist.unknown}
+      </p>
+      <dl class="metrics">
         <Metric label={t.metric.whip} value={ms(m.peakAccelerationOffsetMs)} />
         <Metric label={t.metric.faceClosing} value={dps(m.faceClosingRateDps)} />
       </dl>
+      <p class="note">{t.wrist.disclaimer}</p>
 
       <h3>{t.group.finish}</h3>
       <dl class="metrics">

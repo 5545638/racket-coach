@@ -1,4 +1,5 @@
 import type { RuleSet } from './rules';
+import { STIFF_ACCELERATION_OFFSET_MS } from './wrist';
 
 const GROUNDSTROKES = ['forehand', 'backhand'] as const;
 const FULL = ['full'] as const;
@@ -111,7 +112,7 @@ export const DEFAULT_RULES: RuleSet = {
     {
       id: 'stiff-arm',
       metric: 'peakAccelerationOffsetMs',
-      below: -150,
+      below: STIFF_ACCELERATION_OFFSET_MS,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
       priority: 40,

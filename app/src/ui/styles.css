@@ -337,3 +337,21 @@ h4 {
   fill: var(--muted);
   font-size: 9px;
 }
+
+.wrist {
+  margin: 0 0 0.6rem;
+  font-weight: 600;
+}
+
+.wrist.loose {
+  color: var(--good);
+}
+
+.wrist.stiff {
+  color: var(--fix);
+}
+
+.wrist.unknown {
+  color: var(--muted);
+  font-weight: 400;
+}

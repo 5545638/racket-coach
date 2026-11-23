@@ -1,4 +1,5 @@
 import type { StrokeRecord, StrokeType } from '../domain/types';
+import { wristHint } from './wrist';
 
 export interface Statistic {
   readonly count: number;
@@ -15,6 +16,8 @@ export interface StrokeTypeSummary {
   readonly faceTiltDeg: Statistic | null;
   readonly swingPathDeg: Statistic | null;
   readonly headSpeedMps: Statistic | null;
+  /** Share of strokes whose racket lag suggests a loose wrist; null when none qualify. */
+  readonly looseWristShare: number | null;
   /** Most frequent correction, if any. */
   readonly topFault: { readonly text: string; readonly count: number } | null;
 }
@@ -40,6 +43,7 @@ export function summarize(records: readonly StrokeRecord[]): StrokeTypeSummary[]
         if (r.cue.severity === 'fix') faults.set(r.cue.text, (faults.get(r.cue.text) ?? 0) + 1);
       }
       const top = [...faults.entries()].sort((a, b) => b[1] - a[1])[0];
+      const hints = rs.map((r) => wristHint(r.metrics)).filter((h) => h !== null);
       const rated = rs.filter((r) => r.cue.severity !== 'none');
       return {
         strokeType,
@@ -52,6 +56,9 @@ export function summarize(records: readonly StrokeRecord[]): StrokeTypeSummary[]
         headSpeedMps: statistic(
           rs.filter((r) => !r.metrics.quality.gyroSaturated).map((r) => r.metrics.headSpeedMps),
         ),
+        looseWristShare: hints.length
+          ? hints.filter((h) => h === 'loose').length / hints.length
+          : null,
         topFault: top ? { text: top[0], count: top[1] } : null,
       };
     })

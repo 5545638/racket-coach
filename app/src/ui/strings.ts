@@ -19,7 +19,16 @@ export interface Strings {
   readonly fix: string;
   readonly drill: string;
   readonly noContact: string;
+  readonly wrist: {
+    readonly verdict: string;
+    readonly loose: string;
+    readonly stiff: string;
+    readonly unknown: string;
+    readonly disclaimer: string;
+    readonly looseShare: string;
+  };
   readonly group: {
+    readonly wrist: string;
     readonly preparation: string;
     readonly contact: string;
     readonly finish: string;
@@ -96,7 +105,21 @@ const en: Strings = {
   fix: 'What to do',
   drill: 'Drill',
   noContact: 'No ball contact detected.',
-  group: { preparation: 'Preparation', contact: 'Contact', finish: 'Finish' },
+  wrist: {
+    verdict: 'Wrist',
+    loose: 'Loose: the racket lags behind the hand and whips through',
+    stiff: 'Tight: the racket moves together with the arm',
+    unknown: 'Not assessed for this stroke',
+    disclaimer:
+      'Estimated from racket lag. The sensor cannot see the wrist angle or grip pressure.',
+    looseShare: 'Loose wrist',
+  },
+  group: {
+    wrist: 'Wrist (indirect estimate)',
+    preparation: 'Preparation',
+    contact: 'Contact',
+    finish: 'Finish',
+  },
   metric: {
     preparationTime: 'Preparation time',
     backswing: 'Take-back',
@@ -107,7 +130,7 @@ const en: Strings = {
     face: 'Face at contact',
     path: 'Swing path',
     peakSpeed: 'Peak speed',
-    whip: 'Peak acceleration',
+    whip: 'Peak acceleration before contact',
     faceClosing: 'Face closing',
     forwardSwing: 'Forward swing',
     followThrough: 'Follow-through',
@@ -174,7 +197,20 @@ const et: Strings = {
   fix: 'Mida teha',
   drill: 'Harjutus',
   noContact: 'Palli tabamust ei tuvastatud.',
-  group: { preparation: 'Ettevalmistus', contact: 'Tabamus', finish: 'Lõpetus' },
+  wrist: {
+    verdict: 'Ranne',
+    loose: 'Lõtv: reket jääb käest maha ja tuleb piitsana läbi',
+    stiff: 'Pinges: reket liigub käega koos',
+    unknown: 'Selle löögi puhul ei hinnata',
+    disclaimer: 'Hinnatud reketi mahajäämise järgi. Andur ei näe randme nurka ega haarde tugevust.',
+    looseShare: 'Lõtv ranne',
+  },
+  group: {
+    wrist: 'Ranne (kaudne hinnang)',
+    preparation: 'Ettevalmistus',
+    contact: 'Tabamus',
+    finish: 'Lõpetus',
+  },
   metric: {
     preparationTime: 'Ettevalmistuse aeg',
     backswing: 'Tahaviimine',
@@ -185,7 +221,7 @@ const et: Strings = {
     face: 'Pind tabamusel',
     path: 'Löögi trajektoor',
     peakSpeed: 'Tippkiirus',
-    whip: 'Suurim kiirendus',
+    whip: 'Suurim kiirendus enne tabamust',
     faceClosing: 'Pinna sulgumine',
     forwardSwing: 'Ettelöök',
     followThrough: 'Lõpetus',

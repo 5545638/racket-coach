@@ -107,6 +107,12 @@ export function SessionView({ controller }: { readonly controller: CoachControll
                 <dt>{t.metric.speed}</dt>
                 <dd>{stat(s.headSpeedMps, ' km/h', 3.6)}</dd>
               </div>
+              {s.looseWristShare !== null && (
+                <div class="metric">
+                  <dt>{t.wrist.looseShare}</dt>
+                  <dd>{percent(s.looseWristShare)}</dd>
+                </div>
+              )}
             </dl>
             {faults.length > 0 && (
               <>
