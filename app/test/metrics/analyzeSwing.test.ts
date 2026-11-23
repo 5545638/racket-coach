@@ -67,8 +67,42 @@ describe('analyzeSwing on simulated swings', () => {
   });
 
   it('flags gyro saturation so speed is treated as a lower bound', () => {
-    const { metrics } = run({ peakRateRadPerS: 45 });
+    const { metrics, truth } = run({ peakRateRadPerS: 45 });
     expect(metrics.quality.gyroSaturated).toBe(true);
+    expect(metrics.headSpeedMps).toBeLessThan(truth.headSpeedMps);
+  });
+
+  it('never reports angles more than 3° off as the gyro clips harder', () => {
+    let withheld = 0;
+    for (let rate = 38; rate <= 60; rate += 2) {
+      const { metrics, truth } = run({ peakRateRadPerS: rate });
+      if (metrics.faceTiltDeg === null || metrics.swingPathDeg === null) {
+        withheld++;
+        continue;
+      }
+      expect(Math.abs(metrics.faceTiltDeg - truth.faceTiltDeg)).toBeLessThan(3);
+      expect(Math.abs(metrics.swingPathDeg - truth.swingPathDeg)).toBeLessThan(3);
+    }
+    expect(withheld).toBeGreaterThan(0); // the guard actually engaged
+  });
+
+  it('is unaffected by forearm roll about the racket axis', () => {
+    const { metrics, truth } = run({ rollRateRadPerS: 15 });
+    expect(metrics.faceTiltDeg).toBeCloseTo(truth.faceTiltDeg, 0);
+    expect(metrics.swingPathDeg).toBeCloseTo(truth.swingPathDeg, 0);
+  });
+
+  it('handles a backswing before the forward swing', () => {
+    const { metrics, truth } = run({ backswingRateRadPerS: 6 });
+    expect(metrics.referenceIndex).toBe(truth.contactIndex);
+    expect(metrics.faceTiltDeg).toBeCloseTo(truth.faceTiltDeg, 0);
+  });
+
+  it('documents the lever model: a centre of rotation off the racket axis changes speed, not path', () => {
+    // Shoulder 0.3 m further out along the racket line than assumed.
+    const { metrics, truth } = run({ centreOffsetM: [0, -0.3, 0] });
+    expect(metrics.swingPathDeg).toBeCloseTo(truth.swingPathDeg, 0);
+    expect(metrics.headSpeedMps / truth.headSpeedMps).toBeCloseTo(1 / 0.7, 1);
   });
 
   it('stays within a few degrees under realistic sensor noise', () => {

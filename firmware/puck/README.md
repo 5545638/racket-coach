@@ -22,7 +22,7 @@ replace the code.
 | --- | --- | --- |
 | Not connected | IMU off, advertising | ~µA |
 | Connected, idle | IMU on at 104 Hz | Ring buffer of the last 0.8 s |
-| Swing | — | Triggered at ‖ω‖ > 300 °/s; streams buffer + live samples; ends after 150 ms below 100 °/s or 1 s after trigger |
+| Swing | — | Candidate at ‖ω‖ > 300 °/s, confirmed at > 700 °/s; streams buffer + live samples; ends after 150 ms below 100 °/s (see [capture lifecycle](../../docs/ble-protocol.md#capture-lifecycle)) |
 
 The green LED is on while a capture is being sent.
 

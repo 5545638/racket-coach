@@ -147,6 +147,94 @@ describe('firmware running in a host harness', () => {
     expect(capture?.samples.length).toBe(104 * 6);
   });
 
+  it('advertises a per-device name from the last two address bytes', () => {
+    const fw = new FirmwareHarness();
+    expect(fw.advertisedName).toBe('RacketCoach 5678');
+  });
+
+  it('streams nothing until the app has subscribed', () => {
+    const fw = new FirmwareHarness();
+    fw.connectLink();
+    for (const e of events) fw.sample(e);
+    fw.flushTimers();
+    expect(fw.notifications).toHaveLength(0);
+  });
+
+  it('drops slow motions that never reach swing speed', () => {
+    const waggle = simulateSwing({ ...DEFAULT_SWING, peakRateRadPerS: 9 }, SETUP).capture;
+    const fw = new FirmwareHarness();
+    fw.connect();
+    for (const e of toEvents(waggle.samples)) fw.sample(e);
+    fw.flushTimers();
+    expect(fw.notifications).toHaveLength(0);
+  });
+
+  it('keeps the backswing and its pause inside one stroke capture', () => {
+    const { capture: input, truth } = simulateSwing(
+      { ...DEFAULT_SWING, backswingRateRadPerS: 6 },
+      { ...SETUP, durationS: 2.4, contactTimeS: 1.6 },
+    );
+    const fw = new FirmwareHarness();
+    fw.connect();
+    for (const e of toEvents(input.samples)) {
+      fw.sample(e);
+      fw.flushTimers();
+    }
+    const result = assemble(fw.notifications);
+    expect(result.map((r) => r.type)).toEqual(['capture']);
+    const capture = result[0]?.type === 'capture' ? result[0].capture : null;
+    if (!capture) throw new Error('no capture');
+    const metrics = analyzeSwing(toImuSeries(capture), SKEWED_MOUNT);
+    expect(metrics.impactDetected).toBe(true);
+    expect(metrics.faceTiltDeg).toBeCloseTo(truth.faceTiltDeg, 0);
+  });
+
+  it('captures back-to-back strokes, each with its own preparation phase', () => {
+    const setup = { ...SETUP, durationS: 1.8, contactTimeS: 0.95 };
+    const first = simulateSwing({ ...DEFAULT_SWING, faceTiltDeg: -15 }, setup);
+    const second = simulateSwing({ ...DEFAULT_SWING, faceTiltDeg: 3, seed: 2 }, setup);
+    const fw = new FirmwareHarness();
+    fw.connect();
+    for (const e of [...toEvents(first.capture.samples), ...toEvents(second.capture.samples)]) {
+      fw.sample(e);
+      fw.flushTimers();
+    }
+    const captures = assemble(fw.notifications).flatMap((r) =>
+      r.type === 'capture' ? [r.capture] : [],
+    );
+    expect(captures).toHaveLength(2);
+    const faces = captures.map((c) => analyzeSwing(toImuSeries(c), SKEWED_MOUNT).faceTiltDeg);
+    expect(faces[0]).toBeCloseTo(first.truth.faceTiltDeg, 0);
+    expect(faces[1]).toBeCloseTo(second.truth.faceTiltDeg, 0);
+  });
+
+  it('recovers cleanly from a disconnect in the middle of a capture', () => {
+    const fw = new FirmwareHarness();
+    fw.connect();
+    const contact = Math.round(SETUP.contactTimeS * SETUP.sampleRateHz);
+    for (const e of events.slice(0, contact)) fw.sample(e);
+    fw.disconnect();
+    fw.connect();
+    for (const e of events) {
+      fw.sample(e);
+      fw.flushTimers();
+    }
+    expect(assemble(fw.notifications).map((r) => r.type)).toEqual(['capture']);
+  });
+
+  it('ignores a static-capture command while a swing is being captured', () => {
+    const fw = new FirmwareHarness();
+    fw.connect();
+    const contact = Math.round(SETUP.contactTimeS * SETUP.sampleRateHz);
+    events.forEach((e, i) => {
+      if (i === contact) fw.write(protocol.Command.CaptureStatic);
+      fw.sample(e);
+      fw.flushTimers();
+    });
+    const result = assemble(fw.notifications);
+    expect(result.map((r) => (r.type === 'capture' ? r.capture.kind : r.type))).toEqual(['swing']);
+  });
+
   it('does not trigger while disconnected', () => {
     const fw = new FirmwareHarness();
     for (const e of events) fw.sample(e);

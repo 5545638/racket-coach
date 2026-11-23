@@ -23,6 +23,7 @@ export interface AttitudeAnchor {
 export function findAttitudeAnchor(
   accel: readonly Vec3[],
   gyro: readonly Vec3[],
+  accelSaturated: readonly boolean[],
   from: number,
   to: number,
 ): AttitudeAnchor | null {
@@ -31,7 +32,7 @@ export function findAttitudeAnchor(
   for (let i = Math.max(0, from); i <= Math.min(to, accel.length - 1); i++) {
     const a = accel[i];
     const w = gyro[i];
-    if (!a || !w) continue;
+    if (!a || !w || accelSaturated[i]) continue;
     const errorG = Math.abs(norm(a) / STANDARD_GRAVITY - 1);
     // 1 rad/s of rotation is weighted like 0.1 g of gravity error.
     const cost = errorG + 0.1 * norm(w);

@@ -70,6 +70,18 @@ model or range.
 | `0x01` | RequestStatus | Sensor replies with a Status message |
 | `0x02` | CaptureStatic | Sensor records 1 s and sends it as a `static` capture. Ignored while a capture is in progress |
 
+## Capture lifecycle
+
+1. Nothing is streamed until the app has written its first command (the app
+   sends RequestStatus right after enabling notifications).
+2. ‖ω‖ > 300 °/s opens a *candidate*. It is confirmed, and streaming starts,
+   once ‖ω‖ exceeds 700 °/s; a candidate that goes quiet first (a waggle, a
+   slow backswing) is dropped without sending anything.
+3. The capture starts 0.8 s before the trigger (the ring buffer keeps running
+   during captures, so back-to-back strokes keep their preparation phase) and
+   ends after 150 ms below 100 °/s, or at 187 samples.
+4. A new capture starts only after the previous one has been fully sent.
+
 ## Reliability
 
 Notifications are acknowledged at the link layer, but the sensor's TX queue can

@@ -10,6 +10,7 @@ export interface Statistic {
 export interface StrokeTypeSummary {
   readonly strokeType: StrokeType;
   readonly count: number;
+  /** Share of rated strokes (excluding "no reading") that needed no correction. */
   readonly goodShare: number;
   readonly faceTiltDeg: Statistic | null;
   readonly swingPathDeg: Statistic | null;
@@ -39,10 +40,13 @@ export function summarize(records: readonly StrokeRecord[]): StrokeTypeSummary[]
         if (r.cue.severity === 'fix') faults.set(r.cue.text, (faults.get(r.cue.text) ?? 0) + 1);
       }
       const top = [...faults.entries()].sort((a, b) => b[1] - a[1])[0];
+      const rated = rs.filter((r) => r.cue.severity !== 'none');
       return {
         strokeType,
         count: rs.length,
-        goodShare: rs.length ? rs.filter((r) => r.cue.severity === 'good').length / rs.length : 0,
+        goodShare: rated.length
+          ? rated.filter((r) => r.cue.severity === 'good').length / rated.length
+          : 0,
         faceTiltDeg: statistic(present(rs.map((r) => r.metrics.faceTiltDeg))),
         swingPathDeg: statistic(present(rs.map((r) => r.metrics.swingPathDeg))),
         headSpeedMps: statistic(

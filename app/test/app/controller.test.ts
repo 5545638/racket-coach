@@ -4,8 +4,7 @@ import { SilentSpeaker } from '../../src/feedback/speech';
 import { SimulatedTransport } from '../../src/transport/simulatedTransport';
 import { InMemoryRepository, immediateScheduler } from '../fakes';
 
-async function setup() {
-  const repository = new InMemoryRepository();
+async function setup(repository = new InMemoryRepository()) {
   const speaker = new SilentSpeaker();
   let id = 0;
   const controller = new CoachController({
@@ -13,6 +12,8 @@ async function setup() {
     speaker,
     now: () => 1_700_000_000_000,
     newId: () => `id-${++id}`,
+    sleep: () => Promise.resolve(),
+    reconnectAttempts: 2,
   });
   await controller.init();
   const transport = new SimulatedTransport(4000, immediateScheduler, 7);
@@ -32,7 +33,7 @@ describe('CoachController end-to-end with the simulated sensor', () => {
     const { controller, transport } = await setup();
     transport.emitSwing();
     expect(controller.strokes.value).toHaveLength(0);
-    expect(controller.log.value[0]).toContain('calibrate');
+    expect(controller.log.value[0]?.text).toContain('calibrate');
   });
 
   it('calibrates through the wire protocol, then analyses and voices strokes', async () => {
@@ -73,6 +74,41 @@ describe('CoachController end-to-end with the simulated sensor', () => {
       step: 'failed',
       reason: 'Do the face-up step first.',
     });
+  });
+
+  it('reports and recovers from a dropped link', async () => {
+    const { controller, speaker, transport } = await setup();
+    transport.simulateLinkLoss();
+    expect(controller.connection.value).toBe('disconnected');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(speaker.spoken).toEqual(['Sensor disconnected', 'Sensor connected']);
+    expect(controller.connection.value).toBe('connected');
+  });
+
+  it('turns a storage failure during calibration into a visible error', async () => {
+    class FailingRepository extends InMemoryRepository {
+      override saveCalibration() {
+        return Promise.reject(new Error('QuotaExceededError'));
+      }
+    }
+    const { controller } = await setup(new FailingRepository());
+    await controller.capturePose('faceUp');
+    await controller.capturePose('tipUp');
+    expect(controller.calibrationStep.value).toEqual({
+      step: 'failed',
+      reason: 'QuotaExceededError',
+    });
+  });
+
+  it('ignores a connection attempt that finishes after the user disconnected', async () => {
+    const repository = new InMemoryRepository();
+    const controller = new CoachController({ repository, speaker: new SilentSpeaker() });
+    const transport = new SimulatedTransport(4000, immediateScheduler, 7);
+    const connecting = controller.connect(transport);
+    await controller.disconnect();
+    await connecting;
+    expect(controller.connection.value).toBe('disconnected');
+    expect(controller.session.value).toBeNull();
   });
 
   it('disconnects cleanly', async () => {

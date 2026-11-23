@@ -12,7 +12,7 @@ import {
   scale,
   sub,
 } from '../math/vec3';
-import { fromAxisAngle, rotate } from '../math/quat';
+import { conjugate, fromAxisAngle, rotate } from '../math/quat';
 import { STANDARD_GRAVITY } from '../processing/units';
 import { createRandom, gaussian } from './random';
 
@@ -39,6 +39,19 @@ export interface SwingSpec {
   /** Width of the acceleration and deceleration phases, s. */
   readonly riseSigmaS: number;
   readonly fallSigmaS: number;
+  /**
+   * Backswing: peak rate (rad/s, applied in reverse) and its lead before contact (s).
+   * 0 disables it. A backswing is what first trips the sensor's trigger.
+   */
+  readonly backswingRateRadPerS: number;
+  readonly backswingLeadS: number;
+  /** Peak roll rate about the racket long axis around contact, rad/s (forearm pronation). */
+  readonly rollRateRadPerS: number;
+  /**
+   * Offset of the centre of rotation from the racket axis, world frame, m.
+   * Non-zero violates the rigid-lever assumption the analysis makes (ADR 0003).
+   */
+  readonly centreOffsetM: Vec3;
   readonly withImpact: boolean;
   readonly noiseStd: { readonly accelG: number; readonly gyroDps: number };
   readonly seed: number;
@@ -55,6 +68,10 @@ export const DEFAULT_SWING: SwingSpec = {
   sensorToSweetSpotM: 0.12,
   riseSigmaS: 0.09,
   fallSigmaS: 0.16,
+  backswingRateRadPerS: 0,
+  backswingLeadS: 0.45,
+  rollRateRadPerS: 0,
+  centreOffsetM: [0, 0, 0],
   withImpact: true,
   noiseStd: { accelG: 0, gyroDps: 0 },
   seed: 1,
@@ -115,33 +132,50 @@ export function simulateSwing(
   const yContact = cross(zContact, xContact);
   const worldFromRacketAtContact: Mat3 = fromColumns(xContact, yContact, zContact);
   const axis = normalize(cross(xContact, vDir)); // ω ∥ axis gives v ∥ vDir for r ∥ x
+  const contactRacketFromWorld = transpose(worldFromRacketAtContact);
 
-  // Angular rate profile: asymmetric Gaussian peaking at tPeak.
-  const rate = (t: number): number => {
+  // Angular rate: asymmetric Gaussian forward swing peaking at tPeak, plus an
+  // optional reversed Gaussian backswing.
+  const tBack = tContact - spec.backswingLeadS;
+  const backSigma = 0.08;
+  const forward = (t: number): number => {
     const s = t < tPeak ? spec.riseSigmaS : spec.fallSigmaS;
     return spec.peakRateRadPerS * Math.exp(-0.5 * ((t - tPeak) / s) ** 2);
   };
+  const back = (t: number): number =>
+    -spec.backswingRateRadPerS * Math.exp(-0.5 * ((t - tBack) / backSigma) ** 2);
+  const rate = (t: number): number => forward(t) + back(t);
   const rateDot = (t: number): number => {
     const s = t < tPeak ? spec.riseSigmaS : spec.fallSigmaS;
-    return (-rate(t) * (t - tPeak)) / s ** 2;
+    return (-forward(t) * (t - tPeak)) / s ** 2 - (back(t) * (t - tBack)) / backSigma ** 2;
   };
+  const rollRate = (t: number): number =>
+    spec.rollRateRadPerS * Math.exp(-0.5 * ((t - tContact) / 0.1) ** 2);
 
-  // θ(t) − θ(tContact) by fine trapezoidal integration.
-  const sub_ = 20;
-  const theta = new Float64Array(n);
-  let acc = 0;
-  for (let i = 1; i < n; i++) {
-    const t0 = (i - 1) / fs;
-    const h = 1 / fs / sub_;
-    for (let k = 0; k < sub_; k++) {
-      acc += 0.5 * (rate(t0 + k * h) + rate(t0 + (k + 1) * h)) * h;
+  // θ(t) and roll φ(t), relative to contact, by fine trapezoidal integration.
+  const integrate = (f: (t: number) => number): Float64Array => {
+    const out = new Float64Array(n);
+    const steps = 20;
+    const h = 1 / fs / steps;
+    let acc = 0;
+    for (let i = 1; i < n; i++) {
+      const t0 = (i - 1) / fs;
+      for (let k = 0; k < steps; k++) acc += 0.5 * (f(t0 + k * h) + f(t0 + (k + 1) * h)) * h;
+      out[i] = acc;
     }
-    theta[i] = acc;
-  }
-  const thetaContact = theta[contactIndex] ?? 0;
+    const atContact = out[contactIndex] ?? 0;
+    return out.map((v) => v - atContact);
+  };
+  const theta = integrate(rate);
+  const roll = integrate(rollRate);
 
   const sensorFromRacket = transpose(setup.mount.racketFromSensor);
-  const sensorRadius = spec.leverRadiusM - spec.sensorToSweetSpotM;
+  // Positions relative to the centre of rotation at contact; both rotate rigidly about `axis`.
+  const sensorAtContact = add(
+    scale(xContact, spec.leverRadiusM - spec.sensorToSweetSpotM),
+    spec.centreOffsetM,
+  );
+  const sweetSpotAtContact = add(scale(xContact, spec.leverRadiusM), spec.centreOffsetM);
   const random = createRandom(spec.seed);
   const accelScale = SENSOR_ACCEL_G_PER_LSB * STANDARD_GRAVITY;
   const gyroScale = SENSOR_GYRO_DPS_PER_LSB * DEG_TO_RAD;
@@ -150,19 +184,23 @@ export function simulateSwing(
 
   for (let i = 0; i < n; i++) {
     const t = i / fs;
-    const q = fromAxisAngle(axis, (theta[i] ?? 0) - thetaContact);
-    const toWorld = (vRacket: Vec3): Vec3 => rotate(q, mulVec(worldFromRacketAtContact, vRacket));
+    // Attitude: swing rotation about `axis`, then roll about the racket's own long axis.
+    const swingRot = fromAxisAngle(axis, theta[i] ?? 0);
+    const rollRot = fromAxisAngle([1, 0, 0], roll[i] ?? 0);
     const toRacket = (vWorld: Vec3): Vec3 =>
-      mulVec(transpose(worldFromRacketAtContact), rotate([q[0], -q[1], -q[2], -q[3]], vWorld));
+      rotate(
+        conjugate(rollRot),
+        mulVec(contactRacketFromWorld, rotate(conjugate(swingRot), vWorld)),
+      );
 
     const w = rate(t);
-    const r = scale(toWorld([1, 0, 0]), sensorRadius);
+    const r = rotate(swingRot, sensorAtContact);
     const accelWorld = add(
       scale(cross(axis, r), rateDot(t)),
       scale(cross(axis, cross(axis, r)), w * w),
     );
     let specificForce = toRacket(add(accelWorld, [0, 0, STANDARD_GRAVITY]));
-    const omega = toRacket(scale(axis, w));
+    const omega = add(toRacket(scale(axis, w)), [rollRate(t), 0, 0]);
 
     if (spec.withImpact && (i === contactIndex || i === contactIndex + 1)) {
       // Ball impact: a large, brief push along the hitting-face normal.
@@ -197,14 +235,15 @@ export function simulateSwing(
     receivedAt: 0,
   };
 
+  const sweetSpotVelocity = scale(cross(axis, sweetSpotAtContact), rate(tContact));
   return {
     capture,
     truth: {
       contactIndex,
       faceTiltDeg: elevationDeg(hitNormal),
-      swingPathDeg: elevationDeg(vDir),
+      swingPathDeg: elevationDeg(sweetSpotVelocity),
       tipElevationDeg: elevationDeg(xContact),
-      headSpeedMps: rate(tContact) * spec.leverRadiusM,
+      headSpeedMps: norm(sweetSpotVelocity),
       hittingFace: spec.hittingFace,
     },
   };

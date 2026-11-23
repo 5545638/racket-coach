@@ -13,5 +13,10 @@ export const GOOD_FOREHAND: StrokeMetrics = {
   peakSpeedOffsetMs: 0,
   forwardSwingArcDeg: 140,
   followThroughArcDeg: 260,
-  quality: { attitudeReliable: true, anchorErrorG: 0.01, gyroSaturated: false },
+  quality: {
+    attitudeReliable: true,
+    anchorErrorG: 0.01,
+    gyroSaturated: false,
+    saturatedSamples: 0,
+  },
 };

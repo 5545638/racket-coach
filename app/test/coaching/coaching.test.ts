@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_RULES } from '../../src/coaching/defaultRules';
-import { findViolations, selectCue } from '../../src/coaching/rules';
+import { NO_READING_CUE, evaluateRules, selectCue } from '../../src/coaching/rules';
 import { statistic, summarize } from '../../src/coaching/summary';
 import type { StrokeMetrics, StrokeRecord } from '../../src/domain/types';
 import { GOOD_FOREHAND } from '../fixtures';
@@ -18,7 +18,8 @@ describe('rule engine', () => {
     const cue = selectCue({ ...GOOD_FOREHAND, faceTiltDeg: 6, swingPathDeg: 2 }, DEFAULT_RULES);
     expect(cue.ruleId).toBe('face-open');
     expect(
-      findViolations({ ...GOOD_FOREHAND, faceTiltDeg: 6, swingPathDeg: 2 }, DEFAULT_RULES),
+      evaluateRules({ ...GOOD_FOREHAND, faceTiltDeg: 6, swingPathDeg: 2 }, DEFAULT_RULES)
+        .violations,
     ).toHaveLength(2);
   });
 
@@ -32,12 +33,13 @@ describe('rule engine', () => {
     expect(selectCue({ ...GOOD_FOREHAND, ...patch }, DEFAULT_RULES).ruleId).toBe(ruleId);
   });
 
-  it('skips rules whose metric is unavailable', () => {
-    const cue = selectCue(
-      { ...GOOD_FOREHAND, faceTiltDeg: null, swingPathDeg: null },
-      DEFAULT_RULES,
+  it('never calls a stroke good when angles were unavailable', () => {
+    const blind = { ...GOOD_FOREHAND, faceTiltDeg: null, swingPathDeg: null };
+    expect(selectCue(blind, DEFAULT_RULES)).toEqual(NO_READING_CUE);
+    // …but still corrects what it can measure.
+    expect(selectCue({ ...blind, followThroughArcDeg: 50 }, DEFAULT_RULES).ruleId).toBe(
+      'short-finish',
     );
-    expect(cue.ruleId).toBe('good');
   });
 
   it('does not coach groundstroke technique on compact swings or overheads', () => {

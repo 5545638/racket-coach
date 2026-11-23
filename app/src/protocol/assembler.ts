@@ -33,6 +33,8 @@ interface InProgress {
  */
 export class CaptureAssembler {
   private current: InProgress | null = null;
+  /** Sequence of the last orphaned sample reported, to log one error per capture. */
+  private lastOrphan: number | null = null;
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -77,7 +79,11 @@ export class CaptureAssembler {
       case 'sample': {
         const c = this.current;
         if (!c || message.sequence !== c.header.sequence) {
-          return [{ type: 'error', reason: 'Sample outside of an active capture' }];
+          if (this.lastOrphan === message.sequence) return [];
+          this.lastOrphan = message.sequence;
+          return [
+            { type: 'error', reason: `Samples of capture ${message.sequence} without its start` },
+          ];
         }
         if (c.broken) return [];
         if (message.index !== c.nextIndex) {
@@ -112,7 +118,7 @@ export class CaptureAssembler {
     if (sampleCount !== c.nextIndex) {
       return `sensor sent ${sampleCount} samples, received ${c.nextIndex}`;
     }
-    if (c.header.triggerIndex > sampleCount) {
+    if (sampleCount > 0 && c.header.triggerIndex >= sampleCount) {
       return `trigger index ${c.header.triggerIndex} beyond ${sampleCount} samples`;
     }
     const samples = Int16Array.from(c.values);

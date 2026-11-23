@@ -34,22 +34,29 @@ jobs:
       - run: npx vite build
 
   hardware:
-    name: Clip geometry
+    name: Mount geometry (${{ matrix.part }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - part: buttcap
+            build: python buttcap.py && python buttcap.py --fit-test
+          - part: clip
+            build: python clip.py
     defaults:
       run:
-        working-directory: hardware/clip
+        working-directory: hardware/${{ matrix.part }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: hardware/clip/requirements.txt
+          cache-dependency-path: hardware/${{ matrix.part }}/requirements.txt
       - run: pip install -r requirements.txt
       - run: pytest -q
-      - run: python clip.py
+      - run: ${{ matrix.build }}
       - uses: actions/upload-artifact@v4
         with:
-          name: clip-models
-          path: hardware/clip/out/
+          name: ${{ matrix.part }}-models
+          path: hardware/${{ matrix.part }}/out/

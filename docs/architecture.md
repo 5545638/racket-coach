@@ -38,9 +38,10 @@ has no knowledge of the browser.
 
 ## Data flow for one stroke
 
-1. **Firmware** keeps a 0.8 s ring buffer. When ‖ω‖ exceeds 300 °/s it starts a
-   capture and streams the buffered and live samples as they are recorded, then
-   ends the capture after ~150 ms below 100 °/s (max 1 s after trigger).
+1. **Firmware** keeps a 0.8 s ring buffer. A swing (‖ω‖ > 300 °/s, confirmed at
+   700 °/s) opens a capture that streams the buffered and live samples as they
+   are recorded and ends after ~150 ms below 100 °/s
+   ([capture lifecycle](ble-protocol.md#capture-lifecycle)).
 2. **`CaptureAssembler`** rebuilds the capture and validates index continuity,
    sample count and CRC-32. Corrupt captures are dropped and logged, never
    analysed.
@@ -73,7 +74,7 @@ next shot, hence the silent **rally** mode.
   analysis. This also enforces the protocol constants on both sides.
 - **Controller end-to-end** with the simulated transport: connect,
   calibrate over the wire, analyse, speak, persist.
-- **Hardware geometry** tests for the clip (watertight, fits, validates input).
+- **Hardware geometry** tests for both mounts (watertight, fits, validates input).
 
 Real recorded strokes become fixtures in `app/test/fixtures` once hardware is
 available ([bring-up](bring-up.md)).

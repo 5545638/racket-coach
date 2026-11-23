@@ -10,4 +10,5 @@ All notable changes are documented here. Versions follow [SemVer](https://semver
   metrics, literature-based rules, spoken cues, session statistics, CSV/JSON
   export, IndexedDB storage.
 - Swing simulator and firmware-in-the-loop tests.
-- Parametric two-part string clamp (TPU housing, PETG plate, M2 screws).
+- Parametric replacement butt cap for the Puck PCB (Wilson Blade dimensions).
+- Parametric two-part string clamp as an alternative mount.

@@ -29,10 +29,18 @@ export interface AnalysisParams {
   readonly leverRadiusM: number;
   /** Sample-to-sample jump in specific force that counts as ball contact, g. */
   readonly impactJumpThresholdG: number;
+  /** Contact is searched within this time of peak racket rate, s. */
+  readonly impactSearchS: number;
   /** The swing is "active" while ω⊥ exceeds this fraction of its peak. */
   readonly activeFraction: number;
   /** Max anchor gravity error for angles to be reported, g. */
   readonly maxAnchorErrorG: number;
+  /**
+   * Max gyro samples clipped between the attitude anchor and contact for
+   * angles to be reported. Clipping loses rotation, so attitude error grows
+   * with every clipped sample (≈1° at 6 samples, ≈8° at 20, in simulation).
+   */
+  readonly maxSaturatedSamples: number;
   /** Tip elevation at contact above which a stroke is classified as overhead, deg. */
   readonly overheadTipElevationDeg: number;
   /** Swings slower than this AND shorter than `compactMaxArcDeg` are compact. */
@@ -43,8 +51,10 @@ export interface AnalysisParams {
 export const DEFAULT_ANALYSIS_PARAMS: AnalysisParams = {
   leverRadiusM: 1.0,
   impactJumpThresholdG: 6,
+  impactSearchS: 0.08,
   activeFraction: 0.15,
   maxAnchorErrorG: 0.2,
+  maxSaturatedSamples: 6,
   overheadTipElevationDeg: 35,
   compactMaxSpeedMps: 14,
   compactMaxArcDeg: 80,
@@ -81,7 +91,12 @@ export function analyzeSwing(
   const active = activeRange(perpRate, peakIndex, params.activeFraction * peakRate);
 
   // 3. Contact.
-  const impactIndex = detectImpact(accel, active.start, params.impactJumpThresholdG);
+  const impactIndex = detectImpact(
+    accel,
+    peakIndex,
+    Math.round(params.impactSearchS * fs),
+    params.impactJumpThresholdG,
+  );
   const ref = impactIndex ?? peakIndex;
   const forwardStart = Math.min(active.start, ref);
   const followEnd = Math.max(active.end, ref);
@@ -93,8 +108,14 @@ export function analyzeSwing(
   const hitsWithForehandFace = dot(tipVelocityDir, UNIT_Z) >= 0;
 
   // 5. Absolute attitude from the quiet phase before the forward swing.
-  const anchor = findAttitudeAnchor(accel, gyro, 0, forwardStart);
-  const attitudeReliable = anchor !== null && anchor.errorG <= params.maxAnchorErrorG;
+  const anchor = findAttitudeAnchor(accel, gyro, series.accelSaturated, 0, forwardStart);
+  const saturatedSamples = anchor
+    ? series.gyroSaturated.slice(anchor.index, ref + 1).filter(Boolean).length
+    : 0;
+  const attitudeReliable =
+    anchor !== null &&
+    anchor.errorG <= params.maxAnchorErrorG &&
+    saturatedSamples <= params.maxSaturatedSamples;
 
   let faceTiltDeg: number | null = null;
   let swingPathDeg: number | null = null;
@@ -141,6 +162,7 @@ export function analyzeSwing(
       attitudeReliable,
       anchorErrorG: anchor?.errorG ?? null,
       gyroSaturated: series.gyroSaturated.slice(forwardStart, ref + 1).some(Boolean),
+      saturatedSamples,
     },
   };
 }

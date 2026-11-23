@@ -112,13 +112,19 @@ describe('CaptureAssembler', () => {
     expect(events.map((e) => e.type)).toEqual(['error', 'capture']);
   });
 
+  it('reports samples of a capture whose start was lost only once', () => {
+    const packets = encodeCapture(capture).slice(1); // CaptureBegin lost
+    const errors = feed(packets).filter((e) => e.type === 'error');
+    expect(errors).toHaveLength(2); // one for the orphaned samples, one for the end
+  });
+
   it('turns malformed packets into errors instead of throwing', () => {
     expect(feed([Uint8Array.of(0xee)])[0]).toMatchObject({ type: 'error' });
     expect(
       feed([encodeSample({ sequence: 1, index: 0, values: [0, 0, 0, 0, 0, 0] })])[0],
     ).toMatchObject({
       type: 'error',
-      reason: 'Sample outside of an active capture',
+      reason: 'Samples of capture 1 without its start',
     });
   });
 });

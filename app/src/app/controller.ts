@@ -9,6 +9,7 @@ import type {
   StrokeRecord,
 } from '../domain/types';
 import type { Speaker } from '../feedback/speech';
+import { NO_SCREEN_LOCK, type ScreenLock } from '../feedback/wakeLock';
 import { DEFAULT_ANALYSIS_PARAMS } from '../metrics/analyzeSwing';
 import { type StaticPose, calibrateMount, extractStaticPose } from '../processing/calibration';
 import { toImuSeries } from '../processing/units';
@@ -26,21 +27,34 @@ export type CalibrationStep =
   | { readonly step: 'failed'; readonly reason: string }
   | { readonly step: 'done' };
 
+export interface LogEntry {
+  readonly id: number;
+  readonly text: string;
+}
+
 export interface ControllerDeps {
   readonly repository: Repository;
   readonly speaker: Speaker;
+  readonly screenLock?: ScreenLock;
   readonly rules?: RuleSet;
   readonly now?: () => number;
   readonly newId?: () => string;
+  readonly sleep?: (ms: number) => Promise<void>;
   readonly staticCaptureTimeoutMs?: number;
+  readonly reconnectAttempts?: number;
+  readonly reconnectDelayMs?: number;
 }
 
 const MAX_LOG = 20;
 
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 /**
  * Application service: owns the live session and connects transport,
  * analysis, feedback and persistence. UI components only read its signals
- * and call its methods.
+ * and call its methods. Apart from connect(), no method rejects: failures
+ * surface as state or as log entries.
  */
 export class CoachController {
   readonly connection = signal<ConnectionState>('disconnected');
@@ -51,69 +65,156 @@ export class CoachController {
   readonly settings = signal<Settings>(DEFAULT_SETTINGS);
   readonly session = signal<SessionInfo | null>(null);
   readonly strokes = signal<readonly StrokeRecord[]>([]);
-  readonly log = signal<readonly string[]>([]);
+  readonly log = signal<readonly LogEntry[]>([]);
   readonly lastStroke = computed(() => this.strokes.value.at(-1) ?? null);
 
   private transport: SensorTransport | null = null;
   private subscriptions: Unsubscribe[] = [];
   private assembler: CaptureAssembler;
   private pendingStatic: ((capture: RawCapture) => void) | null = null;
+  /** Bumped on every connect/disconnect; stale async continuations check it. */
+  private generation = 0;
+  private reconnecting = false;
+  private logId = 0;
+  private readonly screenLock: ScreenLock;
   private readonly rules: RuleSet;
   private readonly now: () => number;
   private readonly newId: () => string;
+  private readonly sleep: (ms: number) => Promise<void>;
   private readonly staticTimeoutMs: number;
+  private readonly reconnectAttempts: number;
+  private readonly reconnectDelayMs: number;
 
   constructor(private readonly deps: ControllerDeps) {
+    this.screenLock = deps.screenLock ?? NO_SCREEN_LOCK;
     this.rules = deps.rules ?? DEFAULT_RULES;
     this.now = deps.now ?? Date.now;
     this.newId = deps.newId ?? (() => crypto.randomUUID());
+    this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.staticTimeoutMs = deps.staticCaptureTimeoutMs ?? 5000;
+    this.reconnectAttempts = deps.reconnectAttempts ?? 5;
+    this.reconnectDelayMs = deps.reconnectDelayMs ?? 2000;
     this.assembler = new CaptureAssembler(this.now);
   }
 
   async init(): Promise<void> {
-    this.settings.value = resolveSettings(await this.deps.repository.loadSettings());
+    await this.safely('Loading settings', async () => {
+      this.settings.value = resolveSettings(await this.deps.repository.loadSettings());
+    });
   }
 
   /* ---------------------------------------------------------- connection */
 
+  /**
+   * Connects to a sensor. Call from a user gesture: it also unlocks speech on
+   * iOS. Rejects only with errors the user must see (no Web Bluetooth,
+   * device picker cancelled, link failure).
+   */
   async connect(transport: SensorTransport): Promise<void> {
-    await this.disconnect();
+    this.deps.speaker.prime();
+    const generation = ++this.generation;
+    await this.closeLink();
+    if (generation !== this.generation) return; // disconnect() was called meanwhile
     this.transport = transport;
     this.assembler = new CaptureAssembler(this.now);
     this.subscriptions = [
       transport.onPacket((p) => {
         this.handleEvents(this.assembler.push(p));
       }),
-      transport.onStateChange((s) => {
-        this.connection.value = s;
+      transport.onStateChange((state) => {
+        this.handleStateChange(transport, state);
       }),
     ];
+
     try {
       await transport.connect();
     } catch (error) {
-      this.teardown();
+      if (generation === this.generation) this.teardown();
       throw error;
     }
+    if (generation !== this.generation) {
+      // disconnect() ran while the link was coming up: close it again.
+      await this.safely('Disconnecting', () => transport.disconnect());
+      return;
+    }
+
     this.connection.value = transport.state;
     this.deviceName.value = transport.deviceName;
-    this.calibration.value = await this.deps.repository.loadCalibration(this.deviceKey());
     this.calibrationStep.value = { step: 'idle' };
-    await transport.send(Uint8Array.of(Command.RequestStatus));
+    await this.safely('Loading calibration', async () => {
+      this.calibration.value = await this.deps.repository.loadCalibration(this.deviceKey());
+    });
+    // The first command also tells the sensor that notifications are enabled.
+    await this.safely('Requesting sensor status', () =>
+      transport.send(Uint8Array.of(Command.RequestStatus)),
+    );
+    await this.screenLock.acquire();
     if (!this.session.value) await this.startSession();
   }
 
+  /** Disconnects, and cancels any connect() or reconnect still in progress. */
   async disconnect(): Promise<void> {
+    this.generation++;
+    await this.closeLink();
+  }
+
+  private async closeLink(): Promise<void> {
     const transport = this.transport;
     this.teardown();
-    await transport?.disconnect();
     this.connection.value = 'disconnected';
+    await this.screenLock.release();
+    await this.safely('Disconnecting', async () => {
+      await transport?.disconnect();
+    });
   }
 
   private teardown(): void {
     for (const unsubscribe of this.subscriptions) unsubscribe();
     this.subscriptions = [];
     this.transport = null;
+    this.pendingStatic = null;
+  }
+
+  private handleStateChange(transport: SensorTransport, state: ConnectionState): void {
+    if (transport !== this.transport) return;
+    this.connection.value = state;
+    if (state === 'disconnected' && !this.reconnecting) {
+      void this.reconnect(transport, this.generation);
+    }
+  }
+
+  /** The link dropped without the user asking: say so and try to recover. */
+  private async reconnect(transport: SensorTransport, generation: number): Promise<void> {
+    this.reconnecting = true;
+    const rate = this.settings.value.speechRate;
+    this.appendLog('Sensor disconnected.');
+    this.deps.speaker.say('Sensor disconnected', rate);
+    try {
+      for (let attempt = 1; attempt <= this.reconnectAttempts; attempt++) {
+        await this.sleep(this.reconnectDelayMs);
+        if (generation !== this.generation) return;
+        try {
+          this.assembler = new CaptureAssembler(this.now);
+          await transport.connect();
+          if (generation !== this.generation) {
+            await transport.disconnect();
+            return;
+          }
+          await transport.send(Uint8Array.of(Command.RequestStatus));
+          this.appendLog(`Reconnected (attempt ${attempt}).`);
+          this.deps.speaker.say('Sensor connected', rate);
+          return;
+        } catch (error) {
+          this.appendLog(`Reconnect attempt ${attempt} failed: ${errorMessage(error)}`);
+        }
+      }
+      if (generation === this.generation) {
+        this.deps.speaker.say('Sensor lost', rate);
+        await this.disconnect();
+      }
+    } finally {
+      this.reconnecting = false;
+    }
   }
 
   /* ------------------------------------------------------------- session */
@@ -123,22 +224,25 @@ export class CoachController {
     const session: SessionInfo = {
       id: this.newId(),
       startedAt,
-      label: new Date(startedAt).toLocaleString(),
+      label: new Date(startedAt).toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }),
     };
-    await this.deps.repository.saveSession(session);
     this.session.value = session;
     this.strokes.value = [];
+    await this.safely('Saving session', () => this.deps.repository.saveSession(session));
   }
 
   async updateSettings(patch: Partial<Settings>): Promise<void> {
     const next = resolveSettings({ ...this.settings.value, ...patch });
     this.settings.value = next;
-    await this.deps.repository.saveSettings(next);
+    await this.safely('Saving settings', () => this.deps.repository.saveSettings(next));
   }
 
   /* --------------------------------------------------------- calibration */
 
-  /** Runs one calibration pose. Call for 'faceUp' first, then 'tipUp'. */
+  /** Runs one calibration pose: 'faceUp' first, then 'tipUp'. */
   async capturePose(pose: 'faceUp' | 'tipUp'): Promise<void> {
     const current = this.calibrationStep.value;
     const faceUp = current.step === 'awaitTipUp' ? current.faceUp : null;
@@ -148,34 +252,24 @@ export class CoachController {
     }
     this.calibrationStep.value = { step: 'capturing', pose };
 
-    let capture: RawCapture;
     try {
-      capture = await this.requestStaticCapture();
+      const capture = await this.requestStaticCapture();
+      const measured = extractStaticPose(toImuSeries(capture));
+      if (!measured.ok) throw new Error(measured.reason);
+
+      if (pose === 'faceUp' || !faceUp) {
+        this.calibrationStep.value = { step: 'awaitTipUp', faceUp: measured.pose };
+        return;
+      }
+      const calibrated = calibrateMount(faceUp, measured.pose);
+      if (!calibrated.ok) throw new Error(calibrated.reason);
+
+      await this.deps.repository.saveCalibration(this.deviceKey(), calibrated.calibration);
+      this.calibration.value = calibrated.calibration;
+      this.calibrationStep.value = { step: 'done' };
     } catch (error) {
       this.calibrationStep.value = { step: 'failed', reason: errorMessage(error) };
-      return;
     }
-    const result = extractStaticPose(toImuSeries(capture));
-    if (!result.ok) {
-      this.calibrationStep.value = { step: 'failed', reason: result.reason };
-      return;
-    }
-    if (pose === 'faceUp' || !faceUp) {
-      this.calibrationStep.value = { step: 'awaitTipUp', faceUp: result.pose };
-      return;
-    }
-    const calibrated = calibrateMount(faceUp, result.pose);
-    if (!calibrated.ok) {
-      this.calibrationStep.value = { step: 'failed', reason: calibrated.reason };
-      return;
-    }
-    await this.deps.repository.saveCalibration(this.deviceKey(), calibrated.calibration);
-    this.calibration.value = calibrated.calibration;
-    this.calibrationStep.value = { step: 'done' };
-  }
-
-  resetCalibrationFlow(): void {
-    this.calibrationStep.value = { step: 'idle' };
   }
 
   private deviceKey(): string {
@@ -184,11 +278,13 @@ export class CoachController {
 
   private requestStaticCapture(): Promise<RawCapture> {
     const transport = this.transport;
-    if (!transport) return Promise.reject(new Error('Connect the sensor first.'));
+    if (!transport || this.connection.value !== 'connected') {
+      return Promise.reject(new Error('Connect the sensor first.'));
+    }
     return new Promise<RawCapture>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingStatic = null;
-        reject(new Error('The sensor did not respond. Check the connection.'));
+        reject(new Error('No reading from the sensor. Hold the racket still and try again.'));
       }, this.staticTimeoutMs);
       this.pendingStatic = (capture) => {
         clearTimeout(timer);
@@ -218,14 +314,15 @@ export class CoachController {
           if (event.capture.kind === 'static') {
             this.pendingStatic?.(event.capture);
           } else {
-            void this.handleSwing(event.capture);
+            this.handleSwing(event.capture);
           }
           break;
       }
     }
   }
 
-  private async handleSwing(capture: RawCapture): Promise<void> {
+  /** Synchronous up to the spoken cue, so strokes keep their arrival order. */
+  private handleSwing(capture: RawCapture): void {
     const calibration = this.calibration.value;
     const session = this.session.value;
     if (!calibration) {
@@ -257,17 +354,27 @@ export class CoachController {
     };
     this.strokes.value = [...this.strokes.value, record];
 
-    if (settings.mode === 'drill' && (analysis.cue.severity === 'fix' || settings.speakGood)) {
-      this.deps.speaker.say(analysis.cue.text, settings.speechRate);
+    const { severity } = analysis.cue;
+    const speak =
+      settings.mode === 'drill' &&
+      (severity === 'fix' || (severity === 'good' && settings.speakGood));
+    if (speak) this.deps.speaker.say(analysis.cue.text, settings.speechRate);
+
+    void this.safely('Saving stroke', () => this.deps.repository.saveStroke(record));
+  }
+
+  /* ------------------------------------------------------------- helpers */
+
+  private async safely(what: string, action: () => Promise<unknown>): Promise<void> {
+    try {
+      await action();
+    } catch (error) {
+      this.appendLog(`${what} failed: ${errorMessage(error)}`);
     }
-    await this.deps.repository.saveStroke(record);
   }
 
   private appendLog(message: string): void {
-    const line = `${new Date(this.now()).toLocaleTimeString()} ${message}`;
-    this.log.value = [line, ...this.log.value].slice(0, MAX_LOG);
+    const text = `${new Date(this.now()).toLocaleTimeString()} ${message}`;
+    this.log.value = [{ id: ++this.logId, text }, ...this.log.value].slice(0, MAX_LOG);
   }
 }
-
-const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);

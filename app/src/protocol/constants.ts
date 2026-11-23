@@ -1,7 +1,7 @@
 /**
  * Wire protocol between the racket sensor and the app.
  * Specification: docs/ble-protocol.md. Keep in sync with firmware/puck/src/main.js
- * (test/protocol/firmwareSync.test.ts enforces this).
+ * (test/firmware/firmware.test.ts enforces this).
  */
 export const PROTOCOL_VERSION = 1;
 

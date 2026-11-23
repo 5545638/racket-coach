@@ -3,13 +3,28 @@ import { toCsv, toJson } from '../app/export';
 import { type Statistic, summarize } from '../coaching/summary';
 import { STROKE_LABEL } from './format';
 
-function download(filename: string, content: string, type: string): void {
-  const url = URL.createObjectURL(new Blob([content], { type }));
+/**
+ * Hands a file to the user. Uses the share sheet where available (iOS web
+ * views ignore the download attribute) and falls back to a download link.
+ */
+async function saveFile(filename: string, content: string, type: string): Promise<void> {
+  const file = new File([content], filename, { type });
+  if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+    }
+  }
+  const url = URL.createObjectURL(file);
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 60_000);
 }
 
 const stat = (s: Statistic | null, unit: string, factor = 1): string =>
@@ -64,7 +79,7 @@ export function SessionView({ controller }: { readonly controller: CoachControll
           type="button"
           disabled={!session || strokes.length === 0}
           onClick={() => {
-            download(`racket-coach-${stamp}.csv`, toCsv(strokes), 'text/csv');
+            void saveFile(`racket-coach-${stamp}.csv`, toCsv(strokes), 'text/csv');
           }}
         >
           Export CSV
@@ -74,7 +89,11 @@ export function SessionView({ controller }: { readonly controller: CoachControll
           disabled={!session || strokes.length === 0}
           onClick={() => {
             if (session)
-              download(`racket-coach-${stamp}.json`, toJson(session, strokes), 'application/json');
+              void saveFile(
+                `racket-coach-${stamp}.json`,
+                toJson(session, strokes),
+                'application/json',
+              );
           }}
         >
           Export raw data
@@ -93,8 +112,8 @@ export function SessionView({ controller }: { readonly controller: CoachControll
         <details class="log">
           <summary>Diagnostics</summary>
           <ul>
-            {controller.log.value.map((line) => (
-              <li key={line}>{line}</li>
+            {controller.log.value.map((entry) => (
+              <li key={entry.id}>{entry.text}</li>
             ))}
           </ul>
         </details>

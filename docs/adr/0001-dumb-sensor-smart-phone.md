@@ -17,6 +17,7 @@ in the app. Raw captures are stored next to their metrics.
 
 - Algorithms change without reflashing; every stored stroke can be re-analysed.
 - Real recorded data becomes test fixtures directly.
-- ~2 kB per stroke over BLE (≈ 1 s per stroke at the measured rate); latency is
-  hidden by streaming while the swing is still being recorded.
+- ~2 kB per stroke over BLE. Streaming starts while the swing is still being
+  recorded, so most of the transfer overlaps the follow-through; the remaining
+  latency must be measured on hardware (bring-up §1).
 - Higher radio power use than sending metrics only (see bring-up §5).

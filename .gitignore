@@ -6,4 +6,5 @@ coverage/
 __pycache__/
 .pytest_cache/
 .venv/
-hardware/clip/out/
+hardware/*/out/
+*.tsbuildinfo

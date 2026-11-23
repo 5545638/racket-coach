@@ -34,11 +34,14 @@ gyro rate over both poses is the gyro bias. Calibration is stored per sensor.
 2. **Racket rate.** ω⊥ = √(ωy² + ωz²): rotation that moves the head. Roll about
    the long axis is excluded.
 3. **Active phase.** Around the peak of ω⊥, while ω⊥ > 15 % of peak.
-4. **Contact.** First sample after the start of the active phase where the
-   specific force jumps by > 6 g between consecutive samples. Swing
-   acceleration changes by a few g per sample at 104 Hz; a string-bed impact is
-   a near-step of tens of g. No jump → shadow swing or miss; metrics are then
-   taken at peak ω⊥ and `impactDetected` is false.
+4. **Contact.** The onset of the largest jump in specific force (> 6 g between
+   consecutive samples) within ±80 ms of peak ω⊥. Near the peak the centripetal
+   acceleration is momentarily constant, while ball impact is a near-step of
+   tens of g; searching the whole swing would mistake the rapidly growing
+   centripetal acceleration of a very fast swing for contact. No jump → shadow
+   swing or miss; metrics are then taken at peak ω⊥ and `impactDetected` is
+   false. The 6 g threshold assumes a string-bed mount and must be checked for
+   the butt-cap mount during bring-up.
 5. **Attitude.** The sample before the forward swing that is closest to static
    (‖f‖ ≈ 1 g, small ‖ω‖) anchors the tilt; quaternion integration of the gyro
    (trapezoidal rate) carries it to contact. During the swing the accelerometer
@@ -74,9 +77,16 @@ axis behind the handle. Then the sweet-spot velocity is ω × (L x̂):
 - its **magnitude** scales with L, which is why speed is configurable and why
   speeds should be compared within a player rather than against tour data.
 
-Real strokes violate the model when the wrist and elbow add rotation about
-other centres. Swing path is therefore an estimate of the racket's own motion
-and must be validated with video (see [bring-up](bring-up.md)).
+In simulation, moving the centre of rotation off the racket axis (for a fixed
+rotation axis) changes speed by the ratio of the true to the assumed lever and
+leaves swing path unchanged; roll about the racket axis (forearm pronation)
+affects neither. Real strokes also change the rotation axis during the swing
+(wrist, elbow), which the model cannot capture, so swing path must be validated
+with video (see [bring-up](bring-up.md)).
+
+Only the single highest-priority cue is spoken per stroke. A stroke is called
+"Good" only when every applicable rule could be evaluated; otherwise it is
+marked "No reading", not spoken, and left out of the good-share statistic.
 
 ## Coaching thresholds
 
@@ -102,9 +112,13 @@ Only the single highest-priority cue is spoken per stroke.
 ## Known limitations
 
 - Sensor range: ±2000 dps (nominally ±2293 dps with 70 mdps/LSB). Very fast
-  swings clip; speed is then flagged as a lower bound and excluded from
-  statistics. Angles remain usable because attitude error from a short clip is
-  small, but they are less accurate.
+  swings clip. Speed is then flagged as a lower bound and excluded from
+  statistics. Every clipped sample loses rotation and degrades attitude (in
+  simulation ≈ 1° at 6 clipped samples, ≈ 8° at 20), so angles are withheld when
+  more than 6 samples clip between the attitude anchor and contact; the stroke
+  then gets "No reading" instead of a rating.
+- Published face-angle and swing-path values are for topspin forehands; the
+  same thresholds are applied to backhands until backhand data is available.
 - 104 Hz sampling gives ±5 ms timing resolution at contact.
 - Contact location on the string bed is not yet estimated (planned, needs
   recorded data).

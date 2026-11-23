@@ -26,12 +26,15 @@ order with the first real Puck.js; record results in an issue.
 
 ## 3. Mechanics
 
-- [ ] Clamp survives 200 hard groundstrokes without moving (mark its position
-      on the strings).
+- [ ] Butt-cap fit test print seats like the stock cap; full cap holds the PCB
+      without rattling.
+- [ ] Mount survives 200 hard groundstrokes without moving.
 - [ ] No sensor resets on impact: a reset drops the BLE connection, so the app
       must stay connected through a full session. If it does not, increase
       `stack_interference` in the clamp to press the coin cell harder.
-- [ ] Contact is detected on every hit and on no shadow swing.
+- [ ] Contact is detected on every hit and on no shadow swing. In the handle
+      the impact is weaker than on the strings: if hits are missed, lower
+      `impactJumpThresholdG` (default 6 g) using the exported raw data.
 
 ## 4. Validation against video
 

@@ -1,6 +1,11 @@
 /** Anything that can voice a short cue. */
 export interface Speaker {
   say(text: string, rate: number): void;
+  /**
+   * Must be called from a user gesture: iOS only allows speech that a tap
+   * started, and cues later arrive from Bluetooth events.
+   */
+  prime(): void;
 }
 
 /**
@@ -26,6 +31,12 @@ export class WebSpeechSpeaker implements Speaker {
     if (this.voice) utterance.voice = this.voice;
     this.synth.speak(utterance);
   }
+
+  prime(): void {
+    const silent = new SpeechSynthesisUtterance(' ');
+    silent.volume = 0;
+    this.synth.speak(silent);
+  }
 }
 
 /** Used in tests and when speech is unavailable. */
@@ -33,5 +44,9 @@ export class SilentSpeaker implements Speaker {
   readonly spoken: string[] = [];
   say(text: string): void {
     this.spoken.push(text);
+  }
+
+  prime(): void {
+    // Nothing to unlock.
   }
 }

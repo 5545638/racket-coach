@@ -1,6 +1,6 @@
 # Racket Coach
 
-Real-time tennis stroke feedback from a motion sensor clipped to the strings.
+Real-time tennis stroke feedback from a motion sensor in the racket's butt cap.
 After each stroke you hear one short correction — _"Face too open"_,
 _"Swing low to high"_, _"Finish your swing"_ — in your earphones.
 
@@ -14,15 +14,15 @@ _"Swing low to high"_, _"Finish your swing"_ — in your earphones.
 ## How it works
 
 ```
- Puck.js on the strings ──BLE──▶ Web app on the phone ──speech──▶ earphones
- (detect swing, stream raw IMU)   (attitude, metrics, rules)
+ Puck.js in the butt cap ──BLE──▶ Web app on the phone ──speech──▶ earphones
+ (detect swing, stream raw IMU)    (attitude, metrics, rules)
 ```
 
 | Part | Path | What it is |
 | --- | --- | --- |
 | Firmware | [`firmware/puck`](firmware/puck) | Espruino JavaScript for Puck.js v2: swing trigger, 0.8 s pre-trigger ring buffer, streaming over a custom GATT service |
 | App | [`app`](app) | TypeScript + Preact web app served from GitHub Pages; runs in the Bluefy browser on iPhone |
-| Clip | [`hardware/clip`](hardware/clip) | Parametric TPU housing that snaps onto the two centre main strings |
+| Mount | [`hardware/buttcap`](hardware/buttcap) | Parametric replacement butt cap carrying the Puck PCB (recommended); [`hardware/clip`](hardware/clip) is a string-bed clamp alternative |
 | Docs | [`docs`](docs) | [Architecture](docs/architecture.md), [BLE protocol](docs/ble-protocol.md), [metrics & sources](docs/metrics.md), [ADRs](docs/adr) |
 
 ### Metrics per stroke
@@ -48,10 +48,11 @@ npm run coverage
 ```
 
 ```sh
-cd hardware/clip
+cd hardware/buttcap
 pip install -r requirements.txt
 pytest -q
-python clip.py --main-spacing 12.6 --string-gauge 1.25   # writes out/*.3mf
+python buttcap.py --fit-test   # racket side only, to check the fit
+python buttcap.py              # writes out/buttcap-puck.3mf
 ```
 
 Every push runs CI; pushes to `main` deploy the app to GitHub Pages.

@@ -84,7 +84,7 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
           max="2"
           step="0.1"
           value={settings.speechRate}
-          onInput={(e) => {
+          onChange={(e) => {
             void controller.updateSettings({ speechRate: Number(e.currentTarget.value) });
           }}
         />
@@ -99,7 +99,7 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
           max="2"
           step="0.05"
           value={settings.leverRadiusM}
-          onInput={(e) => {
+          onChange={(e) => {
             void controller.updateSettings({ leverRadiusM: Number(e.currentTarget.value) });
           }}
         />

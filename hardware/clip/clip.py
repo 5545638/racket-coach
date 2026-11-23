@@ -45,19 +45,19 @@ class ClipParams:
     pcb_stack_height: float = 9.0
 
     # Housing (top part).
-    wall: float = 1.6
-    floor: float = 2.0
+    wall: float = 1.2
+    floor: float = 1.6
     radial_clearance: float = 0.3
     # Interference: the lip presses the coin cell into its holder so that ball
     # impacts cannot interrupt battery contact.
     stack_interference: float = 0.2
-    lip_width: float = 1.6
-    lip_height: float = 1.2
+    lip_width: float = 1.4
+    lip_height: float = 1.0
 
     # Backing plate (bottom part).
     plate_width: float = 20.0  # across the strings (x)
     plate_length: float = 26.0  # along the strings (y)
-    plate_thickness: float = 3.8
+    plate_thickness: float = 4.0
 
     # Clamp: with the screws loose, the halves stand `clamp_gap` apart around
     # the strings; tightening closes the gap and squeezes the strings by it.

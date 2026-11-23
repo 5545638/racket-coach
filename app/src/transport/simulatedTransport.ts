@@ -118,6 +118,13 @@ export class SimulatedTransport implements SensorTransport {
     return this.states.on(listener);
   }
 
+  /** Simulates the link dropping (out of range, sensor reset). */
+  simulateLinkLoss(): void {
+    if (this.timer !== null) this.scheduler.clearInterval(this.timer);
+    this.timer = null;
+    this.setState('disconnected');
+  }
+
   /** Emits one randomised swing immediately. */
   emitSwing(): void {
     const r = this.random;

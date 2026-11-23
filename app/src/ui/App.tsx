@@ -14,7 +14,7 @@ const TABS: readonly { readonly id: Tab; readonly label: string }[] = [
 ];
 
 export function App({ controller }: { readonly controller: CoachController }) {
-  const tab = useSignal<Tab>(controller.calibration.value ? 'live' : 'settings');
+  const tab = useSignal<Tab>('live');
 
   return (
     <div class="app">

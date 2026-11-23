@@ -68,6 +68,8 @@ export interface MetricQuality {
   readonly anchorErrorG: number | null;
   /** Gyro clipped between forward-swing start and contact: speed is a lower bound. */
   readonly gyroSaturated: boolean;
+  /** Clipped gyro samples between the attitude anchor and contact. */
+  readonly saturatedSamples: number;
 }
 
 /**
@@ -97,7 +99,8 @@ export interface StrokeMetrics {
   readonly quality: MetricQuality;
 }
 
-export type CueSeverity = 'good' | 'fix';
+/** `none`: the metrics a rule needs were unavailable, so the stroke is not rated. */
+export type CueSeverity = 'good' | 'fix' | 'none';
 
 export interface Cue {
   readonly ruleId: string;

@@ -149,6 +149,10 @@ button:disabled {
   color: var(--fix);
 }
 
+.cue.none {
+  color: var(--muted);
+}
+
 .metrics {
   display: grid;
   grid-template-columns: 1fr 1fr;

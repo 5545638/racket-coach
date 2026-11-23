@@ -19,6 +19,7 @@ export interface AccelEvent {
 export class FirmwareHarness {
   readonly notifications: Uint8Array[] = [];
   readonly registerWrites: [number, number][] = [];
+  advertisedName: string | null = null;
   accelOn = false;
   /** When > 0, every n-th notify call fails as if the BLE TX queue were full. */
   failEvery = 0;
@@ -40,7 +41,9 @@ export class FirmwareHarness {
           }
         }
       },
-      setAdvertising: () => undefined,
+      setAdvertising: (_data: unknown, options: { name?: string }) => {
+        this.advertisedName = options.name ?? null;
+      },
       getAddress: () => 'e7:8a:12:34:56:78 random',
       setConnectionInterval: () => undefined,
       on: (event: string, fn: (arg?: unknown) => void) => this.handlers.set(`nrf:${event}`, fn),
@@ -65,9 +68,9 @@ export class FirmwareHarness {
         this.accelOn = false;
       },
       accelWr: (reg: number, value: number) => this.registerWrites.push([reg, value]),
-      getBatteryPercentage: () => 88,
     };
     const E = {
+      getBattery: () => 88,
       CRC32: (data: Uint8Array) => crc32(data),
       getTemperature: () => 22.4,
     };
@@ -83,8 +86,17 @@ export class FirmwareHarness {
     run(NRF, Puck, E, LED2, setTimeoutFake);
   }
 
-  connect(): void {
+  /** Link up, without the app having subscribed yet. */
+  connectLink(): void {
     this.handlers.get('nrf:connect')?.();
+  }
+
+  /** Link up and app subscribed, as the real app does (it requests status first). */
+  connect(): void {
+    this.connectLink();
+    this.write(0x01);
+    this.flushTimers();
+    this.notifications.length = 0;
   }
 
   disconnect(): void {

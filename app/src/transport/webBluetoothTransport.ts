@@ -46,6 +46,8 @@ export class WebBluetoothTransport implements SensorTransport {
         filters: [{ namePrefix: DEVICE_NAME_PREFIX }],
         optionalServices: [SERVICE_UUID],
       });
+      // removeEventListener first: connect() may run again for the same device.
+      this.device.removeEventListener('gattserverdisconnected', this.handleDisconnect);
       this.device.addEventListener('gattserverdisconnected', this.handleDisconnect);
       const server = await this.connectGatt(this.device);
       const service = await server.getPrimaryService(SERVICE_UUID);
@@ -61,12 +63,15 @@ export class WebBluetoothTransport implements SensorTransport {
     }
   }
 
-  async disconnect(): Promise<void> {
+  /**
+   * Closes the link but remembers the device, so the next connect() (and
+   * automatic reconnects) skip the browser's device picker.
+   */
+  disconnect(): Promise<void> {
     const device = this.device;
     this.cleanup();
     device?.removeEventListener('gattserverdisconnected', this.handleDisconnect);
     device?.gatt?.disconnect();
-    this.device = null;
     this.setState('disconnected');
     return Promise.resolve();
   }
