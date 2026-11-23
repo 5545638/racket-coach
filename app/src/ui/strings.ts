@@ -20,16 +20,6 @@ export interface Strings {
   readonly fix: string;
   readonly drill: string;
   readonly noContact: string;
-  readonly replay: {
-    readonly title: string;
-    readonly label: string;
-    readonly speedLabel: string;
-    readonly play: string;
-    readonly pause: string;
-    readonly scrub: string;
-    readonly caption: string;
-    readonly unavailable: string;
-  };
   readonly wrist: {
     readonly verdict: string;
     readonly loose: string;
@@ -117,17 +107,6 @@ const en: Strings = {
   fix: 'What to do',
   drill: 'Drill',
   noContact: 'No ball contact detected.',
-  replay: {
-    title: 'Replay',
-    label: 'The racket through the stroke',
-    speedLabel: 'Racket speed through the stroke; the vertical line is contact',
-    play: 'Play',
-    pause: 'Pause',
-    scrub: 'Position in the stroke',
-    caption:
-      'Only what the sensor measures is drawn: the tilt and turn of the racket, held at its butt cap, with the target to the right. Orange is contact, faint outlines are the forward swing, the line follows the tip. Where the racket was in space, and your body, are not shown. Drag to turn the view.',
-    unavailable: 'No replay for this stroke: the racket angle could not be measured.',
-  },
   wrist: {
     verdict: 'Wrist',
     loose: 'Loose: the racket lags behind the hand and whips through',
@@ -222,17 +201,6 @@ const et: Strings = {
   fix: 'Mida teha',
   drill: 'Harjutus',
   noContact: 'Palli tabamust ei tuvastatud.',
-  replay: {
-    title: 'Kordus',
-    label: 'Reket löögi jooksul',
-    speedLabel: 'Reketi kiirus löögi jooksul; püstjoon on tabamus',
-    play: 'Mängi',
-    pause: 'Peata',
-    scrub: 'Koht löögis',
-    caption:
-      'Joonistatud on ainult see, mida andur mõõdab: reketi kalle ja pööre, reket on kinnitatud otsakorgist ja sihtmärk on paremal. Oranž on tabamus, kahvatud piirjooned on ettelöök, joon järgib reketi tippu. Reketi asukohta ruumis ega sinu keha ei näidata. Vaate pööramiseks lohista.',
-    unavailable: 'Selle löögi kordust pole: reketi nurka ei saanud mõõta.',
-  },
   wrist: {
     verdict: 'Ranne',
     loose: 'Lõtv: reket jääb käest maha ja tuleb piitsana läbi',

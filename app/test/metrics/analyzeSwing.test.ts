@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  DEFAULT_ANALYSIS_PARAMS,
-  analyzeSwing,
-  analyzeSwingDetailed,
-} from '../../src/metrics/analyzeSwing';
+import { DEFAULT_ANALYSIS_PARAMS, analyzeSwing } from '../../src/metrics/analyzeSwing';
 import { toImuSeries } from '../../src/processing/units';
 import { DEFAULT_SWING, type SwingSpec, simulateSwing } from '../../src/simulation/swingModel';
 import { SETUP, SKEWED_MOUNT } from '../helpers';
@@ -174,37 +170,6 @@ describe('analyzeSwing on simulated swings', () => {
     for (const rate of [24, 32, 38]) {
       expect(run({ withImpact: false, peakRateRadPerS: rate }).metrics.impactDetected).toBe(false);
     }
-  });
-
-  it('reconstructs the racket motion in a heading-aligned display frame', () => {
-    const spec = { ...DEFAULT_SWING, backswingRateRadPerS: 6, tipElevationDeg: 10 };
-    const { capture, truth } = simulateSwing(spec, LONG_SETUP);
-    const { metrics, trace } = analyzeSwingDetailed(toImuSeries(capture), SKEWED_MOUNT);
-    if (!trace) throw new Error('no trace');
-    expect(trace.startIndex + trace.contact).toBe(truth.contactIndex);
-    expect(trace.tipDirection).toHaveLength(trace.speedMps.length);
-
-    // At contact: tip at the simulated elevation, perpendicular to the direction of travel.
-    const tip = trace.tipDirection[trace.contact] ?? [0, 0, 0];
-    expect(Math.asin(tip[2]) * (180 / Math.PI)).toBeCloseTo(truth.tipElevationDeg, 0);
-    expect(Math.abs(tip[0])).toBeLessThan(0.15); // not exactly 0: the path is inclined
-    // The hitting face looks along +x (towards the target), tilted as measured.
-    const normal = trace.faceNormal[trace.contact] ?? [0, 0, 0];
-    expect(normal[0]).toBeGreaterThan(0.9);
-    expect(Math.asin(normal[2]) * (180 / Math.PI)).toBeCloseTo(metrics.faceTiltDeg ?? NaN, 5);
-    // The head moves forwards through contact: behind before, in front after.
-    const before = trace.tipDirection[trace.contact - 8] ?? [0, 0, 0];
-    const after = trace.tipDirection[trace.contact + 8] ?? [0, 0, 0];
-    expect(before[0]).toBeLessThan(-0.3);
-    expect(after[0]).toBeGreaterThan(0.3);
-    expect(trace.speedMps[trace.contact]).toBeCloseTo(truth.headSpeedMps, 0);
-  });
-
-  it('gives no trace when the attitude is unreliable', () => {
-    const series = toImuSeries(
-      simulateSwing({ ...DEFAULT_SWING, peakRateRadPerS: 58 }, SETUP).capture,
-    );
-    expect(analyzeSwingDetailed(series, SKEWED_MOUNT).trace).toBeNull();
   });
 
   it('documents the lever model: a centre of rotation off the racket axis changes speed, not path', () => {

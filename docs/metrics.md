@@ -156,18 +156,6 @@ session, `buildSessionReport` names one focus: the most frequent correction,
 if it occurred at least 5 times and in at least 25 % of the rated strokes of
 that type.
 
-### Replay
-
-The live view replays each stroke in slow motion (`SwingReplay`) as a 3D view
-that can be turned by dragging. It draws only what is measured: the racket's
-orientation over time (long axis and face normal) with real racket dimensions,
-pivoting about its butt cap, plus the path of the tip and the speed curve.
-The racket's position in space and the player's body are not drawn, because a
-racket-mounted sensor does not know them; an earlier version with a stick
-figure on the rigid lever was removed for showing motion that was not
-measured. Each stroke is turned so the racket head travels towards the right
-at contact, because heading is unobservable.
-
 ## Known limitations
 
 - Sensor range: ±2000 dps (nominally ±2293 dps with 70 mdps/LSB). Very fast
