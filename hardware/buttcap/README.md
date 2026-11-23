@@ -1,7 +1,7 @@
 # Butt cap for Puck.js (recommended mount)
 
 Replaces the stock butt cap. The racket side copies the stock Wilson Blade cap
-(flange plus octagonal collar with a snap ridge), so it mounts like the
+(flange plus octagonal collar with a tapered rim at its tip), so it mounts like the
 original; the outside carries a cup for the bare Puck.js PCB.
 
 ![Preview](buttcap-preview.png)
@@ -26,7 +26,7 @@ contact location on the string bed cannot be estimated from the handle.
 
 ```sh
 pip install -r requirements.txt
-python buttcap.py --fit-test --collar-clearance 0.1   # looser collar
+python buttcap.py --fit-test --rim-inset 0.8   # smaller rim: looser fit
 python buttcap.py --collar-width 30.2 --collar-length 26.1
 pytest -q
 ```

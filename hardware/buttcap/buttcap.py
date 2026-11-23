@@ -47,12 +47,13 @@ class ButtCapParams:
     collar_chamfer: float = 8.0  # leg length of the 45° cut corners
     collar_wall: float = 2.0
     collar_depth: float = 5.2  # how far it goes into the handle
-    # Snap ridge around the tip of the collar, as on the stock cap.
-    # Off by default: the measured 30 × 26 mm is the widest part of the stock
-    # collar, so a ridge on top of it makes the collar too big for the handle.
-    ridge_height: float = 1.0
-    ridge_protrusion: float = 0.0
-    collar_clearance: float = 0.1  # per side; compensates for print expansion
+    # The measured size is the widest part: the rim (barb) at the tip of the
+    # collar. `rim_inset` shrinks it per side to fit the handle; the collar
+    # body is `rim_protrusion` smaller per side again, so the rim stands proud.
+    rim_inset: float = 0.6
+    rim_protrusion: float = 1.0
+    rim_height: float = 1.2
+    rim_taper: float = 0.5  # per side at the tip, so it lead-ins like a cone
 
     # Puck.js v2 bare PCB with CR2032 fitted (Espruino: 29 mm dia, 9 mm thick).
     pcb_diameter: float = 29.0
@@ -72,8 +73,11 @@ class ButtCapParams:
         return self.pcb_diameter + 2 * (self.radial_clearance + self.cup_wall)
 
     def validate(self) -> None:
-        if self.collar_wall * 2 >= min(self.collar_width, self.collar_length):
-            raise ValueError("collar_wall too thick for the collar size")
+        inner = min(self.collar_width, self.collar_length) - 2 * (
+            self.rim_inset + self.rim_protrusion + self.collar_wall
+        )
+        if inner <= 2:
+            raise ValueError("Collar too small for its wall, rim and inset")
         if self.collar_width >= self.flange_width or self.collar_length >= self.flange_length:
             raise ValueError("The collar must be smaller than the flange")
         if self.cup_outer_diameter() > min(self.flange_width, self.flange_length) + 0.01:
@@ -89,6 +93,11 @@ def octagon(width: float, length: float, chamfer: float) -> CrossSection:
     return CrossSection([points])
 
 
+def inset_octagon(width: float, length: float, chamfer: float, d: float) -> CrossSection:
+    """The octagon offset inwards by `d` on every side (corners stay 45°)."""
+    return octagon(width - 2 * d, length - 2 * d, max(0.0, chamfer - d * (2 - math.sqrt(2))))
+
+
 def _cylinder(height: float, radius: float) -> Manifold:
     return Manifold.cylinder(height, radius, radius, SEGMENTS)
 
@@ -97,17 +106,21 @@ def build_racket_side(p: ButtCapParams) -> Manifold:
     """Flange and collar: the part that copies the stock cap."""
     p.validate()
     flange = Manifold.extrude(octagon(p.flange_width, p.flange_length, p.flange_chamfer), p.flange_thickness)
-    cw, cl = p.collar_width - 2 * p.collar_clearance, p.collar_length - 2 * p.collar_clearance
-    outer = Manifold.extrude(octagon(cw, cl, p.collar_chamfer), p.collar_depth)
-    inner_chamfer = max(0.0, p.collar_chamfer - p.collar_wall * (math.sqrt(2) - 1))
-    inner = Manifold.extrude(
-        octagon(cw - 2 * p.collar_wall, cl - 2 * p.collar_wall, inner_chamfer), p.collar_depth + 0.02
-    ).translate([0, 0, -0.01])
-    ridge = Manifold.extrude(
-        octagon(cw + 2 * p.ridge_protrusion, cl + 2 * p.ridge_protrusion, p.collar_chamfer),
-        p.ridge_height,
+
+    def collar_outline(d: float) -> CrossSection:
+        return inset_octagon(p.collar_width, p.collar_length, p.collar_chamfer, d)
+
+    body_inset = p.rim_inset + p.rim_protrusion
+    body = Manifold.extrude(collar_outline(body_inset), p.collar_depth)
+    # Rim: narrow at the tip (z = 0 here), full size where it meets the body.
+    rim = Manifold.hull(
+        Manifold.extrude(collar_outline(p.rim_inset + p.rim_taper), 0.01)
+        + Manifold.extrude(collar_outline(p.rim_inset), 0.01).translate([0, 0, p.rim_height - 0.01])
     )
-    collar = (outer + ridge - inner).translate([0, 0, -p.collar_depth])
+    hollow = Manifold.extrude(collar_outline(body_inset + p.collar_wall), p.collar_depth + 0.02).translate(
+        [0, 0, -0.01]
+    )
+    collar = (body + rim - hollow).translate([0, 0, -p.collar_depth])
     return flange + collar
 
 
