@@ -20,6 +20,16 @@ export interface Strings {
   readonly fix: string;
   readonly drill: string;
   readonly noContact: string;
+  readonly replay: {
+    readonly title: string;
+    readonly label: string;
+    readonly speedLabel: string;
+    readonly play: string;
+    readonly pause: string;
+    readonly scrub: string;
+    readonly caption: string;
+    readonly unavailable: string;
+  };
   readonly wrist: {
     readonly verdict: string;
     readonly loose: string;
@@ -107,6 +117,17 @@ const en: Strings = {
   fix: 'What to do',
   drill: 'Drill',
   noContact: 'No ball contact detected.',
+  replay: {
+    title: 'Replay',
+    label: 'The stroke seen from the front and side',
+    speedLabel: 'Racket speed through the stroke; the vertical line is contact',
+    play: 'Play',
+    pause: 'Pause',
+    scrub: 'Position in the stroke',
+    caption:
+      'Seen from the front and side, target to the right, quarter speed. The racket angle is measured; the body and the racket position are illustrative. The dot is contact, the curve below is racket speed.',
+    unavailable: 'No replay for this stroke: the racket angle could not be measured.',
+  },
   wrist: {
     verdict: 'Wrist',
     loose: 'Loose: the racket lags behind the hand and whips through',
@@ -201,6 +222,17 @@ const et: Strings = {
   fix: 'Mida teha',
   drill: 'Harjutus',
   noContact: 'Palli tabamust ei tuvastatud.',
+  replay: {
+    title: 'Kordus',
+    label: 'Löök eest ja küljelt vaadates',
+    speedLabel: 'Reketi kiirus löögi jooksul; püstjoon on tabamus',
+    play: 'Mängi',
+    pause: 'Peata',
+    scrub: 'Koht löögis',
+    caption:
+      'Vaade eest ja küljelt, sihtmärk paremal, veerandkiirusel. Reketi nurk on mõõdetud; keha ja reketi asukoht on illustratiivsed. Täpp on tabamus, alumine kõver on reketi kiirus.',
+    unavailable: 'Selle löögi kordust pole: reketi nurka ei saanud mõõta.',
+  },
   wrist: {
     verdict: 'Ranne',
     loose: 'Lõtv: reket jääb käest maha ja tuleb piitsana läbi',

@@ -1,7 +1,11 @@
+import { useMemo } from 'preact/hooks';
 import type { CoachController } from '../app/controller';
 import { guidanceFor } from '../coaching/guidance';
 import { wristHint } from '../coaching/wrist';
+import { DEFAULT_ANALYSIS_PARAMS, analyzeSwingDetailed } from '../metrics/analyzeSwing';
+import { toImuSeries } from '../processing/units';
 import { FaceGauge } from './FaceGauge';
+import { SwingReplay } from './SwingReplay';
 import { deg, dps, kmh, ms } from './format';
 import { strings } from './strings';
 
@@ -18,6 +22,20 @@ export function LiveView({ controller }: { readonly controller: CoachController 
   const stroke = controller.lastStroke.value;
   const count = controller.strokes.value.length;
   const connected = controller.connection.value === 'connected';
+  const calibration = controller.calibration.value;
+  const leverM = controller.settings.value.leverRadiusM;
+  // Raw data is stored with every stroke, so the motion is rebuilt on demand.
+  const trace = useMemo(() => {
+    if (!stroke || !calibration) return null;
+    try {
+      return analyzeSwingDetailed(toImuSeries(stroke.capture), calibration, {
+        ...DEFAULT_ANALYSIS_PARAMS,
+        leverRadiusM: leverM,
+      }).trace;
+    } catch {
+      return null;
+    }
+  }, [stroke, calibration, leverM]);
 
   if (!controller.calibration.value && connected) {
     return <p class="hint">{t.calibrateFirst}</p>;
@@ -60,6 +78,13 @@ export function LiveView({ controller }: { readonly controller: CoachController 
 
       {m.faceTiltDeg !== null && groundstroke && <FaceGauge tiltDeg={m.faceTiltDeg} t={t} />}
       {!m.impactDetected && <p class="note">{t.noContact}</p>}
+
+      <h3>{t.replay.title}</h3>
+      {trace ? (
+        <SwingReplay trace={trace} leverM={leverM} t={t} />
+      ) : (
+        <p class="note">{t.replay.unavailable}</p>
+      )}
 
       <h3>{t.group.preparation}</h3>
       <dl class="metrics">

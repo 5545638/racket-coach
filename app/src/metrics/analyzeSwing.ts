@@ -7,7 +7,7 @@ import type {
   SwingStyle,
 } from '../domain/types';
 import { mulVec } from '../math/mat3';
-import { rotate } from '../math/quat';
+import { type Quat, fromAxisAngle, multiply, rotate } from '../math/quat';
 import {
   type Vec3,
   RAD_TO_DEG,
@@ -86,6 +86,32 @@ export const DEFAULT_ANALYSIS_PARAMS: AnalysisParams = {
   readyMinS: 0.3,
 };
 
+/**
+ * The racket's motion through one stroke, for drawing. Directions are unit
+ * vectors in a display frame: z up, x = direction of racket-head travel at
+ * contact (heading is unobservable, so every stroke is turned to face +x).
+ */
+export interface SwingTrace {
+  readonly sampleRateHz: number;
+  /** Index of the first sample of the trace within the capture. */
+  readonly startIndex: number;
+  /** Indices into the trace arrays. */
+  readonly forwardStart: number;
+  readonly contact: number;
+  /** Racket long axis (handle → tip). */
+  readonly tipDirection: readonly Vec3[];
+  /** Normal of the hitting face. */
+  readonly faceNormal: readonly Vec3[];
+  /** Racket-head speed from the lever model, m/s. */
+  readonly speedMps: readonly number[];
+}
+
+export interface SwingAnalysis {
+  readonly metrics: StrokeMetrics;
+  /** Null when the attitude could not be trusted (same condition as the angles). */
+  readonly trace: SwingTrace | null;
+}
+
 const elevationDeg = (unit: Vec3): number =>
   Math.asin(Math.max(-1, Math.min(1, dot(unit, UNIT_Z)))) * RAD_TO_DEG;
 
@@ -98,6 +124,15 @@ export function analyzeSwing(
   calibration: MountCalibration,
   params: AnalysisParams = DEFAULT_ANALYSIS_PARAMS,
 ): StrokeMetrics {
+  return analyzeSwingDetailed(series, calibration, params).metrics;
+}
+
+/** As {@link analyzeSwing}, plus the reconstructed racket motion for visualisation. */
+export function analyzeSwingDetailed(
+  series: ImuSeries,
+  calibration: MountCalibration,
+  params: AnalysisParams = DEFAULT_ANALYSIS_PARAMS,
+): SwingAnalysis {
   const n = series.gyro.length;
   if (n < 3) {
     throw new RangeError('Swing capture too short to analyse');
@@ -162,6 +197,7 @@ export function analyzeSwing(
   let racketDropDeg: number | null = null;
   let faceAtDropDeg: number | null = null;
   let faceClosingRateDps: number | null = null;
+  let trace: SwingTrace | null = null;
   if (anchor && attitudeReliable && tipSpeedPerMetre > 1e-6) {
     const anchorAttitude = attitudeFromGravity(accel[anchor.index] ?? UNIT_Z);
     const attitude = attitudeSeries(anchorAttitude, gyro, anchor.index, fs);
@@ -185,6 +221,25 @@ export function analyzeSwing(
         faceAtDropDeg = elevationDeg(rotate(q, hittingNormal));
       }
     }
+
+    // Trace for drawing: turn the arbitrary heading so the head travels towards +x at contact.
+    const travel = rotate(qRef, tipVelocityDir);
+    const toDisplay: Quat = fromAxisAngle(UNIT_Z, -Math.atan2(travel[1], travel[0]));
+    const end = Math.min(n - 1, followEnd);
+    const frames = attitude.slice(preparationFrom, end + 1).map((q) => multiply(toDisplay, q));
+    trace = {
+      sampleRateHz: fs,
+      startIndex: preparationFrom,
+      forwardStart: forwardStart - preparationFrom,
+      contact: ref - preparationFrom,
+      tipDirection: frames.map((q) => rotate(q, UNIT_X)),
+      faceNormal: frames.map((q) => rotate(q, hittingNormal)),
+      speedMps: perpRate.slice(preparationFrom, end + 1), // scaled by the lever below
+    };
+  }
+
+  if (trace) {
+    trace = { ...trace, speedMps: trace.speedMps.map((rate) => rate * params.leverRadiusM) };
   }
 
   // 7. "Whip": when the racket head accelerates hardest, relative to contact.
@@ -218,7 +273,7 @@ export function analyzeSwing(
       ? 'compact'
       : 'full';
 
-  return {
+  const metrics: StrokeMetrics = {
     strokeType,
     swingSize,
     swingStyle,
@@ -245,4 +300,5 @@ export function analyzeSwing(
       saturatedSamples,
     },
   };
+  return { metrics, trace };
 }

@@ -156,6 +156,16 @@ session, `buildSessionReport` names one focus: the most frequent correction,
 if it occurred at least 5 times and in at least 25 % of the rated strokes of
 that type.
 
+### Replay
+
+The live view replays each stroke in slow motion (`SwingReplay`): the racket's
+measured orientation over time, placed on the same rigid lever as the speed
+estimate, with the path of the sweet spot and the speed curve. The figure and
+the racket's position are illustrative: only orientation is measured. Each
+stroke is turned so the racket head travels towards the right at contact,
+because heading is unobservable. A three-quarter projection is used; in a pure
+side view the racket points at the viewer at contact.
+
 ## Known limitations
 
 - Sensor range: ±2000 dps (nominally ±2293 dps with 70 mdps/LSB). Very fast
