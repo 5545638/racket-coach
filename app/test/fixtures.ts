@@ -11,6 +11,13 @@ export const GOOD_FOREHAND: StrokeMetrics = {
   swingPathDeg: 25,
   tipElevationDeg: 0,
   peakSpeedOffsetMs: 0,
+  preparationTimeMs: 900,
+  backswingArcDeg: 120,
+  backswingPauseMs: 0,
+  racketDropDeg: -40,
+  faceAtDropDeg: -20,
+  peakAccelerationOffsetMs: -80,
+  faceClosingRateDps: 150,
   forwardSwingArcDeg: 140,
   followThroughArcDeg: 260,
   quality: {

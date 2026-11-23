@@ -38,7 +38,7 @@ has no knowledge of the browser.
 
 ## Data flow for one stroke
 
-1. **Firmware** keeps a 0.8 s ring buffer. A swing (‖ω‖ > 300 °/s, confirmed at
+1. **Firmware** keeps a 1.2 s ring buffer. A swing (‖ω‖ > 300 °/s, confirmed at
    700 °/s) opens a capture that streams the buffered and live samples as they
    are recorded and ends after ~150 ms below 100 °/s
    ([capture lifecycle](ble-protocol.md#capture-lifecycle)).

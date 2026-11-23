@@ -2,11 +2,13 @@ import { useSignal } from '@preact/signals';
 import type { CoachController } from '../app/controller';
 import { SimulatedTransport } from '../transport/simulatedTransport';
 import { WebBluetoothTransport } from '../transport/webBluetoothTransport';
+import { strings } from './strings';
 
 export function ConnectionBar({ controller }: { readonly controller: CoachController }) {
   const error = useSignal<string | null>(null);
   const state = controller.connection.value;
   const status = controller.status.value;
+  const t = strings(controller.settings.value.language);
 
   const run = (action: () => Promise<void>) => () => {
     error.value = null;
@@ -21,10 +23,10 @@ export function ConnectionBar({ controller }: { readonly controller: CoachContro
         <span class={`dot ${state}`} aria-hidden="true" />
         <span class="bar-title">
           {state === 'connected'
-            ? (controller.deviceName.value ?? 'Sensor')
+            ? (controller.deviceName.value ?? t.sensor)
             : state === 'connecting'
-              ? 'Connecting…'
-              : 'Not connected'}
+              ? t.connecting
+              : t.notConnected}
         </span>
         {status && <span class="bar-meta">{status.batteryPercent}%</span>}
         {state === 'disconnected' ? (
@@ -34,15 +36,15 @@ export function ConnectionBar({ controller }: { readonly controller: CoachContro
               class="primary"
               onClick={run(() => controller.connect(new WebBluetoothTransport()))}
             >
-              Connect
+              {t.connect}
             </button>
             <button type="button" onClick={run(() => controller.connect(new SimulatedTransport()))}>
-              Demo
+              {t.demo}
             </button>
           </>
         ) : (
           <button type="button" onClick={run(() => controller.disconnect())}>
-            Disconnect
+            {t.disconnect}
           </button>
         )}
       </div>

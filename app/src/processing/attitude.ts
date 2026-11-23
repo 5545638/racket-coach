@@ -1,5 +1,6 @@
 import {
   type Quat,
+  conjugate,
   fromRotationVector,
   fromTwoVectors,
   multiply,
@@ -54,27 +55,33 @@ export function attitudeFromGravity(specificForce: Vec3): Quat {
 }
 
 /**
- * Propagates attitude `q_WB` from sample `from` to sample `to` (to ≥ from)
- * using body-frame angular rates and trapezoidal rate averaging.
+ * Attitude `q_WB` for every sample, integrated forwards and backwards from the
+ * anchor using body-frame angular rates and trapezoidal rate averaging. Gyro
+ * drift grows with distance from the anchor; the anchor lies in the quiet
+ * phase before the forward swing, so the stroke stays within about a second
+ * of it.
  */
-export function propagateAttitude(
-  start: Quat,
+export function attitudeSeries(
+  anchorAttitude: Quat,
   gyro: readonly Vec3[],
-  from: number,
-  to: number,
+  anchorIndex: number,
   sampleRateHz: number,
-): Quat {
-  if (to < from) {
-    throw new RangeError('propagateAttitude only integrates forwards in time');
+): Quat[] {
+  if (anchorIndex < 0 || anchorIndex >= gyro.length) {
+    throw new RangeError('Attitude anchor outside the capture');
   }
   const dt = 1 / sampleRateHz;
-  let q = start;
-  for (let i = from; i < to; i++) {
-    const w0 = gyro[i];
-    const w1 = gyro[i + 1];
-    if (!w0 || !w1) break;
-    const wMid = scale(add(w0, w1), 0.5);
-    q = normalizeQuat(multiply(q, fromRotationVector(wMid, dt)));
+  const step = (i: number): Quat => {
+    const w0 = gyro[i] ?? [0, 0, 0];
+    const w1 = gyro[i + 1] ?? w0;
+    return fromRotationVector(scale(add(w0, w1), 0.5), dt);
+  };
+  const out: Quat[] = Array.from({ length: gyro.length }, () => anchorAttitude);
+  for (let i = anchorIndex; i < gyro.length - 1; i++) {
+    out[i + 1] = normalizeQuat(multiply(out[i] ?? anchorAttitude, step(i)));
   }
-  return q;
+  for (let i = anchorIndex; i > 0; i--) {
+    out[i - 1] = normalizeQuat(multiply(out[i] ?? anchorAttitude, conjugate(step(i - 1))));
+  }
+  return out;
 }

@@ -24,7 +24,14 @@ const stroke: StrokeRecord = {
 describe('settings', () => {
   it('falls back to defaults for missing or invalid values', () => {
     expect(resolveSettings(null)).toEqual(DEFAULT_SETTINGS);
-    expect(resolveSettings({ mode: 'rally', speechRate: 9, leverRadiusM: 1.2 })).toEqual({
+    expect(
+      resolveSettings({
+        mode: 'rally',
+        speechRate: 9,
+        leverRadiusM: 1.2,
+        language: 'fr' as never,
+      }),
+    ).toEqual({
       ...DEFAULT_SETTINGS,
       mode: 'rally',
       leverRadiusM: 1.2,
@@ -37,6 +44,7 @@ describe('export', () => {
     const lines = toCsv([stroke]).trim().split('\n');
     expect(lines).toHaveLength(2);
     expect(lines[1]).toContain('2026-11-23T17:00:00.000Z,forehand,full,true,24.00,,25.00');
+    expect(lines[0]?.split(',')).toHaveLength(lines[1]?.split(',').length ?? 0);
     expect(lines[1]?.endsWith('"Say ""hi"""')).toBe(true);
   });
 

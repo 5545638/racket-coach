@@ -18,8 +18,15 @@ import {
   normalize,
   sub,
 } from '../math/vec3';
-import { attitudeFromGravity, findAttitudeAnchor, propagateAttitude } from '../processing/attitude';
-import { activeRange, argMax, detectImpact, rotationPath } from '../processing/segmentation';
+import { attitudeFromGravity, attitudeSeries, findAttitudeAnchor } from '../processing/attitude';
+import {
+  activeRange,
+  argMax,
+  detectImpact,
+  findPreparationStart,
+  longestQuietRun,
+  rotationPath,
+} from '../processing/segmentation';
 
 export interface AnalysisParams {
   /**
@@ -46,6 +53,13 @@ export interface AnalysisParams {
   /** Swings slower than this AND shorter than `compactMaxArcDeg` are compact. */
   readonly compactMaxSpeedMps: number;
   readonly compactMaxArcDeg: number;
+  /** The racket counts as still below this rate, rad/s. */
+  readonly quietRateRadPerS: number;
+  /**
+   * Stillness of at least this long is the ready position; anything shorter
+   * inside the preparation is a pause (hitch) in the swing, s.
+   */
+  readonly readyMinS: number;
 }
 
 export const DEFAULT_ANALYSIS_PARAMS: AnalysisParams = {
@@ -58,6 +72,8 @@ export const DEFAULT_ANALYSIS_PARAMS: AnalysisParams = {
   overheadTipElevationDeg: 35,
   compactMaxSpeedMps: 14,
   compactMaxArcDeg: 80,
+  quietRateRadPerS: 0.5,
+  readyMinS: 0.3,
 };
 
 const elevationDeg = (unit: Vec3): number =>
@@ -117,21 +133,66 @@ export function analyzeSwing(
     anchor.errorG <= params.maxAnchorErrorG &&
     saturatedSamples <= params.maxSaturatedSamples;
 
+  // 6. Preparation: from the last still moment to the start of the forward swing.
+  const prepStart = findPreparationStart(
+    gyro,
+    forwardStart,
+    params.quietRateRadPerS,
+    Math.round(params.readyMinS * fs),
+  );
+  const preparationFrom = prepStart ?? 0;
+  const pauseSamples = longestQuietRun(
+    gyro,
+    preparationFrom,
+    forwardStart,
+    params.quietRateRadPerS,
+  );
+
   let faceTiltDeg: number | null = null;
   let swingPathDeg: number | null = null;
   let tipElevationDeg: number | null = null;
+  let racketDropDeg: number | null = null;
+  let faceAtDropDeg: number | null = null;
+  let faceClosingRateDps: number | null = null;
   if (anchor && attitudeReliable && tipSpeedPerMetre > 1e-6) {
-    const anchorAccel = accel[anchor.index] ?? UNIT_Z;
-    const qAnchor = attitudeFromGravity(anchorAccel);
-    const qRef = propagateAttitude(qAnchor, gyro, anchor.index, ref, fs);
+    const anchorAttitude = attitudeFromGravity(accel[anchor.index] ?? UNIT_Z);
+    const attitude = attitudeSeries(anchorAttitude, gyro, anchor.index, fs);
     const hittingNormal: Vec3 = hitsWithForehandFace ? UNIT_Z : [0, 0, -1];
-    faceTiltDeg = elevationDeg(rotate(qRef, hittingNormal));
+    const qRef = attitude[ref] ?? anchorAttitude;
+    const normalWorld = rotate(qRef, hittingNormal);
+    faceTiltDeg = elevationDeg(normalWorld);
     swingPathDeg = elevationDeg(normalize(rotate(qRef, tipVelocityDir)));
     tipElevationDeg = elevationDeg(rotate(qRef, UNIT_X));
+
+    // d(elevation)/dt of the hitting normal n is (ω × n)·up / cos(elevation).
+    const normalRate = dot(cross(rotate(qRef, omegaRef), normalWorld), UNIT_Z);
+    const cosTilt = Math.cos(faceTiltDeg / RAD_TO_DEG);
+    faceClosingRateDps = cosTilt > 0.1 ? (-normalRate / cosTilt) * RAD_TO_DEG : null;
+
+    for (let i = preparationFrom; i <= ref; i++) {
+      const q = attitude[i] ?? anchorAttitude;
+      const tip = elevationDeg(rotate(q, UNIT_X));
+      if (racketDropDeg === null || tip < racketDropDeg) {
+        racketDropDeg = tip;
+        faceAtDropDeg = elevationDeg(rotate(q, hittingNormal));
+      }
+    }
+  }
+
+  // 7. "Whip": when the racket head accelerates hardest, relative to contact.
+  let peakAccelIndex = forwardStart;
+  let peakAccel = Number.NEGATIVE_INFINITY;
+  for (let i = Math.max(1, forwardStart); i <= ref && i < n - 1; i++) {
+    const a = (perpRate[i + 1] ?? 0) - (perpRate[i - 1] ?? 0);
+    if (a > peakAccel) {
+      peakAccel = a;
+      peakAccelIndex = i;
+    }
   }
 
   const headSpeedMps = tipSpeedPerMetre * params.leverRadiusM;
   const forwardSwingArcDeg = rotationPath(gyro, forwardStart, ref, fs) * RAD_TO_DEG;
+  const backswingArcDeg = rotationPath(gyro, preparationFrom, forwardStart, fs) * RAD_TO_DEG;
   const followThroughArcDeg = rotationPath(gyro, ref, followEnd + 1, fs) * RAD_TO_DEG;
 
   const strokeType: StrokeType =
@@ -156,6 +217,13 @@ export function analyzeSwing(
     swingPathDeg,
     tipElevationDeg,
     peakSpeedOffsetMs: ((peakIndex - ref) / fs) * 1000,
+    preparationTimeMs: prepStart === null ? null : ((ref - prepStart) / fs) * 1000,
+    backswingArcDeg,
+    backswingPauseMs: (pauseSamples / fs) * 1000,
+    racketDropDeg,
+    faceAtDropDeg,
+    peakAccelerationOffsetMs: ((peakAccelIndex - ref) / fs) * 1000,
+    faceClosingRateDps,
     forwardSwingArcDeg,
     followThroughArcDeg,
     quality: {

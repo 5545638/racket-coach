@@ -4,17 +4,20 @@ import { ConnectionBar } from './ConnectionBar';
 import { LiveView } from './LiveView';
 import { SessionView } from './SessionView';
 import { SettingsView } from './SettingsView';
+import { strings } from './strings';
 
 type Tab = 'live' | 'session' | 'settings';
 
-const TABS: readonly { readonly id: Tab; readonly label: string }[] = [
-  { id: 'live', label: 'Live' },
-  { id: 'session', label: 'Session' },
-  { id: 'settings', label: 'Setup' },
-];
+const TABS: readonly Tab[] = ['live', 'session', 'settings'];
 
 export function App({ controller }: { readonly controller: CoachController }) {
   const tab = useSignal<Tab>('live');
+  const t = strings(controller.settings.value.language);
+  const labels: Record<Tab, string> = {
+    live: t.tabs.live,
+    session: t.tabs.session,
+    settings: t.tabs.setup,
+  };
 
   return (
     <div class="app">
@@ -25,17 +28,17 @@ export function App({ controller }: { readonly controller: CoachController }) {
         {tab.value === 'settings' && <SettingsView controller={controller} />}
       </main>
       <nav class="tabs" aria-label="Sections">
-        {TABS.map((t) => (
+        {TABS.map((id) => (
           <button
-            key={t.id}
+            key={id}
             type="button"
-            class={tab.value === t.id ? 'tab active' : 'tab'}
-            aria-current={tab.value === t.id ? 'page' : undefined}
+            class={tab.value === id ? 'tab active' : 'tab'}
+            aria-current={tab.value === id ? 'page' : undefined}
             onClick={() => {
-              tab.value = t.id;
+              tab.value = id;
             }}
           >
-            {t.label}
+            {labels[id]}
           </button>
         ))}
       </nav>

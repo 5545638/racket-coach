@@ -6,6 +6,11 @@ export type RuleMetric =
   | 'swingPathDeg'
   | 'headSpeedMps'
   | 'peakSpeedOffsetMs'
+  | 'preparationTimeMs'
+  | 'backswingPauseMs'
+  | 'racketDropDeg'
+  | 'faceAtDropDeg'
+  | 'peakAccelerationOffsetMs'
   | 'forwardSwingArcDeg'
   | 'followThroughArcDeg';
 

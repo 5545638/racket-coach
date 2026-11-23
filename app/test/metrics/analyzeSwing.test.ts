@@ -4,9 +4,12 @@ import { toImuSeries } from '../../src/processing/units';
 import { DEFAULT_SWING, type SwingSpec, simulateSwing } from '../../src/simulation/swingModel';
 import { SETUP, SKEWED_MOUNT } from '../helpers';
 
-function run(overrides: Partial<SwingSpec>) {
+/** A longer capture with a full second of ready position before the stroke. */
+const LONG_SETUP = { ...SETUP, durationS: 2.4, contactTimeS: 1.6 };
+
+function run(overrides: Partial<SwingSpec>, setup = SETUP) {
   const spec = { ...DEFAULT_SWING, ...overrides };
-  const { capture, truth } = simulateSwing(spec, SETUP);
+  const { capture, truth } = simulateSwing(spec, setup);
   const metrics = analyzeSwing(toImuSeries(capture), SKEWED_MOUNT, {
     ...DEFAULT_ANALYSIS_PARAMS,
     leverRadiusM: spec.leverRadiusM,
@@ -96,6 +99,51 @@ describe('analyzeSwing on simulated swings', () => {
     const { metrics, truth } = run({ backswingRateRadPerS: 6 });
     expect(metrics.referenceIndex).toBe(truth.contactIndex);
     expect(metrics.faceTiltDeg).toBeCloseTo(truth.faceTiltDeg, 0);
+  });
+
+  it('measures the racket drop and the face at the bottom of it', () => {
+    const { metrics, truth } = run({ backswingRateRadPerS: 6, swingPathDeg: 35 });
+    expect(truth.racketDropDeg).toBeLessThan(-10); // the simulated racket really drops
+    expect(metrics.racketDropDeg).toBeCloseTo(truth.racketDropDeg, 0);
+    expect(metrics.faceAtDropDeg).toBeCloseTo(truth.faceAtDropDeg, 0);
+  });
+
+  it('times the preparation from the last still moment to contact', () => {
+    const early = run({ backswingRateRadPerS: 6, backswingLeadS: 0.6 }, LONG_SETUP).metrics;
+    const late = run({ backswingRateRadPerS: 6, backswingLeadS: 0.4 }, LONG_SETUP).metrics;
+    if (early.preparationTimeMs === null || late.preparationTimeMs === null) {
+      throw new Error('preparation not found');
+    }
+    // The backswing Gaussian (σ = 80 ms) leaves the quiet band ~2.5σ before its peak.
+    expect(early.preparationTimeMs).toBeGreaterThan(700);
+    expect(early.preparationTimeMs).toBeLessThan(900);
+    expect(early.preparationTimeMs - late.preparationTimeMs).toBeCloseTo(200, -1.5);
+    expect(early.backswingArcDeg).toBeGreaterThan(40);
+    // The simulated swing stops briefly between backswing and forward swing.
+    expect(early.backswingPauseMs).toBeGreaterThan(100);
+    expect(early.backswingPauseMs).toBeLessThan(300);
+    expect(run({}, LONG_SETUP).metrics.backswingPauseMs).toBe(0);
+  });
+
+  it('reports no preparation time when the capture starts mid-motion', () => {
+    const series = toImuSeries(simulateSwing(DEFAULT_SWING, SETUP).capture);
+    const moving = { ...series, gyro: series.gyro.map((w) => [w[0] + 1, w[1], w[2]] as const) };
+    expect(analyzeSwing(moving, SKEWED_MOUNT).preparationTimeMs).toBeNull();
+  });
+
+  it('measures how fast the face is closing at contact', () => {
+    const still = run({});
+    expect(still.metrics.faceClosingRateDps).toBeCloseTo(still.truth.faceClosingRateDps, -1);
+    const rolling = run({ rollRateRadPerS: -12 });
+    const measured = rolling.metrics.faceClosingRateDps ?? NaN;
+    expect(Math.abs(rolling.truth.faceClosingRateDps)).toBeGreaterThan(300);
+    expect(measured / rolling.truth.faceClosingRateDps).toBeCloseTo(1, 1);
+  });
+
+  it('locates the acceleration peak before contact', () => {
+    // Rise σ = 90 ms: the rate Gaussian is steepest one σ before its peak.
+    expect(run({}).metrics.peakAccelerationOffsetMs).toBeCloseTo(-90, -1.2);
+    expect(run({ riseSigmaS: 0.05 }).metrics.peakAccelerationOffsetMs).toBeCloseTo(-50, -1.2);
   });
 
   it('documents the lever model: a centre of rotation off the racket axis changes speed, not path', () => {

@@ -77,9 +77,9 @@ model or range.
 2. ‖ω‖ > 300 °/s opens a *candidate*. It is confirmed, and streaming starts,
    once ‖ω‖ exceeds 700 °/s; a candidate that goes quiet first (a waggle, a
    slow backswing) is dropped without sending anything.
-3. The capture starts 0.8 s before the trigger (the ring buffer keeps running
+3. The capture starts 1.2 s before the trigger (the ring buffer keeps running
    during captures, so back-to-back strokes keep their preparation phase) and
-   ends after 150 ms below 100 °/s, or at 187 samples.
+   ends after 150 ms below 100 °/s, or at 229 samples.
 4. A new capture starts only after the previous one has been fully sent.
 
 ## Reliability

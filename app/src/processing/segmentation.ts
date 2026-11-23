@@ -72,3 +72,45 @@ export function rotationPath(
   }
   return sum / sampleRateHz;
 }
+
+/**
+ * Start of the preparation: the first sample after the last quiet period
+ * (‖ω‖ below `quietRate` for at least `minQuietSamples`) before `before`.
+ * Returns null when the capture holds no such period, i.e. the preparation
+ * started before the recorded window.
+ */
+export function findPreparationStart(
+  gyro: readonly Vec3[],
+  before: number,
+  quietRate: number,
+  minQuietSamples: number,
+): number | null {
+  let run = 0;
+  for (let i = Math.min(before, gyro.length - 1); i >= 0; i--) {
+    const w = gyro[i];
+    if (w && norm(w) < quietRate) {
+      run++;
+      if (run >= minQuietSamples) return i + run;
+    } else {
+      run = 0;
+    }
+  }
+  return null;
+}
+
+/** Longest run of samples in `[from, to)` with ‖ω‖ below `quietRate`. */
+export function longestQuietRun(
+  gyro: readonly Vec3[],
+  from: number,
+  to: number,
+  quietRate: number,
+): number {
+  let longest = 0;
+  let run = 0;
+  for (let i = from; i < to; i++) {
+    const w = gyro[i];
+    run = w && norm(w) < quietRate ? run + 1 : 0;
+    longest = Math.max(longest, run);
+  }
+  return longest;
+}

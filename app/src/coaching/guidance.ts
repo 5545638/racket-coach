@@ -1,0 +1,167 @@
+/** Languages for on-screen coaching text. Spoken cues are always English. */
+export type Language = 'et' | 'en';
+
+export interface Guidance {
+  /** What the cue means, in plain words. */
+  readonly meaning: string;
+  /** What to do about it on the next ball. */
+  readonly fix: string;
+  /** A drill for the next session. */
+  readonly drill: string;
+}
+
+/**
+ * Coaching text per rule id. Kept as data, separate from the rule thresholds,
+ * so wording can change without touching logic. Every rule in the default
+ * rule set must have an entry in every language (enforced by a test).
+ */
+export const GUIDANCE: Record<Language, Record<string, Guidance>> = {
+  en: {
+    'face-open': {
+      meaning: 'At contact the strings pointed up, so the ball flies long or floats.',
+      fix: 'Close the face slightly: keep the knuckles over the handle and lead with the edge of the racket.',
+      drill: 'Feed 20 easy balls and aim to land them inside the service line with full swings.',
+    },
+    'face-closed': {
+      meaning: 'At contact the strings pointed down, so the ball dives into the net.',
+      fix: 'Open the face a little and meet the ball further in front of you.',
+      drill: 'Rally to a target one metre over the net tape; count clearances out of 20.',
+    },
+    'late-preparation': {
+      meaning: 'The racket started moving back late, so the swing was rushed.',
+      fix: 'Turn the shoulders and take the racket back as soon as you read the ball, before it bounces.',
+      drill: 'Say "turn" aloud when the ball crosses the net and "hit" at contact.',
+    },
+    'path-flat': {
+      meaning: 'The racket travelled level through the ball: little topspin and little margin.',
+      fix: 'Start the forward swing below the ball and finish above your shoulder.',
+      drill: 'Brush up the back of the ball from the service line; let it loop over the net.',
+    },
+    'no-racket-drop': {
+      meaning:
+        'The racket head stayed up before the forward swing, so there was nothing to swing up from.',
+      fix: 'Let the head fall below your hand at the end of the backswing, then swing up.',
+      drill: 'Shadow swings: pause with the tip pointing at the ground behind you, then swing.',
+    },
+    'path-steep': {
+      meaning: 'The racket went almost straight up: lots of spin but no depth or pace.',
+      fix: 'Send the racket out towards the target before it rises.',
+      drill: 'Hit through three balls in a row laid on the court in front of you (imagined line).',
+    },
+    'accelerated-early': {
+      meaning: 'The racket was already slowing down when it met the ball.',
+      fix: 'Start smoother and save the fastest part of the swing for contact and just after.',
+      drill:
+        'Swing at 60 % effort and listen for the "whoosh" in front of your body, not beside it.',
+    },
+    'open-takeback': {
+      meaning:
+        'The strings faced the sky at the bottom of the backswing; the face then has to be rescued on the way up.',
+      fix: 'Keep the strings facing the ground as the racket drops ("pat the dog").',
+      drill: 'Shadow swings in front of a mirror, checking the face at the lowest point.',
+    },
+    hitch: {
+      meaning:
+        'The racket stopped between the backswing and the forward swing, which wastes the momentum.',
+      fix: 'Make one continuous loop: back, down and up without a stop.',
+      drill: 'Count "one-and-two" through the swing; no pause on "and".',
+    },
+    'stiff-arm': {
+      meaning:
+        'The racket moved together with the arm instead of lagging and whipping through. This is an indirect hint of a tight wrist or grip.',
+      fix: 'Hold the grip at 4 out of 10 and let the racket head trail the hand into contact.',
+      drill: 'Hit with only three fingers and the thumb on the handle to feel the lag.',
+    },
+    'short-finish': {
+      meaning: 'The swing stopped soon after contact.',
+      fix: 'Let the racket finish over the opposite shoulder; do not brake it.',
+      drill: 'Catch the racket with your other hand at the end of every swing.',
+    },
+    'no-reading': {
+      meaning:
+        'The racket was not still before the swing, or it moved too fast for the sensor, so the angles could not be measured.',
+      fix: 'Hold the racket still for a moment in the ready position before each ball.',
+      drill: '',
+    },
+    good: {
+      meaning: 'Everything measured was inside the target range.',
+      fix: 'Repeat it.',
+      drill: '',
+    },
+  },
+  et: {
+    'face-open': {
+      meaning:
+        'Tabamuse hetkel olid keeled suunatud üles, seepärast lendab pall pikaks või jääb hõljuma.',
+      fix: 'Sulge reketipinda veidi: hoia sõrmenukid käepideme peal ja juhi lööki reketi servaga.',
+      drill: 'Sööda 20 kerget palli ja löö need täishooga teenindusjoone sisse.',
+    },
+    'face-closed': {
+      meaning: 'Tabamuse hetkel olid keeled suunatud alla, seepärast läheb pall võrku.',
+      fix: 'Ava pinda veidi ja taba palli rohkem enda ees.',
+      drill: 'Löö sihtmärki, mis on meeter võrgulindist kõrgemal; loe 20 löögist, mitu läks üle.',
+    },
+    'late-preparation': {
+      meaning: 'Reket hakkas taha liikuma hilja ja löök jäi kiirustatuks.',
+      fix: 'Pööra õlad ja vii reket taha kohe, kui näed palli suunda, enne põrget.',
+      drill: 'Ütle valjult „pööre", kui pall ületab võrgu, ja „löök" tabamuse hetkel.',
+    },
+    'path-flat': {
+      meaning: 'Reket liikus läbi palli horisontaalselt: vähe topspinni ja väike varu võrgu kohal.',
+      fix: 'Alusta ettelööki pallist madalamalt ja lõpeta õla kohal.',
+      drill: 'Harja teenindusjoonelt palli tagakülge üles ja lase pallil kaarega üle võrgu minna.',
+    },
+    'no-racket-drop': {
+      meaning: 'Reketi pea jäi enne ettelööki üles, seega polnud kust üles lüüa.',
+      fix: 'Lase hooväljavõtte lõpus reketi pea käest madalamale vajuda ja löö siis üles.',
+      drill: 'Varilöögid: peata reket nii, et tipp näitab selja taga maha, ja löö sealt.',
+    },
+    'path-steep': {
+      meaning: 'Reket liikus peaaegu otse üles: palju spinni, aga pikkust ja kiirust pole.',
+      fix: 'Saada reket enne tõusu sihtmärgi suunas välja.',
+      drill: 'Kujutle kolme palli reas enda ees ja löö neist kõigist läbi.',
+    },
+    'accelerated-early': {
+      meaning: 'Reket juba aeglustus, kui see pallini jõudis.',
+      fix: 'Alusta sujuvamalt ja hoia löögi kiireim osa tabamuse ja sellele järgneva hetke jaoks.',
+      drill: 'Löö 60% jõuga ja kuula, et „vihin" kostaks keha eest, mitte kõrvalt.',
+    },
+    'open-takeback': {
+      meaning:
+        'Hooväljavõtte madalaimas punktis olid keeled taeva poole; pinda tuleb siis teel üles parandada.',
+      fix: 'Hoia keeled reketi langemisel maa poole („patsuta koera").',
+      drill: 'Varilöögid peegli ees, kontrolli pinda madalaimas punktis.',
+    },
+    hitch: {
+      meaning: 'Reket jäi hooväljavõtte ja ettelöögi vahel seisma ning hoog läks kaotsi.',
+      fix: 'Tee üks katkematu silmus: taha, alla ja üles ilma peatuseta.',
+      drill: 'Loe löögi ajal „üks-ja-kaks"; „ja" peal ei tohi pausi olla.',
+    },
+    'stiff-arm': {
+      meaning:
+        'Reket liikus käega koos, selle asemel et maha jääda ja piitsana läbi tulla. See on kaudne vihje pinges randmele või haardele.',
+      fix: 'Hoia haaret tugevusega 4/10 ja lase reketi peal käest maha jääda kuni tabamuseni.',
+      drill: 'Löö nii, et käepidemel on ainult kolm sõrme ja pöial, et tunda reketi mahajäämist.',
+    },
+    'short-finish': {
+      meaning: 'Löök peatus kohe pärast tabamust.',
+      fix: 'Lase reketil lõpetada vastasõla kohal; ära pidurda.',
+      drill: 'Püüa iga löögi lõpus reket teise käega kinni.',
+    },
+    'no-reading': {
+      meaning:
+        'Reket ei olnud enne lööki paigal või liikus anduri jaoks liiga kiiresti, seega nurki ei saanud mõõta.',
+      fix: 'Hoia reketit enne iga palli hetkeks valmisasendis paigal.',
+      drill: '',
+    },
+    good: {
+      meaning: 'Kõik mõõdetu oli sihtvahemikus.',
+      fix: 'Korda sama.',
+      drill: '',
+    },
+  },
+};
+
+export function guidanceFor(ruleId: string, language: Language): Guidance | null {
+  return GUIDANCE[language][ruleId] ?? null;
+}

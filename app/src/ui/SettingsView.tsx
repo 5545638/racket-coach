@@ -1,22 +1,25 @@
 import type { CoachController } from '../app/controller';
+import { strings } from './strings';
 
 export function SettingsView({ controller }: { readonly controller: CoachController }) {
   const settings = controller.settings.value;
+  const t = strings(settings.language);
   const connected = controller.connection.value === 'connected';
   const step = controller.calibrationStep.value;
   const calibration = controller.calibration.value;
+  const status = controller.status.value;
 
   return (
     <section class="settings">
-      <h2>Calibration</h2>
+      <h2>{t.setup.calibration}</h2>
       <p class="hint">
         {calibration
-          ? `Calibrated ${new Date(calibration.createdAt).toLocaleDateString()}. Repeat after moving the sensor.`
-          : 'Needed once per sensor position. Takes 10 seconds.'}
+          ? t.setup.calibrated(new Date(calibration.createdAt).toLocaleDateString())
+          : t.setup.calibrationNeeded}
       </p>
       <ol class="steps">
         <li>
-          Lay the racket flat with the face you hit <b>forehands</b> with facing up. Keep still.
+          {t.setup.stepFaceUp}
           <button
             type="button"
             disabled={!connected || step.step === 'capturing'}
@@ -24,11 +27,11 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
               void controller.capturePose('faceUp');
             }}
           >
-            Capture
+            {t.setup.capture}
           </button>
         </li>
         <li>
-          Stand the racket on its butt cap, tip up. Keep still.
+          {t.setup.stepTipUp}
           <button
             type="button"
             disabled={!connected || step.step !== 'awaitTipUp'}
@@ -36,20 +39,20 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
               void controller.capturePose('tipUp');
             }}
           >
-            Capture
+            {t.setup.capture}
           </button>
         </li>
       </ol>
       <p class="status" role="status">
-        {step.step === 'capturing' && 'Hold still…'}
-        {step.step === 'awaitTipUp' && 'Step 1 done. Now step 2.'}
-        {step.step === 'done' && 'Calibration saved.'}
+        {step.step === 'capturing' && t.setup.holdStill}
+        {step.step === 'awaitTipUp' && t.setup.step1Done}
+        {step.step === 'done' && t.setup.saved}
         {step.step === 'failed' && <span class="error">{step.reason}</span>}
       </p>
 
-      <h2>Feedback</h2>
+      <h2>{t.setup.feedback}</h2>
       <fieldset class="field">
-        <legend>Mode</legend>
+        <legend>{t.setup.mode}</legend>
         {(['drill', 'rally'] as const).map((mode) => (
           <label key={mode}>
             <input
@@ -60,9 +63,23 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
                 void controller.updateSettings({ mode });
               }}
             />
-            {mode === 'drill'
-              ? 'Drill — spoken cue after every stroke'
-              : 'Rally — silent, review later'}
+            {mode === 'drill' ? t.setup.drillMode : t.setup.rallyMode}
+          </label>
+        ))}
+      </fieldset>
+      <fieldset class="field">
+        <legend>{t.setup.language}</legend>
+        {(['et', 'en'] as const).map((language) => (
+          <label key={language}>
+            <input
+              type="radio"
+              name="language"
+              checked={settings.language === language}
+              onChange={() => {
+                void controller.updateSettings({ language });
+              }}
+            />
+            {language === 'et' ? 'Eesti' : 'English'}
           </label>
         ))}
       </fieldset>
@@ -74,10 +91,10 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
             void controller.updateSettings({ speakGood: e.currentTarget.checked });
           }}
         />
-        Say “Good” when there is nothing to fix
+        {t.setup.speakGood}
       </label>
       <label class="field">
-        Speech rate {settings.speechRate.toFixed(1)}×
+        {t.setup.speechRate} {settings.speechRate.toFixed(1)}×
         <input
           type="range"
           min="0.5"
@@ -90,9 +107,9 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
         />
       </label>
 
-      <h2>Model</h2>
+      <h2>{t.setup.model}</h2>
       <label class="field">
-        Swing lever (shoulder to sweet spot) {settings.leverRadiusM.toFixed(2)} m
+        {t.setup.lever} {settings.leverRadiusM.toFixed(2)} m
         <input
           type="range"
           min="0.5"
@@ -104,12 +121,11 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
           }}
         />
       </label>
-      <p class="hint">Scales racket speed only. Angles do not depend on it.</p>
+      <p class="hint">{t.setup.leverHint}</p>
 
-      {controller.status.value && (
+      {status && (
         <p class="hint">
-          Firmware {controller.status.value.firmwareVersion} · protocol v
-          {controller.status.value.protocolVersion}
+          {t.setup.firmware} {status.firmwareVersion} · protocol v{status.protocolVersion}
         </p>
       )}
     </section>

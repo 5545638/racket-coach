@@ -239,3 +239,101 @@ button:disabled {
   color: var(--muted);
   font-size: 0.8rem;
 }
+
+h3 {
+  margin: 1.2rem 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+h4 {
+  margin: 0.8rem 0 0.3rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.card h3 {
+  margin-top: 0;
+  font-size: 1rem;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.guidance {
+  margin: 0 0 1rem;
+}
+
+.guidance dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+}
+
+.guidance dd {
+  margin: 0.1rem 0 0;
+  line-height: 1.4;
+}
+
+.cue.small {
+  font-size: 1.6rem;
+  margin: 0.2rem 0;
+}
+
+.card.coach {
+  border: 1px solid var(--accent);
+}
+
+.faults {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.gauge {
+  margin: 0 0 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.gauge svg {
+  width: 110px;
+  height: 110px;
+  flex: none;
+}
+
+.gauge figcaption {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.gauge-target {
+  fill: var(--good);
+  opacity: 0.25;
+}
+
+.gauge-axis {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.gauge-face {
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.gauge-face.good {
+  stroke: var(--good);
+}
+
+.gauge-face.fix {
+  stroke: var(--fix);
+}
+
+.gauge-label {
+  fill: var(--muted);
+  font-size: 9px;
+}

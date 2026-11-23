@@ -59,6 +59,13 @@ gyro rate over both poses is the gyro bias. Calibration is stored per sensor.
 | `faceTiltDeg` | Elevation of the **hitting** face normal at contact. 0 = vertical, negative = closed, positive = open. The hitting face is the one whose normal points along the velocity |
 | `tipElevationDeg` | Elevation of x̂ at contact |
 | `peakSpeedOffsetMs` | Time of peak ω⊥ minus time of contact. Negative = the racket was already slowing down at contact |
+| `preparationTimeMs` | Time from the end of the last standstill of ≥ 0.3 s (the ready position; ‖ω‖ < 0.5 rad/s) to contact. Unavailable if the capture holds no such standstill |
+| `backswingArcDeg` | ∫‖ω‖dt from the start of the preparation to the start of the forward swing |
+| `backswingPauseMs` | Longest standstill inside the preparation: a stop between take-back and forward swing |
+| `racketDropDeg` | Lowest tip elevation between the start of the preparation and contact. Clearly negative = the head dropped below the hand |
+| `faceAtDropDeg` | Elevation of the hitting-face normal at that lowest point (negative = strings facing the ground) |
+| `peakAccelerationOffsetMs` | Time of peak d(ω⊥)/dt relative to contact. Close to contact = the racket lags and whips through |
+| `faceClosingRateDps` | −d(face tilt)/dt at contact: how fast the hitting face is closing |
 | `forwardSwingArcDeg` | ∫‖ω‖dt from start of the active phase to contact |
 | `followThroughArcDeg` | ∫‖ω‖dt from contact to end of the active phase |
 | `strokeType` | `overhead` if tip elevation > 35°; otherwise `forehand` / `backhand` from the hitting face |
@@ -102,12 +109,32 @@ a full swing only.
 | Drive through the ball | path > 55° | up to ≈ 48° for heavy topspin | Elliott et al. 1989 (ibid.) |
 | Accelerate through contact | peak speed > 40 ms before contact | peak horizontal racket speed ≈ 2–3 ms before contact in elite players | Landlinger et al. 2010, *J Sports Sci Med* 9:643 |
 | Finish your swing | follow-through < 120° | — | heuristic, to be tuned |
+| Prepare earlier | preparation < 600 ms | — | heuristic |
+| Drop the racket head | racket drop > −15° | — | heuristic |
+| Face down on the take-back | face at the drop > 20° | — | heuristic |
+| Keep the swing flowing | pause > 200 ms | — | heuristic |
+| Loosen the wrist | peak acceleration > 150 ms before contact | — | heuristic, indirect |
 
 Kwon et al. also report that unsuccessful strokes show greater variability in
 impact angle; the session view therefore shows the standard deviation of each
 metric as a consistency measure.
 
 Only the single highest-priority cue is spoken per stroke.
+
+### What the sensor cannot say about the wrist
+
+Wrist angle is the angle between forearm and racket; a racket-only sensor
+cannot measure it, nor grip pressure. "Loosen the wrist" is inferred from the
+racket not lagging behind the hand (early acceleration peak) and is presented
+as a hint. A second sensor on the forearm would be needed to measure it.
+
+### Explanations
+
+Each cue has a plain-language meaning, a fix and a drill in Estonian and
+English (`app/src/coaching/guidance.ts`); spoken cues stay English. After a
+session, `buildSessionReport` names one focus: the most frequent correction,
+if it occurred at least 5 times and in at least 25 % of the rated strokes of
+that type.
 
 ## Known limitations
 

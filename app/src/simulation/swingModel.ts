@@ -94,6 +94,11 @@ export interface SwingTruth {
   readonly tipElevationDeg: number;
   readonly headSpeedMps: number;
   readonly hittingFace: 'forehand' | 'backhand';
+  /** Lowest tip elevation up to contact, and the hitting-face tilt at that moment. */
+  readonly racketDropDeg: number;
+  readonly faceAtDropDeg: number;
+  /** Rate at which the hitting face closes at contact, deg/s. */
+  readonly faceClosingRateDps: number;
 }
 
 const UP: Vec3 = [0, 0, 1];
@@ -181,6 +186,9 @@ export function simulateSwing(
   const gyroScale = SENSOR_GYRO_DPS_PER_LSB * DEG_TO_RAD;
   const samples = new Int16Array(n * 6);
   let triggerIndex = -1;
+  let racketDropDeg = Number.POSITIVE_INFINITY;
+  let faceAtDropDeg = 0;
+  const hitNormalRacket: Vec3 = spec.hittingFace === 'forehand' ? [0, 0, 1] : [0, 0, -1];
 
   for (let i = 0; i < n; i++) {
     const t = i / fs;
@@ -192,6 +200,16 @@ export function simulateSwing(
         conjugate(rollRot),
         mulVec(contactRacketFromWorld, rotate(conjugate(swingRot), vWorld)),
       );
+
+    if (i <= contactIndex) {
+      const tip = elevationDeg(rotate(swingRot, xContact));
+      if (tip < racketDropDeg) {
+        racketDropDeg = tip;
+        faceAtDropDeg = elevationDeg(
+          rotate(swingRot, mulVec(worldFromRacketAtContact, rotate(rollRot, hitNormalRacket))),
+        );
+      }
+    }
 
     const w = rate(t);
     const r = rotate(swingRot, sensorAtContact);
@@ -236,6 +254,10 @@ export function simulateSwing(
   };
 
   const sweetSpotVelocity = scale(cross(axis, sweetSpotAtContact), rate(tContact));
+  // At contact the racket is at its contact attitude: ω = θ̇·axis + φ̇·x.
+  const omegaAtContact = add(scale(axis, rate(tContact)), scale(xContact, rollRate(tContact)));
+  const normalRate = dot(cross(omegaAtContact, hitNormal), UP);
+  const faceClosingRateDps = (-normalRate / Math.cos(b)) * RAD_TO_DEG;
   return {
     capture,
     truth: {
@@ -245,6 +267,9 @@ export function simulateSwing(
       tipElevationDeg: elevationDeg(xContact),
       headSpeedMps: norm(sweetSpotVelocity),
       hittingFace: spec.hittingFace,
+      racketDropDeg,
+      faceAtDropDeg,
+      faceClosingRateDps,
     },
   };
 }

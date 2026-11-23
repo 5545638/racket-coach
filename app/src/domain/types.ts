@@ -92,6 +92,27 @@ export interface StrokeMetrics {
   readonly tipElevationDeg: number | null;
   /** Time of peak racket speed relative to contact, ms. Negative = peaked before contact. */
   readonly peakSpeedOffsetMs: number;
+  /** Time from the start of the preparation to contact, ms; null when it began before the capture. */
+  readonly preparationTimeMs: number | null;
+  /** Rotation of the racket from the start of the preparation to the start of the forward swing, deg. */
+  readonly backswingArcDeg: number;
+  /** Longest standstill between the start of the preparation and the forward swing, ms. */
+  readonly backswingPauseMs: number;
+  /**
+   * Lowest tip elevation between preparation and contact, deg. Clearly
+   * negative = the racket head dropped below the hand before swinging up.
+   */
+  readonly racketDropDeg: number | null;
+  /** Elevation of the hitting-face normal at the lowest point of the racket drop, deg. */
+  readonly faceAtDropDeg: number | null;
+  /**
+   * Time of peak angular acceleration relative to contact, ms (negative =
+   * before). Close to contact = the racket lags and whips through, which
+   * suggests a relaxed wrist; an indirect hint, not a wrist measurement.
+   */
+  readonly peakAccelerationOffsetMs: number;
+  /** Rate at which the hitting face is closing at contact, deg/s (negative = opening). */
+  readonly faceClosingRateDps: number | null;
   /** Rotation of the racket from forward-swing start to contact, degrees. */
   readonly forwardSwingArcDeg: number;
   /** Rotation of the racket from contact to end of follow-through, degrees. */

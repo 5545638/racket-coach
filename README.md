@@ -20,16 +20,23 @@ _"Swing low to high"_, _"Finish your swing"_ — in your earphones.
 
 | Part | Path | What it is |
 | --- | --- | --- |
-| Firmware | [`firmware/puck`](firmware/puck) | Espruino JavaScript for Puck.js v2: swing trigger, 0.8 s pre-trigger ring buffer, streaming over a custom GATT service |
+| Firmware | [`firmware/puck`](firmware/puck) | Espruino JavaScript for Puck.js v2: swing trigger, 1.2 s pre-trigger ring buffer, streaming over a custom GATT service |
 | App | [`app`](app) | TypeScript + Preact web app served from GitHub Pages; runs in the Bluefy browser on iPhone |
 | Mount | [`hardware/buttcap`](hardware/buttcap) | Parametric replacement butt cap carrying the Puck PCB (recommended); [`hardware/clip`](hardware/clip) is a string-bed clamp alternative |
 | Docs | [`docs`](docs) | [Architecture](docs/architecture.md), [BLE protocol](docs/ble-protocol.md), [metrics & sources](docs/metrics.md), [ADRs](docs/adr) |
 
 ### Metrics per stroke
 
-Stroke type (forehand / backhand / overhead, full / compact), racket speed,
-**face angle at contact**, **swing path**, timing of peak speed relative to
-contact, forward-swing and follow-through arcs. Definitions, models and
+Stroke type (forehand / backhand / overhead, full / compact) and, per phase:
+
+- **Preparation:** preparation time, take-back size, pause before the swing,
+  racket drop and the face at the bottom of it.
+- **Contact:** racket speed, **face angle**, **swing path**, timing of peak
+  speed and of peak acceleration, how fast the face is closing.
+- **Finish:** follow-through arc.
+
+Every cue comes with an explanation, a fix and a drill (Estonian or English),
+and each session ends with one focus for next time. Definitions, models and
 limitations: [docs/metrics.md](docs/metrics.md).
 
 ## Try it without hardware

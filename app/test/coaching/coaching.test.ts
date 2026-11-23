@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_RULES } from '../../src/coaching/defaultRules';
+import { GUIDANCE, guidanceFor } from '../../src/coaching/guidance';
+import { buildSessionReport } from '../../src/coaching/sessionReport';
 import { NO_READING_CUE, evaluateRules, selectCue } from '../../src/coaching/rules';
 import { statistic, summarize } from '../../src/coaching/summary';
 import type { StrokeMetrics, StrokeRecord } from '../../src/domain/types';
@@ -29,6 +31,11 @@ describe('rule engine', () => {
     [{ swingPathDeg: 70 }, 'path-steep'],
     [{ peakSpeedOffsetMs: -80 }, 'accelerated-early'],
     [{ followThroughArcDeg: 60 }, 'short-finish'],
+    [{ preparationTimeMs: 400 }, 'late-preparation'],
+    [{ racketDropDeg: 5 }, 'no-racket-drop'],
+    [{ faceAtDropDeg: 45 }, 'open-takeback'],
+    [{ backswingPauseMs: 260 }, 'hitch'],
+    [{ peakAccelerationOffsetMs: -220 }, 'stiff-arm'],
   ] as const)('%o fires %s', (patch, ruleId) => {
     expect(selectCue({ ...GOOD_FOREHAND, ...patch }, DEFAULT_RULES).ruleId).toBe(ruleId);
   });
@@ -99,5 +106,72 @@ describe('session summary', () => {
     });
     expect(fh?.goodShare).toBeCloseTo(1 / 3);
     expect(bh).toMatchObject({ strokeType: 'backhand', count: 1 });
+  });
+});
+
+describe('guidance texts', () => {
+  it('explains every cue in every language', () => {
+    const ids = [...DEFAULT_RULES.rules.map((r) => r.id), 'good', 'no-reading'];
+    for (const language of ['en', 'et'] as const) {
+      for (const id of ids) {
+        const g = guidanceFor(id, language);
+        expect(g, `${language}/${id}`).not.toBeNull();
+        expect(g?.meaning.length).toBeGreaterThan(10);
+        expect(g?.fix.length).toBeGreaterThan(5);
+      }
+      expect(Object.keys(GUIDANCE[language]).sort()).toEqual([...ids].sort());
+    }
+    expect(guidanceFor('unknown-rule', 'et')).toBeNull();
+  });
+});
+
+describe('session report', () => {
+  const stroke = (
+    strokeType: StrokeMetrics['strokeType'],
+    ruleId: string,
+    severity: StrokeRecord['cue']['severity'],
+  ): StrokeRecord => ({
+    id: String(Math.random()),
+    sessionId: 's',
+    capture: {
+      kind: 'swing',
+      sequence: 0,
+      sampleRateHz: 104,
+      accelGPerLsb: 0.000488,
+      gyroDpsPerLsb: 0.07,
+      triggerIndex: 0,
+      samples: new Int16Array(6),
+      receivedAt: 0,
+    },
+    metrics: { ...GOOD_FOREHAND, strokeType },
+    cue: { ruleId, severity, text: ruleId },
+  });
+  const repeat = (n: number, make: () => StrokeRecord) => Array.from({ length: n }, make);
+
+  it('names the most frequent correction as the focus', () => {
+    const report = buildSessionReport([
+      ...repeat(8, () => stroke('forehand', 'face-open', 'fix')),
+      ...repeat(6, () => stroke('forehand', 'good', 'good')),
+      ...repeat(2, () => stroke('forehand', 'no-reading', 'none')),
+      ...repeat(6, () => stroke('backhand', 'short-finish', 'fix')),
+      ...repeat(4, () => stroke('backhand', 'good', 'good')),
+    ]);
+    expect(report.totalStrokes).toBe(26);
+    expect(report.unrated).toBe(2);
+    expect(report.focus).toMatchObject({ strokeType: 'forehand', ruleId: 'face-open', count: 8 });
+    expect(report.focus?.share).toBeCloseTo(8 / 14);
+    expect(report.byStroke.find((s) => s.strokeType === 'backhand')?.goodShare).toBeCloseTo(0.4);
+  });
+
+  it('gives no focus when faults are rare or the sample is small', () => {
+    expect(
+      buildSessionReport(repeat(4, () => stroke('forehand', 'face-open', 'fix'))).focus,
+    ).toBeNull();
+    const mostlyGood = [
+      ...repeat(5, () => stroke('forehand', 'face-open', 'fix')),
+      ...repeat(30, () => stroke('forehand', 'good', 'good')),
+    ];
+    expect(buildSessionReport(mostlyGood).focus).toBeNull();
+    expect(buildSessionReport([]).byStroke).toEqual([]);
   });
 });

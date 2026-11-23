@@ -40,7 +40,7 @@ var CTRL1_XL_104HZ_16G = 0x44; // ODR_XL=0100 (104 Hz), FS_XL=01 (±16 g)
 var CTRL2_G_104HZ_2000DPS = 0x4c; // ODR_G=0100 (104 Hz), FS_G=11 (±2000 dps)
 
 /* --------------------------------------------------------- swing detection */
-var PRE_TRIGGER_SAMPLES = 83; // 0.8 s of history: includes the quiet phase
+var PRE_TRIGGER_SAMPLES = 125; // 1.2 s of history: ready position and backswing
 var MAX_POST_TRIGGER_SAMPLES = 104; // capture length cap: pre-trigger history + 1.0 s
 var STATIC_SAMPLES = 104; // 1.0 s for calibration poses
 var TRIGGER_COUNTS = Math.round(300000 / GYRO_MDPS_PER_LSB); // 300 dps
