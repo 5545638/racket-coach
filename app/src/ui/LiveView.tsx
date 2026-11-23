@@ -80,11 +80,7 @@ export function LiveView({ controller }: { readonly controller: CoachController 
       {!m.impactDetected && <p class="note">{t.noContact}</p>}
 
       <h3>{t.replay.title}</h3>
-      {trace ? (
-        <SwingReplay trace={trace} leverM={leverM} t={t} />
-      ) : (
-        <p class="note">{t.replay.unavailable}</p>
-      )}
+      {trace ? <SwingReplay trace={trace} t={t} /> : <p class="note">{t.replay.unavailable}</p>}
 
       <h3>{t.group.preparation}</h3>
       <dl class="metrics">

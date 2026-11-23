@@ -158,13 +158,15 @@ that type.
 
 ### Replay
 
-The live view replays each stroke in slow motion (`SwingReplay`): the racket's
-measured orientation over time, placed on the same rigid lever as the speed
-estimate, with the path of the sweet spot and the speed curve. The figure and
-the racket's position are illustrative: only orientation is measured. Each
-stroke is turned so the racket head travels towards the right at contact,
-because heading is unobservable. A three-quarter projection is used; in a pure
-side view the racket points at the viewer at contact.
+The live view replays each stroke in slow motion (`SwingReplay`) as a 3D view
+that can be turned by dragging. It draws only what is measured: the racket's
+orientation over time (long axis and face normal) with real racket dimensions,
+pivoting about its butt cap, plus the path of the tip and the speed curve.
+The racket's position in space and the player's body are not drawn, because a
+racket-mounted sensor does not know them; an earlier version with a stick
+figure on the rigid lever was removed for showing motion that was not
+measured. Each stroke is turned so the racket head travels towards the right
+at contact, because heading is unobservable.
 
 ## Known limitations
 

@@ -14,7 +14,7 @@ All notable changes are documented here. Versions follow [SemVer](https://semver
 - Slice recognised as its own style with its own rules; serves, smashes and
   volleys are counted but not rated; contact is also detected from the jolt in
   rotation; the fixed preparation-time rule was removed (docs/research).
-- Slow-motion stroke replay with an illustrative figure, sweet-spot path and
+- Slow-motion 3D replay of the measured racket orientation, with tip path and
   speed curve.
 - Swing simulator and firmware-in-the-loop tests.
 - Parametric replacement butt cap for the Puck PCB (Wilson Blade dimensions).

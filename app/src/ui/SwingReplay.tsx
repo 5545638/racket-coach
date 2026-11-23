@@ -1,38 +1,54 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import type { Vec3 } from '../math/vec3';
 import type { SwingTrace } from '../metrics/analyzeSwing';
 import type { Strings } from './strings';
-import type { Vec3 } from '../math/vec3';
-import { FIGURE, type Point, SHOULDER, project, racketPose, sweetSpotPath } from './swingGeometry';
+import { type Point, project, racketShape, tipPath } from './swingGeometry';
 
-/** Three-quarter view, drawn at 90 px per metre with the feet near the bottom. */
-const SCALE = 90;
+const SCALE = 190; // px per metre
 const WIDTH = 320;
-const HEIGHT = 290;
-const GROUND = 40;
+const HEIGHT = 300;
 const CHART_HEIGHT = 70;
 const PLAYBACK_RATE = 0.25;
+const DEFAULT_AZIMUTH = (40 * Math.PI) / 180;
+/** Frames shown after contact; the rest of the follow-through adds clutter, not information. */
+const AFTER_CONTACT_S = 0.15;
+const GHOST_EVERY = 3;
 
 const px = (p: Point): string =>
-  `${(WIDTH / 2 + p.x * SCALE).toFixed(1)},${(HEIGHT - GROUND - p.z * SCALE).toFixed(1)}`;
-const polyline = (points: readonly Point[]): string => points.map(px).join(' ');
+  `${(WIDTH / 2 + p.x * SCALE).toFixed(1)},${(HEIGHT / 2 - p.z * SCALE).toFixed(1)}`;
+const points = (ps: readonly Point[]): string => ps.map(px).join(' ');
 
-function Line(props: { from: Vec3; to: Vec3; class?: string }) {
-  const [x1, y1] = px(project(props.from)).split(',');
-  const [x2, y2] = px(project(props.to)).split(',');
-  return <line class={props.class} x1={x1} y1={y1} x2={x2} y2={y2} />;
+function Racket(props: {
+  readonly trace: SwingTrace;
+  readonly frame: number;
+  readonly azimuth: number;
+  readonly class: string;
+}) {
+  const shape = racketShape(props.trace, props.frame);
+  const at = (p: Vec3): Point => project(p, props.azimuth);
+  const [x1, y1] = px(at(shape.butt)).split(',');
+  const [x2, y2] = px(at(shape.throat)).split(',');
+  return (
+    <g class={props.class}>
+      <line x1={x1} y1={y1} x2={x2} y2={y2} />
+      <polygon points={points(shape.head.map(at))} />
+    </g>
+  );
 }
 
-/** Slow-motion three-quarter view of one stroke with an illustrative figure, plus the speed curve. */
-export function SwingReplay(props: {
-  readonly trace: SwingTrace;
-  readonly leverM: number;
-  readonly t: Strings;
-}) {
-  const { trace, leverM, t } = props;
+/**
+ * Slow-motion replay of the racket's measured orientation through one stroke,
+ * with the racket-speed curve. The view can be turned by dragging.
+ */
+export function SwingReplay(props: { readonly trace: SwingTrace; readonly t: Strings }) {
+  const { trace, t } = props;
   const last = trace.tipDirection.length - 1;
+  const shownTo = Math.min(last, trace.contact + Math.round(AFTER_CONTACT_S * trace.sampleRateHz));
   const [frame, setFrame] = useState(trace.contact);
   const [playing, setPlaying] = useState(false);
+  const [azimuth, setAzimuth] = useState(DEFAULT_AZIMUTH);
   const position = useRef(trace.contact);
+  const drag = useRef<number | null>(null);
 
   // A new stroke: show its contact frame.
   useEffect(() => {
@@ -65,52 +81,75 @@ export function SwingReplay(props: {
     };
   }, [playing, last, trace.sampleRateHz]);
 
-  const paths = useMemo(
-    () => ({
-      preparation: polyline(sweetSpotPath(trace, 0, trace.forwardStart, leverM)),
-      forward: polyline(sweetSpotPath(trace, trace.forwardStart, trace.contact, leverM)),
-      finish: polyline(sweetSpotPath(trace, trace.contact, last, leverM)),
-      contact: px(project(racketPose(trace, trace.contact, leverM).sweetSpot)).split(','),
-    }),
-    [trace, leverM, last],
-  );
+  const ghosts = useMemo(() => {
+    const frames: number[] = [];
+    for (let i = trace.forwardStart; i < trace.contact; i += GHOST_EVERY) frames.push(i);
+    return frames;
+  }, [trace]);
 
-  const pose = racketPose(trace, frame, leverM);
-  const hip: Vec3 = [0, 0, 0.88];
-  const head = px(project([0, 0, FIGURE.shoulderHeight + 0.22])).split(',');
   const maxSpeed = Math.max(1, ...trace.speedMps);
   const chartX = (i: number): number => (i / Math.max(1, last)) * WIDTH;
   const speedLine = trace.speedMps
-    .map(
-      (v, i) =>
-        `${chartX(i).toFixed(1)},${(CHART_HEIGHT - 4 - (v / maxSpeed) * (CHART_HEIGHT - 10)).toFixed(1)}`,
-    )
+    .map((v, i) => {
+      const y = CHART_HEIGHT - 4 - (v / maxSpeed) * (CHART_HEIGHT - 10);
+      return `${chartX(i).toFixed(1)},${y.toFixed(1)}`;
+    })
     .join(' ');
   const offsetMs = ((frame - trace.contact) / trace.sampleRateHz) * 1000;
 
   const toggle = (): void => {
-    if (!playing && frame >= last) position.current = 0;
-    else position.current = frame;
+    position.current = !playing && frame >= last ? 0 : frame;
     setPlaying(!playing);
   };
 
   return (
     <figure class="replay">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={t.replay.label}>
-        {/* Illustrative figure at the hitting shoulder; the target is to the right. */}
-        <g class="replay-body">
-          <circle cx={head[0]} cy={head[1]} r={10} />
-          <Line from={SHOULDER} to={hip} />
-          <Line from={hip} to={[-0.12, 0.12, 0]} />
-          <Line from={hip} to={[0.16, -0.12, 0]} />
-          <Line from={SHOULDER} to={pose.hand} />
-        </g>
-        <polyline class="replay-path muted" points={paths.preparation} />
-        <polyline class="replay-path" points={paths.forward} />
-        <polyline class="replay-path muted dashed" points={paths.finish} />
-        <Line class="replay-handle" from={pose.hand} to={pose.throat} />
-        <Line class="replay-head" from={pose.throat} to={pose.tip} />
-        <circle class="replay-contact" cx={paths.contact[0]} cy={paths.contact[1]} r={5} />
+      <svg
+        class="replay-view"
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        role="img"
+        aria-label={t.replay.label}
+        onPointerDown={(e) => {
+          drag.current = e.clientX;
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          if (drag.current === null) return;
+          const dx = e.clientX - drag.current;
+          drag.current = e.clientX;
+          setAzimuth((a) => a + dx * 0.01);
+        }}
+        onPointerUp={() => {
+          drag.current = null;
+        }}
+        onPointerCancel={() => {
+          drag.current = null;
+        }}
+      >
+        <polyline
+          class="replay-path muted"
+          points={points(tipPath(trace, 0, trace.forwardStart, azimuth))}
+        />
+        <polyline
+          class="replay-path"
+          points={points(tipPath(trace, trace.forwardStart, trace.contact, azimuth))}
+        />
+        <polyline
+          class="replay-path muted dashed"
+          points={points(tipPath(trace, trace.contact, shownTo, azimuth))}
+        />
+        {ghosts.map((i) => (
+          <Racket key={i} trace={trace} frame={i} azimuth={azimuth} class="replay-racket ghost" />
+        ))}
+        <Racket
+          trace={trace}
+          frame={trace.contact}
+          azimuth={azimuth}
+          class="replay-racket contact"
+        />
+        {frame !== trace.contact && (
+          <Racket trace={trace} frame={frame} azimuth={azimuth} class="replay-racket current" />
+        )}
       </svg>
 
       <svg

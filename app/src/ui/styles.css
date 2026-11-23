@@ -375,18 +375,39 @@ h4 {
   margin-top: 0.4rem;
 }
 
-.replay-ground {
-  stroke: #33403a;
-  stroke-width: 2;
+.replay-view {
+  touch-action: none;
+  cursor: grab;
 }
 
-.replay-body line,
-.replay-body circle {
-  stroke: var(--muted);
+.replay-racket line {
   stroke-width: 5;
   stroke-linecap: round;
+}
+
+.replay-racket polygon {
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
+.replay-racket.ghost line,
+.replay-racket.ghost polygon {
+  stroke: var(--muted);
+  stroke-width: 1.5;
   fill: none;
-  opacity: 0.6;
+  opacity: 0.45;
+}
+
+.replay-racket.contact line,
+.replay-racket.contact polygon {
+  stroke: var(--fix);
+  fill: rgb(255 181 71 / 20%);
+}
+
+.replay-racket.current line,
+.replay-racket.current polygon {
+  stroke: var(--text);
+  fill: rgb(238 243 239 / 15%);
 }
 
 .replay-path {
@@ -403,22 +424,6 @@ h4 {
 
 .replay-path.dashed {
   stroke-dasharray: 4 4;
-}
-
-.replay-contact {
-  fill: var(--fix);
-}
-
-.replay-handle {
-  stroke: var(--text);
-  stroke-width: 3;
-  stroke-linecap: round;
-}
-
-.replay-head {
-  stroke: var(--text);
-  stroke-width: 9;
-  stroke-linecap: round;
 }
 
 .replay-chart {

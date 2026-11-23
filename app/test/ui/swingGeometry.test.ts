@@ -1,53 +1,54 @@
 import { describe, expect, it } from 'vitest';
+import { dot, norm, sub } from '../../src/math/vec3';
 import type { SwingTrace } from '../../src/metrics/analyzeSwing';
-import { FIGURE, SHOULDER, project, racketPose, sweetSpotPath } from '../../src/ui/swingGeometry';
+import { RACKET, project, racketShape, tipPath } from '../../src/ui/swingGeometry';
 
 const trace: SwingTrace = {
   sampleRateHz: 104,
   startIndex: 0,
-  forwardStart: 1,
-  contact: 2,
-  // behind and low → sideways → forward and high
+  forwardStart: 0,
+  contact: 1,
+  // Frame 1: racket pointing across the court (+y), strings facing the target (+x).
   tipDirection: [
     [-0.8, 0, -0.6],
     [0, 1, 0],
-    [0.6, 0, 0.8],
   ],
   faceNormal: [
     [0, 1, 0],
     [1, 0, 0],
-    [1, 0, 0],
   ],
-  speedMps: [2, 10, 24],
+  speedMps: [2, 24],
 };
 
 describe('replay geometry', () => {
-  it('puts the racket on a line through the shoulder, sweet spot one lever away', () => {
-    const pose = racketPose(trace, 2, 1.0);
-    expect(pose.sweetSpot[0]).toBeCloseTo(0.6);
-    expect(pose.sweetSpot[2]).toBeCloseTo(FIGURE.shoulderHeight + 0.8);
-    expect(pose.hand[0]).toBeCloseTo(0.3);
-    // hand → throat → sweet spot → tip, in that order along the racket
-    expect(pose.throat[0]).toBeGreaterThan(pose.hand[0]);
-    expect(pose.tip[0]).toBeGreaterThan(pose.sweetSpot[0]);
+  it('draws the racket from measured orientation and real dimensions only', () => {
+    const shape = racketShape(trace, 1);
+    expect(shape.butt).toEqual([0, 0, 0]);
+    expect(shape.tip[1]).toBeCloseTo(RACKET.length);
+    // Every head point lies in the string plane (perpendicular to the face normal)…
+    for (const p of shape.head) expect(dot(p, [1, 0, 0])).toBeCloseTo(0, 9);
+    // …on an ellipse of the right size around the head centre.
+    const centre = [0, RACKET.headCentre, 0] as const;
+    const radii = shape.head.map((p) => norm(sub(p, centre)));
+    expect(Math.max(...radii)).toBeCloseTo(RACKET.headHalfLength);
+    expect(Math.min(...radii)).toBeCloseTo(RACKET.headHalfWidth);
   });
 
-  it('keeps a racket pointing across the court visible (unlike a pure side view)', () => {
-    const pose = racketPose(trace, 1, 1.0);
-    const shoulder = project(SHOULDER);
-    const sweetSpot = project(pose.sweetSpot);
-    expect(Math.hypot(sweetSpot.x - shoulder.x, sweetSpot.z - shoulder.z)).toBeGreaterThan(0.5);
+  it('shows the string bed edge-on when the camera looks along the strings', () => {
+    // Camera at azimuth 0 looks along +y… the face normal (+x) lies in the picture plane.
+    const flat = racketShape(trace, 1).head.map((p) => project(p, 0));
+    const width = Math.max(...flat.map((p) => p.x)) - Math.min(...flat.map((p) => p.x));
+    expect(width).toBeCloseTo(0, 9);
   });
 
-  it('projects up as up and forwards to the right', () => {
-    expect(project([0, 0, 1]).z).toBeGreaterThan(0.9);
-    expect(project([1, 0, 0]).x).toBeGreaterThan(0.7);
+  it('projects up as up and the target to the right in the default view', () => {
+    expect(project([0, 0, 1], 0.7).z).toBeGreaterThan(0.9);
+    expect(project([1, 0, 0], 0.7).x).toBeGreaterThan(0.7);
   });
 
-  it('traces the sweet spot from low behind to high in front', () => {
-    const path = sweetSpotPath(trace, 0, 99, 1.0);
-    expect(path).toHaveLength(3);
-    expect(path[0]?.x).toBeLessThan(path[2]?.x ?? NaN);
-    expect(path[0]?.z).toBeLessThan(path[2]?.z ?? NaN);
+  it('follows the tip through the frames', () => {
+    const path = tipPath(trace, 0, 99, 0.7);
+    expect(path).toHaveLength(2);
+    expect(path[0]?.z).toBeLessThan(path[1]?.z ?? NaN);
   });
 });

@@ -119,13 +119,13 @@ const en: Strings = {
   noContact: 'No ball contact detected.',
   replay: {
     title: 'Replay',
-    label: 'The stroke seen from the front and side',
+    label: 'The racket through the stroke',
     speedLabel: 'Racket speed through the stroke; the vertical line is contact',
     play: 'Play',
     pause: 'Pause',
     scrub: 'Position in the stroke',
     caption:
-      'Seen from the front and side, target to the right, quarter speed. The racket angle is measured; the body and the racket position are illustrative. The dot is contact, the curve below is racket speed.',
+      'Only what the sensor measures is drawn: the tilt and turn of the racket, held at its butt cap, with the target to the right. Orange is contact, faint outlines are the forward swing, the line follows the tip. Where the racket was in space, and your body, are not shown. Drag to turn the view.',
     unavailable: 'No replay for this stroke: the racket angle could not be measured.',
   },
   wrist: {
@@ -224,13 +224,13 @@ const et: Strings = {
   noContact: 'Palli tabamust ei tuvastatud.',
   replay: {
     title: 'Kordus',
-    label: 'Löök eest ja küljelt vaadates',
+    label: 'Reket löögi jooksul',
     speedLabel: 'Reketi kiirus löögi jooksul; püstjoon on tabamus',
     play: 'Mängi',
     pause: 'Peata',
     scrub: 'Koht löögis',
     caption:
-      'Vaade eest ja küljelt, sihtmärk paremal, veerandkiirusel. Reketi nurk on mõõdetud; keha ja reketi asukoht on illustratiivsed. Täpp on tabamus, alumine kõver on reketi kiirus.',
+      'Joonistatud on ainult see, mida andur mõõdab: reketi kalle ja pööre, reket on kinnitatud otsakorgist ja sihtmärk on paremal. Oranž on tabamus, kahvatud piirjooned on ettelöök, joon järgib reketi tippu. Reketi asukohta ruumis ega sinu keha ei näidata. Vaate pööramiseks lohista.',
     unavailable: 'Selle löögi kordust pole: reketi nurka ei saanud mõõta.',
   },
   wrist: {
