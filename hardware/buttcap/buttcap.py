@@ -69,6 +69,19 @@ class ButtCapParams:
     finger_slot_width: float = 1.5
     finger_slot_depth: float = 5.0
 
+    # Snap lid: a sleeve over the cup whose bead clicks into a groove on the cup.
+    groove_depth: float = 0.4
+    groove_height: float = 1.0
+    groove_from_top: float = 1.5  # top of the groove below the cup rim
+    lid_clearance: float = 0.15
+    lid_wall: float = 1.2
+    lid_top: float = 1.6
+    lid_sleeve: float = 3.0
+    bead: float = 0.35
+    letter: str = "H"
+    letter_height: float = 14.0
+    letter_depth: float = 0.6
+
     def cup_outer_diameter(self) -> float:
         return self.pcb_diameter + 2 * (self.radial_clearance + self.cup_wall)
 
@@ -124,6 +137,10 @@ def build_racket_side(p: ButtCapParams) -> Manifold:
     return flange + collar
 
 
+def cup_top(p: ButtCapParams) -> float:
+    return p.flange_thickness + p.pcb_stack_height - p.stack_interference + p.lip_height
+
+
 def build(p: ButtCapParams) -> Manifold:
     cap = build_racket_side(p)
     inner_r = p.pcb_diameter / 2 + p.radial_clearance
@@ -143,7 +160,53 @@ def build(p: ButtCapParams) -> Manifold:
             .rotate([0, 0, angle])
         )
         cup = cup - slot
+    # Groove for the lid's bead.
+    groove_top = cup_top(p) - p.groove_from_top
+    groove = _cylinder(p.groove_height, outer_r + 1) - _cylinder(p.groove_height + 0.02, outer_r - p.groove_depth).translate(
+        [0, 0, -0.01]
+    )
+    cup = cup - groove.translate([0, 0, groove_top - p.groove_height])
     return cap + cup
+
+
+def _letter_h(height: float) -> CrossSection:
+    """A block capital H centred on the origin."""
+    width = height * 0.78
+    stroke = height * 0.19
+
+    def rect(x0: float, y0: float, x1: float, y1: float) -> CrossSection:
+        return CrossSection([[(x0, y0), (x1, y0), (x1, y1), (x0, y1)]])
+
+    w, h = width / 2, height / 2
+    return (
+        rect(-w, -h, -w + stroke, h)
+        + rect(w - stroke, -h, w, h)
+        + rect(-w + stroke - 0.01, -stroke / 2, w - stroke + 0.01, stroke / 2)
+    )
+
+
+def build_lid(p: ButtCapParams) -> Manifold:
+    """Snap-on lid with an engraved letter, in assembly coordinates (seated on the cup)."""
+    if p.letter not in ("H", ""):
+        raise ValueError("Only the letter H is implemented")
+    cup_r = p.cup_outer_diameter() / 2
+    r_in = cup_r + p.lid_clearance
+    r_out = r_in + p.lid_wall
+    top = cup_top(p)
+    lid = _cylinder(p.lid_sleeve + p.lid_top, r_out).translate([0, 0, top - p.lid_sleeve])
+    lid = lid - _cylinder(p.lid_sleeve + 0.01, r_in).translate([0, 0, top - p.lid_sleeve - 0.01])
+    # Bead: ramps in from the open edge (easy to push on), square on the lid side (locks).
+    groove_bottom = top - p.groove_from_top - p.groove_height
+    bead_h = p.groove_height * 0.8
+    ring = _cylinder(bead_h, r_in + 0.01) - Manifold.cylinder(
+        bead_h + 0.02, r_in, r_in - p.bead - p.lid_clearance, SEGMENTS
+    ).translate([0, 0, -0.01])
+    lid = lid + ring.translate([0, 0, groove_bottom + 0.05])
+    if p.letter:
+        mark = Manifold.extrude(_letter_h(p.letter_height), p.letter_depth + 0.01)
+        lid = lid - mark.translate([0, 0, top + p.lid_top - p.letter_depth])
+    return lid
+
 
 
 def to_trimesh(solid: Manifold) -> trimesh.Trimesh:
@@ -176,6 +239,14 @@ def main() -> None:
     stem = "buttcap-fit-test" if args.fit_test else "buttcap-puck"
     mesh.export(args.out / f"{stem}.3mf")
     mesh.export(args.out / f"{stem}.stl")
+    if not args.fit_test:
+        lid = to_trimesh(build_lid(params))
+        # Print top-down: the engraved letter is on the bed, the sleeve points up.
+        lid.apply_transform(trimesh.transformations.rotation_matrix(np.pi, [1, 0, 0]))
+        lid.apply_translation([0, 0, -lid.bounds[0][2]])
+        lid.export(args.out / "buttcap-lid.3mf")
+        lid.export(args.out / "buttcap-lid.stl")
+        print(f"Wrote buttcap-lid.3mf/.stl, {lid.extents[0]:.1f} mm wide, {lid.extents[2]:.1f} mm tall")
     e = mesh.extents
     print(f"Wrote {stem}.3mf/.stl to {args.out}")
     print(f"Size {e[0]:.1f} × {e[1]:.1f} × {e[2]:.1f} mm, {mesh.volume / 1000:.2f} cm³")
