@@ -27,7 +27,7 @@ contact location on the string bed cannot be estimated from the handle.
 ```sh
 pip install -r requirements.txt
 python buttcap.py --fit-test --collar-clearance 0.1   # looser collar
-python buttcap.py --collar-width 27.2 --collar-length 28.1
+python buttcap.py --collar-straight-side 12.2 --collar-diagonal-side 10.0
 pytest -q
 ```
 

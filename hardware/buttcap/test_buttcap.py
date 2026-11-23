@@ -26,4 +26,4 @@ def test_fit_test_part_matches_stock_cap_height() -> None:
 
 def test_rejects_a_cup_wider_than_the_flange() -> None:
     with pytest.raises(ValueError, match="stick out"):
-        build(ButtCapParams(flange_width=30.0, collar_width=25.0))
+        build(ButtCapParams(flange_width=30.0, flange_length=30.0))
