@@ -3,9 +3,17 @@ import { STIFF_ACCELERATION_OFFSET_MS } from './wrist';
 
 const GROUNDSTROKES = ['forehand', 'backhand'] as const;
 const FULL = ['full'] as const;
+const DRIVE = ['drive'] as const;
+const SLICE = ['slice'] as const;
+const ANY_STYLE = ['drive', 'slice'] as const;
 
 /**
- * Default thresholds. Literature values are widened by a tolerance band so
+ * Default thresholds. Only full-swing forehands and backhands are judged:
+ * serves, smashes and volleys have no usable published racket-level reference
+ * values (docs/research), so they are counted but not rated. Preparation time
+ * is shown but has no rule: skilled players prepare in under 0.6 s when the
+ * ball is fast, so a fixed limit would mislabel them.
+ * Literature values are widened by a tolerance band so
  * that cues fire on clear faults only. Rules marked "heuristic" have no
  * published reference value and must be tuned with recorded data.
  * Rationale per metric: docs/metrics.md.
@@ -15,11 +23,37 @@ export const DEFAULT_RULES: RuleSet = {
   goodCue: 'Good',
   rules: [
     {
+      id: 'slice-face-closed',
+      metric: 'faceTiltDeg',
+      below: 0,
+      strokes: GROUNDSTROKES,
+      swingSizes: FULL,
+      styles: SLICE,
+      priority: 100,
+      cue: 'Open the face for the slice',
+      source:
+        'Elliott & Christmass 1993 (ISBS) — racket face open at impact on slice backhands; ' +
+        'the 0° bound is heuristic.',
+    },
+    {
+      id: 'slice-chop',
+      metric: 'swingPathDeg',
+      below: -35,
+      strokes: GROUNDSTROKES,
+      swingSizes: FULL,
+      styles: SLICE,
+      priority: 80,
+      cue: 'Slice through the ball, not down',
+      source:
+        'Elliott & Christmass 1993 — racket travels 15–25° downward into contact; 10° tolerance.',
+    },
+    {
       id: 'face-open',
       metric: 'faceTiltDeg',
       above: 0,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
+      styles: DRIVE,
       priority: 100,
       cue: 'Face too open',
       source:
@@ -32,6 +66,7 @@ export const DEFAULT_RULES: RuleSet = {
       below: -30,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
+      styles: DRIVE,
       priority: 90,
       cue: 'Face too closed',
       source: 'Kwon et al. 2017 (lower bound −20°) with 10° tolerance.',
@@ -42,6 +77,7 @@ export const DEFAULT_RULES: RuleSet = {
       below: 12,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
+      styles: DRIVE,
       priority: 80,
       cue: 'Swing low to high',
       source:
@@ -53,6 +89,7 @@ export const DEFAULT_RULES: RuleSet = {
       above: 55,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
+      styles: DRIVE,
       priority: 70,
       cue: 'Drive through the ball',
       source: 'Elliott et al. 1989 — up to ~48° for heavy topspin; 7° tolerance.',
@@ -63,6 +100,7 @@ export const DEFAULT_RULES: RuleSet = {
       below: -40,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
+      styles: DRIVE,
       priority: 60,
       cue: 'Accelerate through contact',
       source:
@@ -70,21 +108,12 @@ export const DEFAULT_RULES: RuleSet = {
         'in elite players; 40 ms tolerance is heuristic.',
     },
     {
-      id: 'late-preparation',
-      metric: 'preparationTimeMs',
-      below: 600,
-      strokes: GROUNDSTROKES,
-      swingSizes: FULL,
-      priority: 85,
-      cue: 'Prepare earlier',
-      source: 'heuristic',
-    },
-    {
       id: 'no-racket-drop',
       metric: 'racketDropDeg',
       above: -15,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
+      styles: DRIVE,
       priority: 75,
       cue: 'Drop the racket head',
       source: 'heuristic',
@@ -95,6 +124,7 @@ export const DEFAULT_RULES: RuleSet = {
       above: 20,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
+      styles: DRIVE,
       priority: 55,
       cue: 'Face down on the take-back',
       source: 'heuristic',
@@ -105,6 +135,7 @@ export const DEFAULT_RULES: RuleSet = {
       above: 200,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
+      styles: ANY_STYLE,
       priority: 45,
       cue: 'Keep the swing flowing',
       source: 'heuristic',
@@ -115,6 +146,7 @@ export const DEFAULT_RULES: RuleSet = {
       below: STIFF_ACCELERATION_OFFSET_MS,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
+      styles: DRIVE,
       priority: 40,
       cue: 'Loosen the wrist',
       source: 'heuristic (indirect: the racket does not lag and whip through)',
@@ -125,6 +157,7 @@ export const DEFAULT_RULES: RuleSet = {
       below: 120,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
+      styles: ANY_STYLE,
       priority: 50,
       cue: 'Finish your swing',
       source: 'heuristic',

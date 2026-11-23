@@ -43,7 +43,7 @@ describe('export', () => {
   it('writes one CSV row per stroke with escaped text and empty nulls', () => {
     const lines = toCsv([stroke]).trim().split('\n');
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toContain('2026-11-23T17:00:00.000Z,forehand,full,true,24.00,,25.00');
+    expect(lines[1]).toContain('2026-11-23T17:00:00.000Z,forehand,full,drive,true,24.00,,25.00');
     expect(lines[0]?.split(',')).toHaveLength(lines[1]?.split(',').length ?? 0);
     expect(lines[1]?.endsWith('"Say ""hi"""')).toBe(true);
   });

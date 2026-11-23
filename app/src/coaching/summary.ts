@@ -44,6 +44,8 @@ export function summarize(records: readonly StrokeRecord[]): StrokeTypeSummary[]
       }
       const top = [...faults.entries()].sort((a, b) => b[1] - a[1])[0];
       const hints = rs.map((r) => wristHint(r.metrics)).filter((h) => h !== null);
+      // Slices have opposite face and path ideals; mixing them in would blur the averages.
+      const drives = rs.filter((r) => r.metrics.swingStyle !== 'slice');
       const rated = rs.filter((r) => r.cue.severity !== 'none');
       return {
         strokeType,
@@ -51,10 +53,10 @@ export function summarize(records: readonly StrokeRecord[]): StrokeTypeSummary[]
         goodShare: rated.length
           ? rated.filter((r) => r.cue.severity === 'good').length / rated.length
           : 0,
-        faceTiltDeg: statistic(present(rs.map((r) => r.metrics.faceTiltDeg))),
-        swingPathDeg: statistic(present(rs.map((r) => r.metrics.swingPathDeg))),
+        faceTiltDeg: statistic(present(drives.map((r) => r.metrics.faceTiltDeg))),
+        swingPathDeg: statistic(present(drives.map((r) => r.metrics.swingPathDeg))),
         headSpeedMps: statistic(
-          rs.filter((r) => !r.metrics.quality.gyroSaturated).map((r) => r.metrics.headSpeedMps),
+          drives.filter((r) => !r.metrics.quality.gyroSaturated).map((r) => r.metrics.headSpeedMps),
         ),
         looseWristShare: hints.length
           ? hints.filter((h) => h === 'loose').length / hints.length

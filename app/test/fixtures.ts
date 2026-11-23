@@ -4,6 +4,7 @@ import type { StrokeMetrics } from '../src/domain/types';
 export const GOOD_FOREHAND: StrokeMetrics = {
   strokeType: 'forehand',
   swingSize: 'full',
+  swingStyle: 'drive',
   impactDetected: true,
   referenceIndex: 90,
   headSpeedMps: 24,

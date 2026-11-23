@@ -6,6 +6,7 @@ export interface Strings {
   readonly tabs: { readonly live: string; readonly session: string; readonly setup: string };
   readonly stroke: Record<StrokeType, string>;
   readonly compact: string;
+  readonly slice: string;
   readonly connect: string;
   readonly demo: string;
   readonly disconnect: string;
@@ -92,6 +93,7 @@ const en: Strings = {
   tabs: { live: 'Live', session: 'Session', setup: 'Setup' },
   stroke: { forehand: 'Forehand', backhand: 'Backhand', overhead: 'Overhead' },
   compact: 'compact',
+  slice: 'slice',
   connect: 'Connect',
   demo: 'Demo',
   disconnect: 'Disconnect',
@@ -144,7 +146,8 @@ const en: Strings = {
   session: {
     title: 'Session',
     strokes: (n, unrated) => `${n} strokes${unrated ? `, ${unrated} without a reading` : ''}.`,
-    spread: '“±” is the spread: smaller means more consistent.',
+    spread:
+      '“±” is the spread: smaller means more consistent. Slices are left out of the averages.',
     focusTitle: 'Focus for next time',
     focusLine: (stroke, count, rated) => `${stroke}: ${count} of ${rated} strokes`,
     noFocus: 'No single fault stands out yet. Hit at least 20 balls per stroke for a verdict.',
@@ -184,6 +187,7 @@ const et: Strings = {
   tabs: { live: 'Löök', session: 'Trenn', setup: 'Seaded' },
   stroke: { forehand: 'Forehand', backhand: 'Backhand', overhead: 'Ülaltlöök' },
   compact: 'lühike',
+  slice: 'slice',
   connect: 'Ühenda',
   demo: 'Demo',
   disconnect: 'Katkesta',
@@ -231,7 +235,8 @@ const et: Strings = {
   session: {
     title: 'Trenn',
     strokes: (n, unrated) => `${n} lööki${unrated ? `, neist ${unrated} ilma mõõtmiseta` : ''}.`,
-    spread: '„±" on hajuvus: mida väiksem, seda ühtlasemad löögid.',
+    spread:
+      '„±" on hajuvus: mida väiksem, seda ühtlasemad löögid. Slice\'id on keskmistest väljas.',
     focusTitle: 'Järgmise trenni fookus',
     focusLine: (stroke, count, rated) => `${stroke}: ${count} löögil ${rated}-st`,
     noFocus: 'Ükski viga ei eristu veel. Hinnangu jaoks löö iga löögiga vähemalt 20 palli.',

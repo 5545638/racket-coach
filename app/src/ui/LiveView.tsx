@@ -27,7 +27,8 @@ export function LiveView({ controller }: { readonly controller: CoachController 
   }
 
   const m = stroke.metrics;
-  const groundstroke = m.strokeType !== 'overhead';
+  // Target bands and the face gauge describe topspin/flat drives only.
+  const groundstroke = m.strokeType !== 'overhead' && m.swingStyle !== 'slice';
   const guidance = guidanceFor(stroke.cue.ruleId, language);
   const hint = wristHint(m);
   const target = (band: string): string | null => (groundstroke ? `${t.target} ${band}` : null);
@@ -37,6 +38,7 @@ export function LiveView({ controller }: { readonly controller: CoachController 
       <p class="stroke-type">
         <span>
           {t.stroke[m.strokeType]}
+          {m.swingStyle === 'slice' && ` · ${t.slice}`}
           {m.swingSize === 'compact' && ` · ${t.compact}`}
         </span>
         <span class="count">#{count}</span>
@@ -47,8 +49,12 @@ export function LiveView({ controller }: { readonly controller: CoachController 
         <dl class="guidance">
           <dt>{t.meaning}</dt>
           <dd>{guidance.meaning}</dd>
-          <dt>{t.fix}</dt>
-          <dd>{guidance.fix}</dd>
+          {guidance.fix && (
+            <>
+              <dt>{t.fix}</dt>
+              <dd>{guidance.fix}</dd>
+            </>
+          )}
         </dl>
       )}
 

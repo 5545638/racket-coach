@@ -129,12 +129,16 @@ export class SimulatedTransport implements SensorTransport {
   emitSwing(): void {
     const r = this.random;
     const backhand = r() < 0.35;
+    const slice = r() < 0.2;
     const { capture } = simulateSwing(
       {
         ...DEFAULT_SWING,
         hittingFace: backhand ? 'backhand' : 'forehand',
-        faceTiltDeg: -12 + (r() - 0.5) * 30,
-        swingPathDeg: 25 + (r() - 0.5) * 36,
+        faceTiltDeg: (slice ? 12 : -12) + (r() - 0.5) * 30,
+        swingPathDeg: (slice ? -22 : 25) + (r() - 0.5) * (slice ? 20 : 36),
+        // Handle-mounted sensor: weak acceleration transient, clear jolt in rotation.
+        impactAccelG: 4,
+        impactRollKickRadPerS: 9,
         peakRateRadPerS: 20 + r() * 10,
         peakOffsetS: r() < 0.2 ? -0.07 : 0,
         fallSigmaS: r() < 0.2 ? 0.06 : 0.16,

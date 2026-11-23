@@ -58,6 +58,12 @@ export interface MountCalibration {
 
 export type StrokeType = 'forehand' | 'backhand' | 'overhead';
 
+/**
+ * `drive`: the racket travels level or upwards into contact (flat, topspin).
+ * `slice`: it travels clearly downwards. Null when the swing path is unknown.
+ */
+export type SwingStyle = 'drive' | 'slice';
+
 /** `compact` swings are short and slow: volleys, blocks, touch shots. */
 export type SwingSize = 'full' | 'compact';
 
@@ -79,6 +85,7 @@ export interface MetricQuality {
 export interface StrokeMetrics {
   readonly strokeType: StrokeType;
   readonly swingSize: SwingSize;
+  readonly swingStyle: SwingStyle | null;
   readonly impactDetected: boolean;
   /** Sample index of ball contact, or of peak racket speed when no contact was found. */
   readonly referenceIndex: number;

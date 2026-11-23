@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_RULES } from '../../src/coaching/defaultRules';
 import { GUIDANCE, guidanceFor } from '../../src/coaching/guidance';
 import { buildSessionReport } from '../../src/coaching/sessionReport';
-import { NO_READING_CUE, evaluateRules, selectCue } from '../../src/coaching/rules';
+import { NOT_RATED_CUE, NO_READING_CUE, evaluateRules, selectCue } from '../../src/coaching/rules';
 import { statistic, summarize } from '../../src/coaching/summary';
 import { wristHint } from '../../src/coaching/wrist';
 import type { StrokeMetrics, StrokeRecord } from '../../src/domain/types';
@@ -32,7 +32,6 @@ describe('rule engine', () => {
     [{ swingPathDeg: 70 }, 'path-steep'],
     [{ peakSpeedOffsetMs: -80 }, 'accelerated-early'],
     [{ followThroughArcDeg: 60 }, 'short-finish'],
-    [{ preparationTimeMs: 400 }, 'late-preparation'],
     [{ racketDropDeg: 5 }, 'no-racket-drop'],
     [{ faceAtDropDeg: 45 }, 'open-takeback'],
     [{ backswingPauseMs: 260 }, 'hitch'],
@@ -50,10 +49,37 @@ describe('rule engine', () => {
     );
   });
 
-  it('does not coach groundstroke technique on compact swings or overheads', () => {
+  it('counts but does not rate volleys, serves and smashes', () => {
     const bad = { ...GOOD_FOREHAND, faceTiltDeg: 20 };
-    expect(selectCue({ ...bad, swingSize: 'compact' }, DEFAULT_RULES).ruleId).toBe('good');
-    expect(selectCue({ ...bad, strokeType: 'overhead' }, DEFAULT_RULES).ruleId).toBe('good');
+    expect(selectCue({ ...bad, swingSize: 'compact' }, DEFAULT_RULES)).toEqual(NOT_RATED_CUE);
+    expect(selectCue({ ...bad, strokeType: 'overhead' }, DEFAULT_RULES)).toEqual(NOT_RATED_CUE);
+  });
+
+  it('judges a slice by slice ideals, not topspin ones', () => {
+    const slice = { ...GOOD_FOREHAND, swingStyle: 'slice' as const, swingPathDeg: -20 };
+    // Open face and downward path are faults on a drive but correct on a slice.
+    expect(selectCue({ ...slice, faceTiltDeg: 12, racketDropDeg: 10 }, DEFAULT_RULES).ruleId).toBe(
+      'good',
+    );
+    expect(selectCue({ ...slice, faceTiltDeg: -8 }, DEFAULT_RULES).ruleId).toBe(
+      'slice-face-closed',
+    );
+    expect(selectCue({ ...slice, faceTiltDeg: 12, swingPathDeg: -50 }, DEFAULT_RULES).ruleId).toBe(
+      'slice-chop',
+    );
+  });
+
+  it('gives no verdict when it cannot tell a drive from a slice', () => {
+    const unknown = { ...GOOD_FOREHAND, swingStyle: null, swingPathDeg: null, faceTiltDeg: null };
+    expect(selectCue({ ...unknown, followThroughArcDeg: 50 }, DEFAULT_RULES)).toEqual(
+      NO_READING_CUE,
+    );
+  });
+
+  it('has no fixed limit on preparation time', () => {
+    expect(selectCue({ ...GOOD_FOREHAND, preparationTimeMs: 300 }, DEFAULT_RULES).ruleId).toBe(
+      'good',
+    );
   });
 
   it('documents a source for every rule', () => {
@@ -112,13 +138,13 @@ describe('session summary', () => {
 
 describe('guidance texts', () => {
   it('explains every cue in every language', () => {
-    const ids = [...DEFAULT_RULES.rules.map((r) => r.id), 'good', 'no-reading'];
+    const ids = [...DEFAULT_RULES.rules.map((r) => r.id), 'good', 'no-reading', 'not-rated'];
     for (const language of ['en', 'et'] as const) {
       for (const id of ids) {
         const g = guidanceFor(id, language);
         expect(g, `${language}/${id}`).not.toBeNull();
         expect(g?.meaning.length).toBeGreaterThan(10);
-        expect(g?.fix.length).toBeGreaterThan(5);
+        if (id !== 'not-rated') expect(g?.fix.length).toBeGreaterThan(5);
       }
       expect(Object.keys(GUIDANCE[language]).sort()).toEqual([...ids].sort());
     }

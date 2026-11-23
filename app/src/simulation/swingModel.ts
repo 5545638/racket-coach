@@ -53,6 +53,10 @@ export interface SwingSpec {
    */
   readonly centreOffsetM: Vec3;
   readonly withImpact: boolean;
+  /** Size of the impact transient in specific force, g (string bed ≈ 40, handle much less). */
+  readonly impactAccelG: number;
+  /** Jolt in roll rate at contact from an off-centre hit, rad/s. */
+  readonly impactRollKickRadPerS: number;
   readonly noiseStd: { readonly accelG: number; readonly gyroDps: number };
   readonly seed: number;
 }
@@ -73,6 +77,8 @@ export const DEFAULT_SWING: SwingSpec = {
   rollRateRadPerS: 0,
   centreOffsetM: [0, 0, 0],
   withImpact: true,
+  impactAccelG: 40,
+  impactRollKickRadPerS: 0,
   noiseStd: { accelG: 0, gyroDps: 0 },
   seed: 1,
 };
@@ -223,11 +229,13 @@ export function simulateSwing(
     if (spec.withImpact && (i === contactIndex || i === contactIndex + 1)) {
       // Ball impact: a large, brief push along the hitting-face normal.
       const sign = spec.hittingFace === 'forehand' ? -1 : 1;
-      specificForce = add(specificForce, [0, 0, sign * 40 * STANDARD_GRAVITY]);
+      specificForce = add(specificForce, [0, 0, sign * spec.impactAccelG * STANDARD_GRAVITY]);
     }
+    const kick: Vec3 =
+      spec.withImpact && i === contactIndex ? [spec.impactRollKickRadPerS, 0, 0] : [0, 0, 0];
 
     const fS = mulVec(sensorFromRacket, specificForce);
-    const wS = add(mulVec(sensorFromRacket, omega), setup.mount.gyroBias);
+    const wS = add(mulVec(sensorFromRacket, add(omega, kick)), setup.mount.gyroBias);
     if (triggerIndex < 0 && norm(wS) > setup.triggerRadPerS) triggerIndex = i;
 
     const noisyA = fS.map(

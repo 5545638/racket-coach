@@ -146,6 +146,32 @@ describe('analyzeSwing on simulated swings', () => {
     expect(run({ riseSigmaS: 0.05 }).metrics.peakAccelerationOffsetMs).toBeCloseTo(-50, -1.2);
   });
 
+  it('classifies a downward swing with an open face as a slice', () => {
+    const { metrics, truth } = run({ swingPathDeg: -20, faceTiltDeg: 12, hittingFace: 'backhand' });
+    expect(metrics.strokeType).toBe('backhand');
+    expect(metrics.swingStyle).toBe('slice');
+    expect(metrics.swingPathDeg).toBeCloseTo(truth.swingPathDeg, 0);
+    expect(run({}).metrics.swingStyle).toBe('drive');
+  });
+
+  it('finds contact from the jolt in rotation when the acceleration transient is weak', () => {
+    // A sensor in the handle: 3 g is below the acceleration threshold.
+    const weak = run({ impactAccelG: 3 });
+    expect(weak.metrics.impactDetected).toBe(false);
+    const { metrics, truth } = run({ impactAccelG: 3, impactRollKickRadPerS: 9 });
+    expect(metrics.impactDetected).toBe(true);
+    expect(metrics.referenceIndex).toBe(truth.contactIndex);
+    // The jolt itself disturbs the last integration step, so allow a few degrees.
+    expect(Math.abs((metrics.faceTiltDeg ?? NaN) - truth.faceTiltDeg)).toBeLessThan(4);
+    expect(Math.abs((metrics.swingPathDeg ?? NaN) - truth.swingPathDeg)).toBeLessThan(4);
+  });
+
+  it('does not mistake a fast shadow swing for contact', () => {
+    for (const rate of [24, 32, 38]) {
+      expect(run({ withImpact: false, peakRateRadPerS: rate }).metrics.impactDetected).toBe(false);
+    }
+  });
+
   it('documents the lever model: a centre of rotation off the racket axis changes speed, not path', () => {
     // Shoulder 0.3 m further out along the racket line than assumed.
     const { metrics, truth } = run({ centreOffsetM: [0, -0.3, 0] });

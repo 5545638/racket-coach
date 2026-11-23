@@ -1,4 +1,4 @@
-import type { Cue, StrokeMetrics, StrokeType, SwingSize } from '../domain/types';
+import type { Cue, StrokeMetrics, StrokeType, SwingSize, SwingStyle } from '../domain/types';
 
 /** Metrics a rule may test. Restricted to numeric, possibly-null fields. */
 export type RuleMetric =
@@ -23,6 +23,8 @@ export interface CoachingRule {
   readonly below?: number;
   readonly strokes: readonly StrokeType[];
   readonly swingSizes: readonly SwingSize[];
+  /** Drives and slices have opposite ideals, so every rule names its style(s). */
+  readonly styles: readonly SwingStyle[];
   /** Higher fires first; only one cue is given per stroke. */
   readonly priority: number;
   /** Short phrase spoken to the player. */
@@ -50,6 +52,8 @@ export interface RuleEvaluation {
 }
 
 export const NO_READING_CUE: Cue = { ruleId: 'no-reading', severity: 'none', text: 'No reading' };
+/** Strokes the app counts but has no reference values to judge (serve, smash, volley). */
+export const NOT_RATED_CUE: Cue = { ruleId: 'not-rated', severity: 'none', text: 'Counted' };
 
 export function evaluateRules(metrics: StrokeMetrics, ruleSet: RuleSet): RuleEvaluation {
   const violations: RuleViolation[] = [];
@@ -57,6 +61,11 @@ export function evaluateRules(metrics: StrokeMetrics, ruleSet: RuleSet): RuleEva
   for (const rule of ruleSet.rules) {
     if (!rule.strokes.includes(metrics.strokeType)) continue;
     if (!rule.swingSizes.includes(metrics.swingSize)) continue;
+    if (metrics.swingStyle === null) {
+      unchecked.push(rule); // drive or slice unknown: cannot pick the right ideal
+      continue;
+    }
+    if (!rule.styles.includes(metrics.swingStyle)) continue;
     const value =
       rule.metric === 'headSpeedMps' && metrics.quality.gyroSaturated ? null : metrics[rule.metric];
     if (value === null) {
@@ -75,7 +84,8 @@ export function evaluateRules(metrics: StrokeMetrics, ruleSet: RuleSet): RuleEva
 /**
  * Selects the single most important cue. One correction at a time is
  * deliberate: players cannot act on several cues between two shots.
- * A stroke is only called good when every applicable rule could be checked.
+ * A stroke is only called good when every applicable rule could be checked,
+ * and strokes without any rules are counted, not praised.
  */
 export function selectCue(metrics: StrokeMetrics, ruleSet: RuleSet): Cue {
   const { violations, unchecked } = evaluateRules(metrics, ruleSet);
@@ -84,5 +94,9 @@ export function selectCue(metrics: StrokeMetrics, ruleSet: RuleSet): Cue {
     return { ruleId: top.rule.id, severity: 'fix', text: top.rule.cue };
   }
   if (unchecked.length > 0) return NO_READING_CUE;
+  const rated = ruleSet.rules.some(
+    (r) => r.strokes.includes(metrics.strokeType) && r.swingSizes.includes(metrics.swingSize),
+  );
+  if (!rated) return NOT_RATED_CUE;
   return { ruleId: 'good', severity: 'good', text: ruleSet.goodCue };
 }

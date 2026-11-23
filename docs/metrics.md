@@ -34,8 +34,11 @@ gyro rate over both poses is the gyro bias. Calibration is stored per sensor.
 2. **Racket rate.** ω⊥ = √(ωy² + ωz²): rotation that moves the head. Roll about
    the long axis is excluded.
 3. **Active phase.** Around the peak of ω⊥, while ω⊥ > 15 % of peak.
-4. **Contact.** The onset of the largest jump in specific force (> 6 g between
-   consecutive samples) within ±80 ms of peak ω⊥. Near the peak the centripetal
+4. **Contact.** The onset of the largest sample-to-sample jump, in specific
+   force (> 6 g) or in angular rate (> 7 rad/s ≈ 400 °/s), within ±80 ms of
+   peak ω⊥. The rotation jolt matters for a sensor in the handle, where the
+   acceleration transient is weak; it also disturbs the last integration step,
+   which costs a few degrees of angle accuracy on off-centre hits. Near the peak the centripetal
    acceleration is momentarily constant, while ball impact is a near-step of
    tens of g; searching the whole swing would mistake the rapidly growing
    centripetal acceleration of a very fast swing for contact. No jump → shadow
@@ -70,6 +73,7 @@ gyro rate over both poses is the gyro bias. Calibration is stored per sensor.
 | `followThroughArcDeg` | ∫‖ω‖dt from contact to end of the active phase |
 | `strokeType` | `overhead` if tip elevation > 35°; otherwise `forehand` / `backhand` from the hitting face |
 | `swingSize` | `compact` if speed < 14 m/s **and** forward arc < 80° (volleys, blocks); else `full` |
+| `swingStyle` | `slice` if swing path < −8°, else `drive`; unknown when the path is unavailable |
 
 ### The rigid-lever model (ADR 0003)
 
@@ -109,11 +113,21 @@ a full swing only.
 | Drive through the ball | path > 55° | up to ≈ 48° for heavy topspin | Elliott et al. 1989 (ibid.) |
 | Accelerate through contact | peak speed > 40 ms before contact | peak horizontal racket speed ≈ 2–3 ms before contact in elite players | Landlinger et al. 2010, *J Sports Sci Med* 9:643 |
 | Finish your swing | follow-through < 120° | — | heuristic, to be tuned |
-| Prepare earlier | preparation < 600 ms | — | heuristic |
 | Drop the racket head | racket drop > −15° | — | heuristic |
 | Face down on the take-back | face at the drop > 20° | — | heuristic |
 | Keep the swing flowing | pause > 200 ms | — | heuristic |
-| Loosen the wrist | peak acceleration > 150 ms before contact | — | heuristic, indirect |
+| Loosen the wrist | peak acceleration > 150 ms before contact | — | heuristic, indirect; no published support (see below) |
+| Open the face for the slice | slice with face < 0° | face open at impact on slice backhands | Elliott & Christmass 1993, ISBS |
+| Slice through the ball, not down | slice with path < −35° | racket travels 15–25° downward into contact | Elliott & Christmass 1993, ISBS |
+
+Drive rules apply to drives only and slice rules to slices only; a stroke whose
+style is unknown gets "No reading". Serves, smashes, volleys and other compact
+swings are **counted but not rated** ("Counted"): the literature search in
+[research/](research/README.md) found no usable racket-level reference values
+for them. Preparation time is displayed without a rule, because skilled players
+were measured with backswings of only 0.49–0.59 s on fast balls and what
+separates skill levels (racket set before the bounce) is invisible to a racket
+sensor.
 
 Kwon et al. also report that unsuccessful strokes show greater variability in
 impact angle; the session view therefore shows the standard deviation of each
@@ -127,6 +141,12 @@ Wrist angle is the angle between forearm and racket; a racket-only sensor
 cannot measure it, nor grip pressure. "Loosen the wrist" is inferred from the
 racket not lagging behind the hand (early acceleration peak) and is presented
 as a hint. A second sensor on the forearm would be needed to measure it.
+
+The cue is kept at the player's request as a coaching intention (loose through
+the swing, firm at contact). The literature search found no study that times
+peak racket acceleration, and none linking a relaxed wrist or grip to racket
+speed, so the −150 ms threshold must be tuned on the player's own deliberately
+loose and stiff swings before it is trusted.
 
 ### Explanations
 

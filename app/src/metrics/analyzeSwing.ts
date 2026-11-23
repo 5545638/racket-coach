@@ -4,6 +4,7 @@ import type {
   StrokeMetrics,
   StrokeType,
   SwingSize,
+  SwingStyle,
 } from '../domain/types';
 import { mulVec } from '../math/mat3';
 import { rotate } from '../math/quat';
@@ -36,6 +37,13 @@ export interface AnalysisParams {
   readonly leverRadiusM: number;
   /** Sample-to-sample jump in specific force that counts as ball contact, g. */
   readonly impactJumpThresholdG: number;
+  /**
+   * Sample-to-sample jump in angular rate that counts as ball contact, rad/s.
+   * A full swing changes by < 2 rad/s per sample at 104 Hz.
+   */
+  readonly impactGyroJumpRadPerS: number;
+  /** Swing path below this is a slice, deg (slices travel 15–25° downwards). */
+  readonly sliceMaxPathDeg: number;
   /** Contact is searched within this time of peak racket rate, s. */
   readonly impactSearchS: number;
   /** The swing is "active" while ω⊥ exceeds this fraction of its peak. */
@@ -65,6 +73,8 @@ export interface AnalysisParams {
 export const DEFAULT_ANALYSIS_PARAMS: AnalysisParams = {
   leverRadiusM: 1.0,
   impactJumpThresholdG: 6,
+  impactGyroJumpRadPerS: 7,
+  sliceMaxPathDeg: -8,
   impactSearchS: 0.08,
   activeFraction: 0.15,
   maxAnchorErrorG: 0.2,
@@ -107,12 +117,10 @@ export function analyzeSwing(
   const active = activeRange(perpRate, peakIndex, params.activeFraction * peakRate);
 
   // 3. Contact.
-  const impactIndex = detectImpact(
-    accel,
-    peakIndex,
-    Math.round(params.impactSearchS * fs),
-    params.impactJumpThresholdG,
-  );
+  const impactIndex = detectImpact(accel, gyro, peakIndex, Math.round(params.impactSearchS * fs), {
+    accelG: params.impactJumpThresholdG,
+    gyroRadPerS: params.impactGyroJumpRadPerS,
+  });
   const ref = impactIndex ?? peakIndex;
   const forwardStart = Math.min(active.start, ref);
   const followEnd = Math.max(active.end, ref);
@@ -202,6 +210,9 @@ export function analyzeSwing(
         ? 'forehand'
         : 'backhand';
 
+  const swingStyle: SwingStyle | null =
+    swingPathDeg === null ? null : swingPathDeg < params.sliceMaxPathDeg ? 'slice' : 'drive';
+
   const swingSize: SwingSize =
     headSpeedMps < params.compactMaxSpeedMps && forwardSwingArcDeg < params.compactMaxArcDeg
       ? 'compact'
@@ -210,6 +221,7 @@ export function analyzeSwing(
   return {
     strokeType,
     swingSize,
+    swingStyle,
     impactDetected: impactIndex !== null,
     referenceIndex: ref,
     headSpeedMps,

@@ -27,10 +27,22 @@ export const GUIDANCE: Record<Language, Record<string, Guidance>> = {
       fix: 'Open the face a little and meet the ball further in front of you.',
       drill: 'Rally to a target one metre over the net tape; count clearances out of 20.',
     },
-    'late-preparation': {
-      meaning: 'The racket started moving back late, so the swing was rushed.',
-      fix: 'Turn the shoulders and take the racket back as soon as you read the ball, before it bounces.',
-      drill: 'Say "turn" aloud when the ball crosses the net and "hit" at contact.',
+    'slice-face-closed': {
+      meaning:
+        'On a slice the strings should point slightly up; here they pointed down, so the ball dives.',
+      fix: 'Lay the face back a little and carry the ball on the strings.',
+      drill: 'Slice from the service line and make the ball float deep with backspin.',
+    },
+    'slice-chop': {
+      meaning: 'The racket chopped steeply down: lots of backspin but the ball sits up short.',
+      fix: 'Swing more forwards than down, towards the target.',
+      drill: 'Slice so the ball skids low past the service line; steep chops will bounce up.',
+    },
+    'not-rated': {
+      meaning:
+        'This stroke (serve, smash, volley or a short swing) is counted, but there are no reliable reference values to judge its technique yet.',
+      fix: '',
+      drill: '',
     },
     'path-flat': {
       meaning: 'The racket travelled level through the ball: little topspin and little margin.',
@@ -101,10 +113,24 @@ export const GUIDANCE: Record<Language, Record<string, Guidance>> = {
       fix: 'Ava pinda veidi ja taba palli rohkem enda ees.',
       drill: 'Löö sihtmärki, mis on meeter võrgulindist kõrgemal; loe 20 löögist, mitu läks üle.',
     },
-    'late-preparation': {
-      meaning: 'Reket hakkas taha liikuma hilja ja löök jäi kiirustatuks.',
-      fix: 'Pööra õlad ja vii reket taha kohe, kui näed palli suunda, enne põrget.',
-      drill: 'Ütle valjult „pööre", kui pall ületab võrgu, ja „löök" tabamuse hetkel.',
+    'slice-face-closed': {
+      meaning:
+        "Slice'i puhul peavad keeled olema veidi üles suunatud; siin olid need alla ja pall sukeldub.",
+      fix: 'Kalluta pinda veidi taha ja kanna palli keelte peal.',
+      drill: "Löö slice'i teenindusjoonelt nii, et pall hõljub tagasipöörlemisega sügavale.",
+    },
+    'slice-chop': {
+      meaning:
+        'Reket raius järsult alla: palju tagasipöörlemist, aga pall jääb lühikeseks ja kõrgeks.',
+      fix: 'Löö rohkem ette kui alla, sihtmärgi suunas.',
+      drill:
+        "Löö slice'i nii, et pall libiseb madalalt üle teenindusjoone; järsk raiumine põrkab üles.",
+    },
+    'not-rated': {
+      meaning:
+        'See löök (serv, rabak, volle või lühike hoog) loetakse kokku, aga selle tehnika hindamiseks pole veel usaldusväärseid võrdlusväärtusi.',
+      fix: '',
+      drill: '',
     },
     'path-flat': {
       meaning: 'Reket liikus läbi palli horisontaalselt: vähe topspinni ja väike varu võrgu kohal.',
