@@ -221,4 +221,32 @@ describe('CoachController end-to-end with the simulated sensor', () => {
     await controller.disconnect();
     expect(controller.connection.value).toBe('disconnected');
   });
+
+  it('suggests recalibrating when the IMU temperature moved more than 10 °C', async () => {
+    const { controller } = await setup();
+    await controller.capturePose('faceUp');
+    await controller.capturePose('tipUp');
+    const calibration = controller.calibration.value;
+    if (!calibration) throw new Error('not calibrated');
+    // The simulated v1 sensor reports no IMU temperature: nothing to compare.
+    expect(calibration.temperatureC).toBeUndefined();
+    expect(controller.temperatureWarning.value).toBe(false);
+    controller.calibration.value = { ...calibration, temperatureC: 20 };
+    const diagnostics = {
+      protocolVersion: 2,
+      firmwareVersion: '0.2.0',
+      batteryPercent: 90,
+      mode: 'M104' as const,
+      payloadBytes: 48,
+      temperatureC: 28,
+      fifoOverruns: 0,
+      droppedCaptures: 0,
+      freeVars: 1000,
+      errors: 0,
+    };
+    controller.diagnostics.value = diagnostics;
+    expect(controller.temperatureWarning.value).toBe(false);
+    controller.diagnostics.value = { ...diagnostics, temperatureC: 31 };
+    expect(controller.temperatureWarning.value).toBe(true);
+  });
 });

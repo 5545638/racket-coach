@@ -89,14 +89,26 @@ export function conditionSeries(
           runs: [],
         };
   const barriers = options.barriersS ?? [];
+  // Possibly clipped samples whose values do not show it (v2 flags): clipped
+  // and not reconstructable.
+  const suspect = series.gyroSuspect;
+  const flags = suspect
+    ? {
+        reconstructed: declipped.reconstructed,
+        unrecovered: declipped.unrecovered.map((u, i) => u || (suspect[i] ?? false)),
+      }
+    : declipped;
+  const input: ImuSeries = suspect
+    ? { ...series, gyroSaturated: series.gyroSaturated.map((s, i) => s || (suspect[i] ?? false)) }
+    : series;
   const uniform = resampleUniform(
-    { ...series, gyro: declipped.gyro },
-    declipped,
+    { ...input, gyro: declipped.gyro },
+    flags,
     timebaseParams,
     barriers,
   );
   const gyroClipped = declipped.reconstructed.some(Boolean)
-    ? resampleUniform(series, declipped, timebaseParams, barriers).series.gyro
+    ? resampleUniform(input, flags, timebaseParams, barriers).series.gyro
     : uniform.series.gyro;
   return {
     ...uniform.series,

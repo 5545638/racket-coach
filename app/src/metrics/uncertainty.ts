@@ -2,7 +2,13 @@ import type { FeatureSigmaKey } from '../domain/types';
 import { RAD_TO_DEG } from '../math/vec3';
 import type { AttitudeAnchor } from '../processing/attitude';
 import type { AnalysisParams } from './analyzeSwing';
-import { type SwingKinematics, countTrue, gapIn, maxSaturatedAt } from './kinematics';
+import {
+  type SwingKinematics,
+  countTrue,
+  gapIn,
+  maxSaturatedAt,
+  resolutionHzAt,
+} from './kinematics';
 
 /**
  * Inputs of the uncertainty model. Every value is an engineering assumption
@@ -237,25 +243,30 @@ export function featureSigmas(
   // A gap inside the stroke: nothing is assessable.
   if (kin.signalGap)
     return Object.fromEntries(SIGMA_KEYS.map((k) => [k, null])) as Record<FeatureSigmaKey, null>;
-  const fs = kin.sampleRateHz;
+  // High-rate splice: contact and peak are resolved at the measured gyro's
+  // rate only where it was measured; segmentation events lie in the
+  // interpolated section and keep its resolution.
+  const contactHz = resolutionHzAt(kin, kin.contact.sampleIndex);
+  const peakHz = Math.min(contactHz, resolutionHzAt(kin, kin.peakIndex));
+  const eventHz = kin.baseRateHz ?? kin.sampleRateHz;
   const tc = kin.contact.time;
   const at = (sample: number | null, extra: readonly number[] = []): number | null =>
     sample === null ? null : angleSigmaDeg(kin, params, sample, extra, up);
   // Without an impact the contact reference is the peak sample itself: no extrapolation.
   const timing = (rate: number): number =>
-    kin.impactIndex === null ? 0 : contactTimingSigmaDeg(rate, fs, up);
+    kin.impactIndex === null ? 0 : contactTimingSigmaDeg(rate, contactHz, up);
   const rates = input.contactRatesDps;
   const tip = input.contactTipAvailable ? at(tc, [timing(rates.tip)]) : null;
   const face = input.contactAnglesReported ? at(tc, [timing(rates.face)]) : null;
   const path = input.contactAnglesReported
     ? at(tc, [timing(rates.path), up.swingPathModelDeg])
     : null;
-  const t = timingSigmaMs(fs);
+  const t = timingSigmaMs(eventHz);
   const timed = (key: keyof SigmaInputs['timing']): number | null => (input.timing[key] ? t : null);
   // Reconstructed clipping: the peak time is uniform over the reconstructed
   // run (≤ maxRunS), and the rate carries a fraction of the added excess.
   const peakTiming = input.timing.peakSpeedOffsetMs
-    ? rss(t, (kin.peakReconstructedS * 1000) / Math.sqrt(12))
+    ? rss(timingSigmaMs(peakHz), (kin.peakReconstructedS * 1000) / Math.sqrt(12))
     : null;
   const headSpeed =
     input.headSpeedMps === null

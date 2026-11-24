@@ -24,6 +24,8 @@ export interface StaticPose {
   readonly meanAccel: Vec3;
   /** Mean angular rate, sensor frame, rad/s. Equals the gyro bias when static. */
   readonly meanGyro: Vec3;
+  /** IMU temperature during the pose, °C, when the sensor reports it (v2). */
+  readonly temperatureC?: number;
 }
 
 export type CalibrationResult =
@@ -58,7 +60,14 @@ export function extractStaticPose(
       return { ok: false, reason: 'Racket moved during capture (rotation)' };
     }
   }
-  return { ok: true, pose: { meanAccel: mean(series.accel), meanGyro: mean(series.gyro) } };
+  return {
+    ok: true,
+    pose: {
+      meanAccel: mean(series.accel),
+      meanGyro: mean(series.gyro),
+      ...(series.temperatureC !== undefined ? { temperatureC: series.temperatureC } : {}),
+    },
+  };
 }
 
 /**
@@ -101,6 +110,10 @@ export function calibrateMount(
       racketFromSensor: transpose(sensorFromRacket),
       gyroBias: scale(add(faceUp.meanGyro, tipUp.meanGyro), 0.5),
       createdAt: now().toISOString(),
+      // The gyro bias drifts with temperature: remember the one it was measured at.
+      ...(faceUp.temperatureC !== undefined && tipUp.temperatureC !== undefined
+        ? { temperatureC: 0.5 * (faceUp.temperatureC + tipUp.temperatureC) }
+        : {}),
     },
   };
 }

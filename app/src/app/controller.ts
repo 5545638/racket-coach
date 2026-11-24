@@ -111,6 +111,19 @@ export class CoachController {
   readonly focus = computed(() => focusByStroke(this.coachState.value));
   /** Strokes with contact in the baseline, per stroke type. */
   readonly baselineCounts = computed(() => this.baseline.value.strokeCounts);
+  /**
+   * The IMU temperature (latest stroke, else STATUS2) differs from the
+   * calibration's by more than `temperatureWarnC`: the gyro bias may have
+   * moved, so Setup suggests recalibrating. False when either is unknown.
+   */
+  readonly temperatureWarning = computed(() => {
+    const calibrationC = this.calibration.value?.temperatureC;
+    if (calibrationC === undefined) return false;
+    const currentC =
+      this.lastStroke.value?.capture.temperatureC ?? this.diagnostics.value?.temperatureC;
+    if (currentC === undefined) return false;
+    return Math.abs(currentC - calibrationC) > DEFAULT_ANALYSIS_PARAMS.temperatureWarnC;
+  });
 
   private transport: SensorTransport | null = null;
   private subscriptions: Unsubscribe[] = [];
@@ -359,12 +372,16 @@ export class CoachController {
       const capture = await this.requestStaticCapture();
       const measured = extractStaticPose(toImuSeries(capture));
       if (!measured.ok) throw new Error(measured.reason);
+      // IMU temperature of the pose: the capture's OUT_TEMP, else the latest STATUS2.
+      const temperatureC = capture.temperatureC ?? this.diagnostics.value?.temperatureC;
+      const measuredPose =
+        temperatureC !== undefined ? { ...measured.pose, temperatureC } : measured.pose;
 
       if (pose === 'faceUp' || !faceUp) {
-        this.calibrationStep.value = { step: 'awaitTipUp', faceUp: measured.pose };
+        this.calibrationStep.value = { step: 'awaitTipUp', faceUp: measuredPose };
         return;
       }
-      const calibrated = calibrateMount(faceUp, measured.pose);
+      const calibrated = calibrateMount(faceUp, measuredPose);
       if (!calibrated.ok) throw new Error(calibrated.reason);
 
       await this.deps.repository.saveCalibration(this.deviceKey(), calibrated.calibration);

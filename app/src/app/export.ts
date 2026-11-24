@@ -1,4 +1,4 @@
-import type { SessionInfo, StrokeRecord } from '../domain/types';
+import type { RawCapture, SessionInfo, StrokeRecord } from '../domain/types';
 
 const CSV_COLUMNS = [
   'time',
@@ -85,6 +85,10 @@ export function toJson(session: SessionInfo, strokes: readonly StrokeRecord[]): 
           ...(s.capture.gyroHr
             ? { gyroHr: { ...s.capture.gyroHr, data: int16ToBase64(s.capture.gyroHr.data) } }
             : {}),
+          // A typed array would serialise as an object keyed by index.
+          ...(s.capture.sampleTimesUs
+            ? { sampleTimesUs: Array.from(s.capture.sampleTimesUs) }
+            : {}),
         },
       })),
     },
@@ -105,4 +109,50 @@ export function base64ToInt16(encoded: string): Int16Array {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return new Int16Array(bytes.buffer);
+}
+
+/** A session read back from {@link toJson}. */
+export interface ImportedSession {
+  readonly session: SessionInfo;
+  readonly strokes: readonly StrokeRecord[];
+}
+
+/**
+ * Reads a session written by {@link toJson} (format versions 1 and 2): the
+ * raw captures come back with their Int16Array samples and H sections, so
+ * every stroke can be re-analysed (app/pipeline.ts `reanalyseStroke`) and
+ * gives the same metrics as on the phone. `sampleTimesUs` comes back as a
+ * plain array (same values). Throws on anything else.
+ */
+export function fromJson(text: string): ImportedSession {
+  const parsed = JSON.parse(text) as {
+    format?: unknown;
+    version?: unknown;
+    session?: SessionInfo;
+    strokes?: (Omit<StrokeRecord, 'capture'> & {
+      capture: Omit<RawCapture, 'samples' | 'gyroHr'> & {
+        samples: string;
+        gyroHr?: { startFrame: number; samplesPerFrame: number; data: string };
+      };
+    })[];
+  };
+  if (parsed.format !== 'racket-coach-session' || (parsed.version !== 1 && parsed.version !== 2)) {
+    throw new Error('Not a Racket Coach session export');
+  }
+  if (!parsed.session || !Array.isArray(parsed.strokes))
+    throw new Error('Malformed session export');
+  return {
+    session: parsed.session,
+    strokes: parsed.strokes.map((s) => {
+      const { samples, gyroHr, ...capture } = s.capture;
+      return {
+        ...s,
+        capture: {
+          ...capture,
+          samples: base64ToInt16(samples),
+          ...(gyroHr ? { gyroHr: { ...gyroHr, data: base64ToInt16(gyroHr.data) } } : {}),
+        },
+      };
+    }),
+  };
 }

@@ -347,6 +347,7 @@ export class V2Assembler {
             },
           }
         : {}),
+      filter: { filterCfg: b.filterCfg },
       temperatureRaw: b.temperatureRaw,
       temperatureC: 25 + b.temperatureRaw / 256,
       flags: b.flags,

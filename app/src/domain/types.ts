@@ -121,6 +121,25 @@ export interface ImuSeries {
   readonly gyroClipRadPerS?: number;
   /** Samples the firmware reported as lost (see RawCapture.droppedSamples). */
   readonly droppedSamples?: number;
+  /**
+   * Gyro samples that may have clipped although their values do not show it
+   * (v2 flag b1: an M416 frame mean near full scale, or clipping the
+   * samples cannot locate). Treated as clipped and not reconstructable.
+   */
+  readonly gyroSuspect?: readonly boolean[];
+  /** Data was lost right before the first sample (v2 flags b3 + b0: FIFO reset). */
+  readonly lostBeforeStart?: boolean;
+  /** IMU temperature of the capture, °C (v2). */
+  readonly temperatureC?: number;
+  /**
+   * High-rate splice (M416, processing/highRate.ts): true where the gyro /
+   * accelerometer value was measured at this sample's time, false where it
+   * was interpolated from the 104 Hz section. Absent: every sample measured.
+   */
+  readonly gyroMeasured?: readonly boolean[];
+  readonly accelMeasured?: readonly boolean[];
+  /** Rate of the interpolated (104 Hz) section of a spliced series, Hz (nominal). */
+  readonly baseRateHz?: number;
 }
 
 /**
@@ -159,6 +178,12 @@ export interface MountCalibration {
   /** Gyroscope zero-rate offset in rad/s, sensor frame. */
   readonly gyroBias: Vec3;
   readonly createdAt: string;
+  /**
+   * IMU temperature during calibration, °C (v2 sensors: the static captures'
+   * OUT_TEMP, else the latest STATUS2). Absent for v1 sensors and older
+   * calibrations. The gyro zero-rate level drifts with temperature.
+   */
+  readonly temperatureC?: number;
 }
 
 export type StrokeType = 'forehand' | 'backhand' | 'overhead';
@@ -201,6 +226,28 @@ export interface MetricQuality {
    * rated and its σ are not assessable (version 5+).
    */
   readonly signalGap?: boolean;
+  /**
+   * Residual gyro bias removed for this capture, deg/s (re-estimated on the
+   * attitude anchor's still window); 0 when the calibration bias was kept
+   * (version 6+).
+   */
+  readonly gyroBiasCorrectionDps?: number;
+  /**
+   * IMU temperature of the capture minus that of the calibration, °C; absent
+   * when either is unknown (version 6+).
+   */
+  readonly temperatureDeltaC?: number;
+  /** |temperatureDeltaC| exceeds `temperatureWarnC`: recalibrating is advised (version 6+). */
+  readonly temperatureWarning?: boolean;
+  /**
+   * M416 high-rate splice (version 6+): the analysis ran at 416 Hz with the
+   * raw gyro around the peak; `contactMeasured` is true when the gyro was
+   * measured (not interpolated) where contact is read.
+   */
+  readonly highRate?: {
+    readonly measuredGyroSamples: number;
+    readonly contactMeasured: boolean;
+  };
 }
 
 /**

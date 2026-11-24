@@ -76,7 +76,10 @@ gyro rate over both poses is the gyro bias. Calibration is stored per sensor.
    for tilt, so the anchor must be in the preparation phase. If no window
    qualifies, the attitude is not reliable and all angles are reported as
    unavailable ("No reading"). Gyro drift over the ~1 s between anchor and
-   contact is ≈ bias × 1 s, i.e. well under 1° after calibration.
+   contact is ≈ bias × 1 s, i.e. well under 1° after calibration. Since
+   analysis version 6 the residual bias is re-estimated on the still window
+   ending at the anchor and removed for the whole capture when it passes its
+   guards (see "Gyro bias re-estimation").
 
    Why a window: a norm check on a single sample cannot see acceleration
    perpendicular to gravity. 0.66 g sideways changes ‖f‖ by only 0.2 g but
@@ -270,10 +273,10 @@ reconstruction between the anchor and the event, or the stroke has a
 | Term | Model | Basis |
 | --- | --- | --- |
 | Anchor σ_anchor | max(σ_noise, √(2 e_g)/3) rad. σ_noise = mean per-axis std of the window / √N (g ≈ rad). e_g = \|‖ā‖ − 1 g\|: a steady perpendicular acceleration a_p gives e_g ≈ a_p²/2 and a tilt ≈ a_p ≈ √(2 e_g); that bound is treated as 3σ | geometry (exact); the 3σ reading is an engineering choice |
-| Drift σ_drift | b · Δt, b = max(1 deg/s, measured residual) residual gyro bias (calibration residual + temperature), Δt from anchor to event. The measured residual is ‖mean ω‖ over the stillest anchor-length window in the 0.5 s up to the anchor (version 5) | 1 deg/s: engineering assumption, to be measured; the residual estimate is an upper bound (hand motion adds to it) |
+| Drift σ_drift | b · Δt, b = max(1 deg/s, measured residual) residual gyro bias (calibration residual + temperature), Δt from anchor to event. The measured residual is ‖mean ω‖ over the stillest anchor-length window in the 0.5 s up to the anchor (version 5), measured after the version 6 re-estimation (so ≈ 0 when it was applied, and b falls back to 1 deg/s) | 1 deg/s: engineering assumption, to be measured; the residual estimate is an upper bound (hand motion adds to it) |
 | Reconstruction | 0.3 × the rotation the gyro reconstruction added between anchor and event (version 5) | engineering choice, see "Signal path v2" |
 | Contact timing | \|dx/dt\| · T_s/√12 · ½ for angles at contact (rate by finite difference of the two pre-impact samples; ½ because the half-sample extrapolation removes part of the quantisation error). 0 without an impact (the reference is the peak sample itself) | uniform quantisation (exact); the ½ is an engineering choice |
-| Timing features | T_s/√12 ≈ 2.8 ms at 104 Hz (0.7 ms at 416 Hz); `peakSpeedOffsetMs` adds (reconstructed run containing the peak)/√12 | uniform quantisation; the run term is an engineering choice |
+| Timing features | T_s/√12 ≈ 2.8 ms at 104 Hz (0.7 ms at 416 Hz); `peakSpeedOffsetMs` adds (reconstructed run containing the peak)/√12. M416 splice (version 6): T_s is the measured gyro's interval at contact and peak only where the gyro was measured there (H section), the frame interval elsewhere; segmentation-based times (take-back, forward swing, braking, recovery) keep the frame interval, as do the contact-angle timing terms when contact lies outside H | uniform quantisation; the run term is an engineering choice |
 | Model | swing path + 3° (hand translation the lever model cannot see: ≈ 6–7° at 3 m/s of hand speed in simulation, `simulatorRealism.test.ts`); head speed 15 % relative (lever and centre of rotation unknown) | engineering choices |
 
 Combinations: brush angle = RSS of face and path σ (treats them as
@@ -803,7 +806,7 @@ in simulation:
 | 10 samples lost in the ready position | anchor moves; within 1° |
 | Samples lost without timestamps (`droppedSamples` > 0) | nothing rated, no angles, every element `signal-gap` |
 | White noise 2× / 5× the datasheet density | angles within 0.4°; face σ 0.96° → 1.18° → 1.46° (104 Hz) |
-| Gyro bias step of 3 / 5 deg/s early in the ready position | σ grows ≥ 1.5×, error inside it |
+| Gyro bias step of 3 / 8 deg/s early in the ready position | 3: re-estimated and removed (version 6), errors < 0.5°, σ unchanged; 8 (above the 5 deg/s limit): kept, σ grows ≥ 1.5×, error inside it |
 | ±5 % clock error with timestamps | times within one 104 Hz sample, speed within 1 %, angles within 2° (tip ≤ 1.8°) |
 | ±5 % clock error without timestamps (v1) | **not detectable**: every duration scales by true/reported rate (≈ ±5 %), take-back turn ≈ ±5 %, tip elevation ±2°, face < 0.3° |
 | ±150 µs timestamp jitter | `jitterUs` ≈ 120; no measurable change |
@@ -811,7 +814,7 @@ in simulation:
 | Mount rotated 2/5/10° about the long axis x | face tilt off by the full rotation; **σ does not include it** |
 | … about the face normal z | tip elevation off by the full rotation; σ unchanged |
 | … about y (in the string plane) | tip ≈ 0.2 × rotation, face < 1°, speed < 1 % |
-| Calibration gyro bias wrong by 1/3/5 deg/s | face σ 1.0° → 2.7° → 4.5° (measured residual bias); errors ≤ 0.8° face, ≤ 3.4° tip, inside 1σ |
+| Calibration gyro bias wrong by 1/3/5 deg/s | version 6: 1 and 3 deg/s are re-estimated (1.00 / 3.00 deg/s removed); the angles equal those of the correctly calibrated capture (face 0.31°, path 0.44°, tip 0.11° off truth), σ back at 0.96°. Without re-estimation (version 5) tip −0.77° / −2.10°, face σ 1.0° → 2.7°. 5 and 8 deg/s exceed the plausibility limit (measured residual > 5 deg/s): kept, face σ 4.5°, errors ≤ 0.8° face, ≤ 3.4° tip, inside 1σ |
 
 Known gaps: mount calibration errors are invisible to σ (no calibration term
 exists; a rotation about x or z goes 1:1 into face or tip); the residual-bias
@@ -819,6 +822,190 @@ estimate includes slow hand motion (σ errs on the large side); a clock error
 without timestamps and samples lost without a count are undetectable; when
 both channels clip through contact the hit is reported as no contact; the
 reconstruction and all thresholds are validated only in simulation.
+
+## v2 captures (analysis version 6)
+
+Everything between a protocol v2 capture (docs/sensor-v2.md,
+docs/ble-protocol.md) and the analysis input. Entry point:
+`seriesFromCapture` (`processing/highRate.ts`), used by `analyzeCapture`
+(`app/pipeline.ts`). v1 captures and v2 M104 captures go through
+`toImuSeries` unchanged apart from the header mapping below. As in "Signal
+path v2", every number not marked *datasheet* is an **engineering choice**
+checked only in simulation.
+
+### Header mapping (`processing/units.ts`)
+
+| v2 field | Analysis input |
+| --- | --- |
+| `gyroMdpsPerLsb` | ±range: 70 → 2000 dps, 35 → 1000 dps (*datasheet* sensitivities that are integers; 4.375/8.75/17.5 cannot be sent as u16). Anything else **rejects the capture** (`CaptureRejectedError`, "Analysis failed" in the log); so does a value that contradicts an explicit `gyroRangeDps` |
+| `accelUgPerLsb` | ±range: 61/122/244/488 → 2/4/8/16 g; unknown → rejected |
+| `sampleTimesUs`, `framePeriodNs` | timestamps (timebase.ts) for M104; for M416 the true frame rate 1 / `framePeriodNs` sets the rate of the spliced series |
+| `flags` b0 + b3 | the firmware drops the ring and any capture in progress on a FIFO reset, so the window starts right after the reset: data was lost **before the first sample** → the first sample is a `gap` (`lostBeforeStart`). A stroke whose ready position lies inside the window is unaffected; one without (capture start inside the stroke) is not rated |
+| `flags` b3 without b0 | a reset at an unknown position inside the window: an unlocated loss → `droppedSamples` ≥ 1 → every sample `gap` (timebase.ts: losses the timestamps do not show are unlocated; v2 frame times come from one period and never show them) → not rated, no angles, no σ |
+| `flags` b1 (gyro clipped) | the firmware checks every raw 416 Hz sample; the app checks the values it has. M416 frame means can hide a clipped sub-sample: with b1, a frame whose mean reaches 0.9 × the clip level (`FRAME_MEAN_CLIP_FRACTION`), or whose raw H sub-samples clipped, is `gyroSuspect` (treated as clipped and not reconstructable). If b1 is set and no sample can be located, every sample is suspect (angles withheld, speed a bound) |
+| `flags` b2 (accel clipped) | A0 is raw, so the per-sample check is exact; b2 without a located sample (should not happen) marks every sample saturated |
+| `temperatureC` | compared with the calibration's (below) |
+
+A per-sample hit without the flag is kept: the flags can only add caution.
+
+### M416 high-rate splice (`processing/highRate.ts`)
+
+An M416 frame f carries A0 (accelerometer at the frame time), the rounded
+mean of the four 416 Hz gyro samples G0…G3 (centred at f + 0.375 frame) and,
+for frames peak − 15 … peak + 15, the raw G0…G3 at f + k/4. The analysis
+cannot run at a variable rate, so the splice builds one uniform series on
+t = f + k/4 at four times the true frame rate (416.7 Hz):
+
+- **accelerometer**: linear between the A0 samples (`accelMeasured` at
+  k = 0). Linear, not cubic: the impact is a step and a cubic rings around it;
+- **gyro outside H**: the frame means as samples at f + 0.375, Catmull-Rom
+  cubic between them (linear extrapolation at the capture ends);
+- **gyro inside H**: the raw samples at their exact times (`gyroMeasured`).
+
+The series carries no timestamps: the v2 frame times are derived from one
+measured period, so it is already uniform; resampling it onto a nominal
+416 Hz grid would blend the raw H samples and leave no grid point exactly on
+an A0. If a capture's timestamps showed missing frames the splice is not
+attempted (the frames are analysed as delivered).
+
+**Cubic or linear?** Catmull-Rom is local (a step or a clipped run affects two
+intervals each side) and exact for quadratics (error O(h³) against O(h²)
+linear). In the comparison below it changed no metric by more than 0.05°
+or 0.01 ms against linear interpolation: everything outside H lies ≥ 144 ms
+from the peak, where the rate is smooth. Kept as the default for the rate
+curve of the preparation phases.
+
+**Contact onset with interpolated accelerometer** (`detectImpact`,
+`accelMeasured`/`gyroMeasured`): an accelerometer jump counts only between
+two measured samples (one frame apart); the interpolated ramp would put the
+onset anywhere in the frame. The onset of an accelerometer-led contact then
+only says "within the last frame"; where the gyro was measured over that
+frame and shows the ball's step (≥ `impactConfirmFraction` of its threshold),
+the onset moves to the first sub-sample whose gyro jump reaches half of the
+largest one there. Without this the sensor-near-string-bed geometry read
+speed up to 20 % low (the reading sample was already post-impact).
+
+**σ and quality.** `quality.highRate` reports the measured gyro samples and
+whether contact was read from measured gyro (`contactMeasured`). The contact
+timing terms use the 416 Hz interval only where the gyro was measured at
+contact (and the peak's only at the peak); events found in the interpolated
+section keep the frame interval (Uncertainty table).
+
+**Comparison** (`app/test/processing/highRate.test.ts`). Truth swings
+simulated at 416.7 Hz with datasheet noise (130 µg/√Hz, 5 mdps/√Hz), contact
+at 4 sub-frame offsets × 4 phases within the sample × 20 and 26 rad/s
+(32 strokes per geometry), peak 20 ms before contact, 8 rad/s of roll;
+captures built exactly as the firmware does (`simulation/firmwareCapture.ts`:
+frame means `(ΣG + 2) >> 2`, H around the largest ‖G0‖², A0 decimation).
+Errors against the simulator truth, mean / rms / max |error|:
+
+Butt cap (contact found from the gyro):
+
+| Metric | Truth sampled at 416.7 Hz | **M416 spliced** | M104 (every 4th sample) | M416 frame means only (no splice) |
+| --- | --- | --- | --- | --- |
+| Contact time, ms | −0.18 / 0.69 / 1.08 | **−0.18 / 0.69 / 1.08** | 2.23 / 3.55 / 6.73 | −0.78 / 8.71 / 21.5 |
+| Peak timing, ms | 0.69 / 1.39 / 1.97 | **0.50 / 1.26 / 2.00** | 0.17 / 4.77 / 5.58 | −0.43 / 9.40 / 20.0 |
+| Head speed, % | 0.10 / 0.11 / 0.18 | **0.10 / 0.12 / 0.18** | 0.33 / 0.38 / 0.61 | −7.3 / 11.6 / 24.5 |
+| Face at contact, ° | −0.07 / 0.32 / 0.52 | **−0.08 / 0.34 / 0.63** | −0.97 / 1.67 / 3.23 | −3.1 / 6.2 / 13.4 |
+| Path at contact, ° | −0.14 / 0.16 / 0.26 | **−0.15 / 0.18 / 0.30** | 0.12 / 0.22 / 0.37 | −1.8 / 2.7 / 6.0 |
+| Tip at contact, ° | −0.25 / 0.46 / 0.90 | **−0.27 / 0.46 / 0.93** | 0.89 / 1.78 / 3.81 | 0.7 / 3.7 / 8.6 |
+
+Sensor near the string bed (1 m lever, 40 g transient: contact led by the
+accelerometer):
+
+| Metric | Truth sampled at 416.7 Hz | **M416 spliced** | M104 | M416 frame means only |
+| --- | --- | --- | --- | --- |
+| Contact time, ms | −0.18 / 0.69 / 1.08 | **−0.18 / 0.69 / 1.08** | 2.23 / 3.55 / 6.73 | −0.78 / 8.02 / 21.5 |
+| Peak timing, ms | 0.77 / 1.43 / 1.97 | **0.20 / 1.06 / 2.00** | 0.17 / 4.77 / 5.58 | −0.43 / 8.07 / 20.0 |
+| Head speed, % | 0.10 / 0.11 / 0.17 | **0.10 / 0.11 / 0.17** | 0.23 / 0.30 / 0.51 | −7.7 / 11.0 / 19.1 |
+| Face at contact, ° | 0.11 / 0.18 / 0.27 | **0.11 / 0.18 / 0.26** | 0.39 / 0.44 / 0.69 | 0.11 / 0.56 / 1.38 |
+| Path at contact, ° | 0.12 / 0.19 / 0.28 | **0.11 / 0.18 / 0.27** | 0.50 / 0.55 / 0.84 | 0.12 / 0.73 / 1.83 |
+| Tip at contact, ° | −0.46 / 0.59 / 0.99 | **−0.45 / 0.58 / 1.00** | 0.88 / 1.82 / 3.91 | 1.05 / 3.92 / 8.77 |
+
+Reading: the splice matches an analysis of the true 416 Hz samples to within
+0.1° and 0.2 ms, i.e. what the H section provides is all that matters at
+contact. Against M104 it improves contact timing (max 6.7 → 1.1 ms), peak
+timing (5.6 → 2.0 ms), face and tip (max 3.2–3.9° → ≤ 1°) and speed slightly.
+**Path at contact (butt cap) does not improve** (rms 0.22° → 0.18°, within
+the noise): the path is dominated by the rate direction, which changes
+little within a frame. It is not worse either, so no metric falls back to
+104 Hz. Analysing the M416 frame means alone — what the app did with M416
+captures before version 6 — is much worse than M104: the mean of the frame
+that contains the impact already carries part of the post-impact rate drop,
+so contact is misplaced or missed (13 % of strokes) and speed reads up to
+24 % low. With gyro clipping (38–44 rad/s at ±2000 dps on this swing shape)
+every mode withholds timing and angles and flags speed as a bound: the
+plateau is too long to reconstruct, with or without H.
+
+Filters are not modelled (docs/sensor-v2.md: the real gyro bandwidth is
+137 Hz in M416 and 33 Hz in M104; M104 would be smoother than shown).
+
+### Gyro bias re-estimation (`processing/gyroBias.ts`)
+
+On the still window ending at the attitude anchor the mean gyro rate (after
+the calibration bias) is the residual bias. The window is the anchor's,
+extended backwards while every sample rotates slower than 0.5 rad/s and is
+unclipped and present, up to `biasWindowMaxS` 0.5 s. The estimate is removed
+for the whole capture (everything is computed again with it added to the
+calibration bias) only when all hold:
+
+| Guard | Value | Why |
+| --- | --- | --- |
+| Window length | ≥ `biasWindowMinS` 0.1 s | too few samples to average |
+| ‖residual‖ | ≤ `biasMaxDps` 5 deg/s | *datasheet*: zero-rate level ±3 dps typical, ±0.05 dps/°C; more is motion or a broken calibration (0 disables re-estimation) |
+| Resolvable | 6σ of the gravity-direction noise over the half-window spacing ≤ `biasMaxUndetectedDps` 1 deg/s | otherwise the next test cannot see a slow rotation |
+| Gravity steady | angle between the mean specific force of the two window halves ≤ ½ × the turn the gyro mean predicts (component ⊥ gravity) + 3σ | a real rotation turns gravity in the body frame; a bias does not |
+
+σ of the direction noise: per-axis σ from sample-to-sample differences
+(insensitive to a slow trend) / √(half-window samples) × √2.
+`quality.gyroBiasCorrectionDps` reports the removed residual (0 when kept).
+Then the measured-residual term of σ_drift (Uncertainty) is ≈ 0 and σ falls
+back to the 1 deg/s model value.
+
+Results (`robustness.test.ts`, `gyroBias.test.ts`): a calibration bias
+wrong by 3 deg/s costs < 0.5° on every contact angle (identical to the
+correctly calibrated capture) instead of 2.1° of tip elevation; a racket
+turning at 0.3 rad/s in the window is rejected (implausible, and gravity
+turned); a 2.9 deg/s rotation about a horizontal axis is rejected by the
+gravity test while the same rate as bias of a still racket is accepted; an
+80 ms window or 5 mg of hand tremor in a 120 ms window keep the calibration.
+**Blind spot**: a steady rotation about the vertical leaves gravity unchanged
+and is taken as bias up to 5 deg/s (≈ 5° over 1 s at worst).
+
+### Temperature
+
+The calibration stores the IMU temperature of its two static poses
+(`MountCalibration.temperatureC`, v2 sensors: the captures' OUT_TEMP, else
+the latest STATUS2). Each analysed capture reports
+`quality.temperatureDeltaC` and `quality.temperatureWarning` (|Δ| >
+`temperatureWarnC` 10 °C); Setup shows "Temperatuur on kalibreerimisest
+muutunud, kalibreeri uuesti" / "Temperature has changed since calibration,
+calibrate again" when the latest stroke's (else STATUS2's) temperature is that
+far from the calibration's. OUT_TEMP is ±15 °C absolute (*datasheet*) but its
+changes are what matter. The bias re-estimation above removes most of the
+effect anyway; the warning covers captures where it cannot run.
+
+### Raw data preservation
+
+The stored `StrokeRecord.capture` is the complete `RawCapture` as assembled:
+L section, H section (`gyroHr`), frame times, frame period, flags,
+OUT_TEMP raw and °C, sensitivities, filter configuration, mode and firmware
+version, plus the calibration snapshot and parameters. The JSON export
+(`toJson`/`fromJson`, `app/export.ts`) writes samples and H as base64 and
+timestamps as an array, and reads them back value for value;
+`reanalyseStroke` (`app/pipeline.ts`) fills parameters added since the record
+was stored with their defaults. Re-analysis from IndexedDB or from the export
+reproduces the stored metrics exactly for v1 and v2 records
+(`app/test/app/rawPreservation.test.ts`).
+
+### End to end (`app/test/firmware/endToEndV2.test.ts`)
+
+Simulated butt-cap stroke → LSM6DS3TR-C register model at 416 Hz (M416) →
+the Espruino firmware → BLE with 10 % of notifications lost → app link
+(NAK/resend, CRC) → assemblerV2 → splice and analysis → rule cue, element
+assessment and coach. The delivered capture is bit-exact, analysis and coach
+outputs are identical to a lossless run, face/path/tip are within 1.5° and
+head speed within 1 % of the truth, peak timing within 5 ms.
 
 ## Known limitations
 

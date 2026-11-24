@@ -13,5 +13,11 @@
  *    resampling, gyro clipping reconstruction, rate-agnostic thresholds,
  *    impact consistency checks, labelled phases, gap and clipping rules
  *    (`maxSaturatedSamples` now counts only unreconstructed samples, default 1).
+ * 6: v2 capture integration (docs/metrics.md, "v2 captures"): header
+ *    sensitivities → ranges (unknown ones reject the capture), BEGIN_B flags
+ *    (FIFO reset, hidden clipping), M416 splice to 416 Hz with measured /
+ *    interpolated samples (σ uses the measured resolution), impact onset
+ *    refined with the measured gyro, per-capture gyro bias re-estimation,
+ *    temperature against the calibration.
  */
-export const ANALYSIS_VERSION = 5;
+export const ANALYSIS_VERSION = 6;

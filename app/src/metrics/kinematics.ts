@@ -1,5 +1,5 @@
 import type { ImuSeries, MountCalibration, TimebaseQuality } from '../domain/types';
-import { mulVec } from '../math/mat3';
+import { mulVec, transpose } from '../math/mat3';
 import { type Quat, IDENTITY_QUAT, fromRotationVector, multiply, rotate } from '../math/quat';
 import {
   type Vec3,
@@ -28,6 +28,7 @@ import {
   sampleTimesS,
 } from '../processing/condition';
 import type { ClippedRun } from '../processing/declip';
+import { type BiasEstimate, estimateGyroBias } from '../processing/gyroBias';
 import {
   type ContactReference,
   REFERENCE_INTERVAL_S,
@@ -279,6 +280,31 @@ export interface SwingKinematics {
   readonly contactSamples: ContactAngleSamples | null;
   /** Contact angles extrapolated to the contact time, whenever an attitude exists. */
   readonly rawAngles: ContactAngles | null;
+  /**
+   * Residual gyro bias estimated on the anchor's still window and its
+   * verdict; when `decision` is 'accepted' every signal above already has it
+   * removed. Null without an anchor or with re-estimation disabled.
+   */
+  readonly biasEstimate: BiasEstimate | null;
+  /** High-rate splice: measured (not interpolated) gyro / accelerometer per sample; absent = all measured. */
+  readonly gyroMeasured?: readonly boolean[];
+  readonly accelMeasured?: readonly boolean[];
+  /** Rate of the interpolated section of a spliced series, Hz; absent = `sampleRateHz` everywhere. */
+  readonly baseRateHz?: number;
+  /** IMU temperature of the capture, °C. */
+  readonly temperatureC?: number;
+}
+
+/**
+ * Time resolution at sample `i`, Hz: the series rate where the gyro was
+ * measured there (and at the sample before it), the rate of the
+ * interpolated section where it was not (high-rate splice).
+ */
+export function resolutionHzAt(kin: SwingKinematics, i: number): number {
+  const measured = kin.gyroMeasured;
+  if (!measured || kin.baseRateHz === undefined) return kin.sampleRateHz;
+  const k = Math.round(i);
+  return (measured[k] ?? false) && (measured[k - 1] ?? false) ? kin.sampleRateHz : kin.baseRateHz;
 }
 
 /** Any gap flag in the inclusive range `[from, to]`. */
@@ -404,7 +430,13 @@ function locateContact(
       refractorySamples: Math.round(params.impactRefractoryS * fs),
       detrendGyro: true,
     },
-    { accelSaturated: series.accelSaturated, gyroUnreliable: series.gyroUnrecovered, gap },
+    {
+      accelSaturated: series.accelSaturated,
+      gyroUnreliable: series.gyroUnrecovered,
+      gap,
+      ...(series.accelMeasured ? { accelMeasured: series.accelMeasured } : {}),
+      ...(series.gyroMeasured ? { gyroMeasured: series.gyroMeasured } : {}),
+    },
   );
   // Both channels clipped before the candidate: neither the rate drop nor
   // the transient can place it (a gyro clipped without reconstruction within
@@ -421,8 +453,50 @@ function locateContact(
   return { series, gyro, accel, perpRate, peakIndex, active, impactIndex, halfWindow };
 }
 
-/** Racket-frame signals, contact and segmentation; steps 1–3 of the pipeline. */
+/**
+ * Racket-frame signals, contact and segmentation; steps 1–3 of the pipeline.
+ *
+ * Then the residual gyro bias is re-estimated on the still window that
+ * anchors the attitude (processing/gyroBias.ts); when the estimate passes its
+ * guards, everything is computed again with it added to the calibration bias.
+ */
 export function computeSwingKinematics(
+  input: ImuSeries,
+  calibration: MountCalibration,
+  params: AnalysisParams,
+): SwingKinematics {
+  const first = kinematicsWith(input, calibration, params);
+  const anchor = first.anchor;
+  if (!anchor || !(params.biasMaxDps > 0)) return first;
+  const estimate = estimateGyroBias(
+    {
+      gyro: first.gyro,
+      accel: first.accel,
+      unusable: first.gap.map(
+        (g, i) => g || (first.gyroSaturated[i] ?? false) || (first.accelSaturated[i] ?? false),
+      ),
+      sampleRateHz: first.sampleRateHz,
+    },
+    anchor.index,
+    {
+      minWindowS: params.biasWindowMinS,
+      maxWindowS: params.biasWindowMaxS,
+      maxBiasDps: params.biasMaxDps,
+      maxUndetectedRateDps: params.biasMaxUndetectedDps,
+      quietRateRadPerS: params.quietRateRadPerS,
+    },
+  );
+  if (!estimate || estimate.decision !== 'accepted') return { ...first, biasEstimate: estimate };
+  // Racket-frame residual back into the sensor frame: R is a rotation, so R⁻¹ = Rᵀ.
+  const residualSensor = mulVec(transpose(calibration.racketFromSensor), estimate.meanRadPerS);
+  const corrected: MountCalibration = {
+    ...calibration,
+    gyroBias: add(calibration.gyroBias, residualSensor),
+  };
+  return { ...kinematicsWith(input, corrected, params), biasEstimate: estimate };
+}
+
+function kinematicsWith(
   input: ImuSeries,
   calibration: MountCalibration,
   params: AnalysisParams,
@@ -440,6 +514,8 @@ export function computeSwingKinematics(
     accelSaturated: input.accelSaturated,
     gyroSaturated: input.gyroSaturated,
     triggerIndex: input.triggerIndex,
+    ...(input.accelMeasured ? { accelMeasured: input.accelMeasured } : {}),
+    ...(input.gyroMeasured ? { gyroMeasured: input.gyroMeasured } : {}),
   };
   const firstPass = isConditioned(input)
     ? null
@@ -609,5 +685,10 @@ export function computeSwingKinematics(
     signalGap,
     contactSamples,
     rawAngles: contactSamples ? anglesAtContact(contactSamples, contact) : null,
+    biasEstimate: null,
+    ...(series.gyroMeasured ? { gyroMeasured: series.gyroMeasured } : {}),
+    ...(series.accelMeasured ? { accelMeasured: series.accelMeasured } : {}),
+    ...(series.baseRateHz !== undefined ? { baseRateHz: series.baseRateHz } : {}),
+    ...(series.temperatureC !== undefined ? { temperatureC: series.temperatureC } : {}),
   };
 }

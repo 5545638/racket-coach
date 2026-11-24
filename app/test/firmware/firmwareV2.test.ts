@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RawCapture } from '../../src/domain/types';
 import { analyzeSwing } from '../../src/metrics/analyzeSwing';
-import { toImuSeries } from '../../src/processing/units';
+import { seriesFromCapture } from '../../src/processing/highRate';
 import { encodeCapture } from '../../src/protocol/assembler';
 import {
   CaptureFlag,
@@ -165,7 +165,8 @@ describe('protocol v2 end to end (firmware harness ↔ app link)', () => {
       s.fw.run(9000);
       const [capture] = s.captures();
       if (!capture) throw new Error('no capture');
-      const metrics = analyzeSwing(toImuSeries(capture), SKEWED_MOUNT);
+      // The app's path: M416 captures are spliced to 416 Hz.
+      const metrics = analyzeSwing(seriesFromCapture(capture), SKEWED_MOUNT);
       expect(metrics.impactDetected).toBe(true);
       expect(metrics.faceTiltDeg).toBeCloseTo(truth.faceTiltDeg, 0);
       expect(metrics.swingPathDeg).toBeCloseTo(truth.swingPathDeg, 0);

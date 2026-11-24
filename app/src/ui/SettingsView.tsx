@@ -20,6 +20,11 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
           ? t.setup.calibrated(new Date(calibration.createdAt).toLocaleDateString())
           : t.setup.calibrationNeeded}
       </p>
+      {controller.temperatureWarning.value && (
+        <p class="hint warning" role="status">
+          {t.setup.temperatureChanged}
+        </p>
+      )}
       <ol class="steps">
         <li>
           {t.setup.stepFaceUp}

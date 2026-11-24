@@ -17,3 +17,9 @@ All notable changes are documented here. Versions follow [SemVer](https://semver
 - Swing simulator and firmware-in-the-loop tests.
 - Parametric replacement butt cap for the Puck PCB (Wilson Blade dimensions).
 - Parametric two-part string clamp as an alternative mount.
+- v2 capture integration (analysis version 6): sensitivities → ranges (unknown
+  ones reject the capture), BEGIN_B flags, M416 splice to 416 Hz with
+  measured/interpolated flags, impact onset refined by the raw gyro,
+  per-capture gyro bias re-estimation, IMU temperature stored with the
+  calibration (recalibration hint in Setup), JSON import and exact
+  re-analysis of stored v1/v2 strokes, firmware-to-coach end-to-end test.

@@ -7,7 +7,7 @@ import type {
   SwingStyle,
 } from '../domain/types';
 import { type Quat, rotate } from '../math/quat';
-import { type Vec3, RAD_TO_DEG, UNIT_X } from '../math/vec3';
+import { type Vec3, RAD_TO_DEG, UNIT_X, norm } from '../math/vec3';
 import {
   REFERENCE_INTERVAL_S,
   longestQuietRun,
@@ -15,7 +15,12 @@ import {
   samplesFor,
 } from '../processing/segmentation';
 import { computeFeatures } from './features';
-import { computeSwingKinematics, elevationDeg, overheadContactTipDeg } from './kinematics';
+import {
+  computeSwingKinematics,
+  elevationDeg,
+  overheadContactTipDeg,
+  resolutionHzAt,
+} from './kinematics';
 
 export interface AnalysisParams {
   /**
@@ -120,6 +125,25 @@ export interface AnalysisParams {
    * inside the preparation is a pause (hitch) in the swing, s.
    */
   readonly readyMinS: number;
+  /**
+   * Per-capture gyro bias re-estimation (processing/gyroBias.ts). The still
+   * window ending at the attitude anchor is extended backwards up to
+   * `biasWindowMaxS`; it must last at least `biasWindowMinS`. A mean rate
+   * above `biasMaxDps` is not believed to be bias (LSM6DS3TR-C zero-rate level
+   * ±3 dps typical; 0 disables re-estimation). The window's accelerometer
+   * must be able to see a rotation of `biasMaxUndetectedDps` (else it cannot
+   * tell slow motion from bias). Engineering choices; analysis version 6.
+   */
+  readonly biasWindowMinS: number;
+  readonly biasWindowMaxS: number;
+  readonly biasMaxDps: number;
+  readonly biasMaxUndetectedDps: number;
+  /**
+   * A capture whose IMU temperature differs from the calibration's by more
+   * than this gets `quality.temperatureDriftC` (the zero-rate level moves by
+   * up to 0.05 dps/°C, datasheet), °C. Engineering choice.
+   */
+  readonly temperatureWarnC: number;
 }
 
 export const DEFAULT_ANALYSIS_PARAMS: AnalysisParams = {
@@ -142,7 +166,23 @@ export const DEFAULT_ANALYSIS_PARAMS: AnalysisParams = {
   compactMaxArcDeg: 80,
   quietRateRadPerS: 0.5,
   readyMinS: 0.3,
+  biasWindowMinS: 0.1,
+  biasWindowMaxS: 0.5,
+  biasMaxDps: 5,
+  biasMaxUndetectedDps: 1,
+  temperatureWarnC: 10,
 };
+
+/** Temperature of the capture against the calibration's (both optional). */
+function temperatureQuality(
+  captureC: number | undefined,
+  calibrationC: number | undefined,
+  warnC: number,
+): { readonly temperatureDeltaC?: number; readonly temperatureWarning?: boolean } {
+  if (captureC === undefined || calibrationC === undefined) return {};
+  const delta = captureC - calibrationC;
+  return { temperatureDeltaC: delta, temperatureWarning: Math.abs(delta) > warnC };
+}
 
 /** Lowest tip elevation in `[from, to]` and the hitting-face tilt at that moment. */
 function racketDrop(
@@ -298,6 +338,19 @@ export function analyzeSwing(
       reconstructedSamples: kin.reconstructedSamples,
       timebase: kin.timebase,
       signalGap: kin.signalGap,
+      gyroBiasCorrectionDps:
+        kin.biasEstimate?.decision === 'accepted'
+          ? norm(kin.biasEstimate.meanRadPerS) * RAD_TO_DEG
+          : 0,
+      ...temperatureQuality(kin.temperatureC, calibration.temperatureC, params.temperatureWarnC),
+      ...(kin.gyroMeasured
+        ? {
+            highRate: {
+              measuredGyroSamples: kin.gyroMeasured.filter(Boolean).length,
+              contactMeasured: resolutionHzAt(kin, ref) === fs,
+            },
+          }
+        : {}),
     },
     features: computeFeatures(kin, params, strokeType, headSpeedMps),
   };

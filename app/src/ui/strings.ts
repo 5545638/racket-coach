@@ -139,6 +139,8 @@ export interface Strings {
     readonly sensor: string;
     readonly experimentalM416: string;
     readonly experimentalM416Hint: string;
+    /** The IMU temperature moved more than 10 °C from the calibration's. */
+    readonly temperatureChanged: string;
     readonly diagnostics: string;
     readonly diagnosticsLine: (d: SensorDiagnostics) => string;
   };
@@ -309,6 +311,7 @@ const en: Strings = {
     experimentalM416: 'Experimental: 416 Hz gyro around the stroke (M416)',
     experimentalM416Hint:
       'Needs firmware 0.2 or later. Not verified on hardware; the default is 104 Hz (M104).',
+    temperatureChanged: 'Temperature has changed since calibration, calibrate again.',
     diagnostics: 'Diagnostics',
     diagnosticsLine: (d) =>
       `mode ${d.mode} · P ${d.payloadBytes} B · FIFO overruns ${d.fifoOverruns} · dropped strokes ${d.droppedCaptures} · errors ${d.errors} · free memory ${d.freeVars}`,
@@ -466,6 +469,7 @@ const et: Strings = {
     experimentalM416: 'Katseline: güroskoop 416 Hz löögi ümber (M416)',
     experimentalM416Hint:
       'Vajab püsivara 0.2 või uuemat. Riistvaral kontrollimata; vaikimisi on 104 Hz (M104).',
+    temperatureChanged: 'Temperatuur on kalibreerimisest muutunud, kalibreeri uuesti.',
     diagnostics: 'Diagnostika',
     diagnosticsLine: (d) =>
       `režiim ${d.mode} · P ${d.payloadBytes} B · FIFO ületäitumisi ${d.fifoOverruns} · kadunud lööke ${d.droppedCaptures} · vigu ${d.errors} · vaba mälu ${d.freeVars}`,

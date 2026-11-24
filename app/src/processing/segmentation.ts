@@ -52,6 +52,19 @@ export interface ImpactFlags {
   readonly gyroUnreliable?: readonly boolean[];
   /** No data (long gap): no jump involving it is evaluated. */
   readonly gap?: readonly boolean[];
+  /**
+   * High-rate splice (processing/highRate.ts): accelerometer samples that
+   * were measured (false = interpolated between frames). When given, an
+   * accelerometer jump counts only between two measured samples: an
+   * interpolated ramp would place the onset anywhere inside the frame.
+   */
+  readonly accelMeasured?: readonly boolean[];
+  /**
+   * Gyro samples that were measured. With `accelMeasured`, the onset is
+   * refined inside the last span before it with the measured gyro: the ball's
+   * step in rate is resolved at the gyro's rate.
+   */
+  readonly gyroMeasured?: readonly boolean[];
 }
 
 /**
@@ -118,7 +131,11 @@ export function detectImpact(
     const a1 = accel[i];
     const w0 = gyro[i - span];
     const w1 = gyro[i];
-    const aj = a0 && a1 ? norm(sub(a1, a0)) / STANDARD_GRAVITY / thresholds.accelG : null;
+    const accelKnown =
+      flags.accelMeasured === undefined ||
+      ((flags.accelMeasured[i] ?? false) && (flags.accelMeasured[i - span] ?? false));
+    const aj =
+      a0 && a1 && accelKnown ? norm(sub(a1, a0)) / STANDARD_GRAVITY / thresholds.accelG : null;
     const clipped = !usable(flags.accelSaturated, i);
     let w: number | null = null;
     if (w0 && w1) {
@@ -198,10 +215,43 @@ export function detectImpact(
     thresholds.refractorySamples === undefined
       ? from
       : Math.max(from, strongest - thresholds.refractorySamples);
+  let onset = strongest;
   for (let i = onsetFrom; i <= strongest; i++) {
-    if (jump(i) >= onsetLevel) return i;
+    if (jump(i) >= onsetLevel) {
+      onset = i;
+      break;
+    }
   }
-  return strongest;
+  return refineOnset(onset, span, confirm, flags, (i) => parts(i).w);
+}
+
+/**
+ * Spliced series: an accelerometer-led onset only says that the impact lies
+ * within the span before it (between two measured accelerometer samples).
+ * Where the gyro was measured over that span and shows the ball's step
+ * (≥ `confirm` of its threshold), the onset moves to the first sample whose
+ * gyro jump reaches half the largest one there: the step in rate, resolved
+ * at the gyro's rate. Otherwise the onset stays.
+ */
+function refineOnset(
+  onset: number,
+  span: number,
+  confirm: number,
+  flags: ImpactFlags,
+  gyroJump: (i: number) => number | null,
+): number {
+  if (!flags.accelMeasured || !flags.gyroMeasured) return onset;
+  const from = onset - span + 1;
+  if (from < 2 * span) return onset;
+  for (let i = from - 2 * span; i <= onset; i++) {
+    if (!(flags.gyroMeasured[i] ?? false)) return onset;
+  }
+  const jumps: number[] = [];
+  for (let i = from; i <= onset; i++) jumps.push(gyroJump(i) ?? 0);
+  const largest = Math.max(...jumps);
+  if (largest < Math.max(confirm, 1e-9)) return onset;
+  const first = jumps.findIndex((j) => j >= 0.5 * largest);
+  return first < 0 ? onset : from + first;
 }
 
 /** Where in the capture contact kinematics and contact time are taken from. */

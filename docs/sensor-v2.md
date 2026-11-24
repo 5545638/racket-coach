@@ -164,3 +164,35 @@ frame; the L gyro mean is centred at +0.375 frame (M416).
 4. No second buffer; swings during a send are lost without a counter.
 5. Accel aliasing (no anti-alias filter).
 6. `appReady` does not prove CCCD subscription; MTU fixed at 20.
+
+## App side
+
+Implemented in the app (analysis version 6; details and simulation results
+in docs/metrics.md, "v2 captures"):
+
+- **Assembly**: `protocol/assemblerV2.ts` turns BEGIN_A/B + DATA into a
+  `RawCapture` with L (`samples`), H (`gyroHr`), frame times (`sampleTimesUs`,
+  unwrapped µs, derived from tsLast and framePeriod_ns), `framePeriodNs`,
+  `flags`, `temperatureRaw`/`temperatureC`, `accelUgPerLsb`/`gyroMdpsPerLsb`,
+  `filter` (filterCfg), `mode`. The capture is stored and exported verbatim.
+- **Sensitivities → ranges**: 70 mdps/LSB → ±2000 dps, 488 µg/LSB → ±16 g
+  (and the other integer datasheet values); an unknown value rejects the
+  capture.
+- **Flags**: b3 + b0 → data lost before the first frame (the first sample is a
+  gap); b3 alone → unlocated loss (nothing rated); b1 → M416 frame means
+  ≥ 0.9 × clip level, and frames whose raw H samples clipped, are treated as
+  clipped (the mean can hide a clipped sub-sample); b1/b2 that the samples
+  cannot locate → every sample suspect.
+- **M416**: the analysis runs on a 416.7 Hz splice: A0 interpolated linearly,
+  frame means as samples at f + 0.375 interpolated by a cubic, the raw H gyro
+  at its exact times. Contact onset uses accelerometer jumps between frames
+  only and is refined to the sub-sample with the raw gyro. In simulation the
+  splice matches the true 416 Hz samples within 0.1° / 0.2 ms; M104 is up to
+  4° and 7 ms off. Analysing only the frame means (no splice) is worse than
+  M104, because the frame containing the impact averages in the post-impact
+  rate.
+- **Temperature**: stored with the calibration; > 10 °C from it → quality
+  warning and a hint in Setup to recalibrate. The per-capture gyro bias
+  re-estimation removes most of the drift anyway.
+- **Not yet used**: `filterCfg` (provenance only), STATUS2 counters other than
+  temperature (diagnostics display only).

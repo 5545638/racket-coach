@@ -122,7 +122,8 @@ button:disabled {
   color: var(--muted);
 }
 
-.error {
+.error,
+.hint.warning {
   color: var(--error);
 }
 

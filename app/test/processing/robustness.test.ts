@@ -224,18 +224,26 @@ describe('noisy measurements', () => {
     expect(sigmas[2] ?? 0).toBeGreaterThan(sigmas[1] ?? Infinity);
   });
 
-  it('a gyro bias step before the stroke widens σ enough to cover its drift', () => {
+  it('a gyro bias step early in the ready position: re-estimated away, or σ covers it', () => {
     const { capture, truth } = simulateSwing(SPEC, v2(104));
     const clean = analyse(capture);
-    for (const dps of [3, 5]) {
+    const cleanSigma = clean.features?.sigma.faceTiltDeg ?? 0;
+    for (const dps of [3, 8]) {
       const counts = Math.round(dps / SENSOR_GYRO_DPS_PER_LSB);
       // The step at 0.05 s, early in the 0.7 s ready position: every still
       // window before the anchor carries the new bias.
       const m = analyse(gyroStep(capture, 5, 1, counts));
-      expect(m.features?.sigma.faceTiltDeg ?? 0).toBeGreaterThan(
-        (clean.features?.sigma.faceTiltDeg ?? 0) * 1.5,
-      );
-      expectHonest(m, truth, clean, { ...TOL, angleDeg: 1 });
+      if (dps <= DEFAULT_ANALYSIS_PARAMS.biasMaxDps) {
+        // Version 6: the residual is measured on the anchor's still window and removed.
+        expect(m.quality.gyroBiasCorrectionDps ?? 0).toBeCloseTo(dps, 0);
+        expect(m.features?.sigma.faceTiltDeg ?? 0).toBeLessThan(cleanSigma * 1.2);
+        expectHonest(m, truth, clean, { ...TOL, angleDeg: 0.5 });
+      } else {
+        // Implausibly large for bias: kept, and the measured residual widens σ.
+        expect(m.quality.gyroBiasCorrectionDps).toBe(0);
+        expect(m.features?.sigma.faceTiltDeg ?? 0).toBeGreaterThan(cleanSigma * 1.5);
+        expectHonest(m, truth, clean, { ...TOL, angleDeg: 1 });
+      }
     }
   });
 });
@@ -338,22 +346,53 @@ describe('calibration errors', () => {
     }
   });
 
-  it('a wrong gyro bias of 1, 3 and 5 deg/s widens σ with the bias and stays covered', () => {
+  const wrongBias = (dps: number): MountCalibration => {
+    const d = (dps * DEG_TO_RAD) / Math.sqrt(3);
+    const b = SKEWED_MOUNT.gyroBias;
+    return { ...SKEWED_MOUNT, gyroBias: [b[0] + d, b[1] + d, b[2] + d] };
+  };
+  const angleErrors = (m: StrokeMetrics, truth: SwingTruth): number[] => [
+    Math.abs((m.faceTiltDeg ?? NaN) - truth.faceTiltDeg),
+    Math.abs((m.swingPathDeg ?? NaN) - truth.swingPathDeg),
+    Math.abs((m.tipElevationDeg ?? NaN) - truth.tipElevationDeg),
+  ];
+
+  it('a wrong gyro bias of 1 and 3 deg/s is re-estimated per capture: < 0.5° instead of ≈ 2°', () => {
     const { capture, truth } = simulateSwing(SPEC, v2(104));
     const clean = analyse(capture);
-    let previous = 0;
-    for (const dps of [1, 3, 5]) {
-      const d = (dps * DEG_TO_RAD) / Math.sqrt(3);
-      const b = SKEWED_MOUNT.gyroBias;
-      const m = analyse(capture, { ...SKEWED_MOUNT, gyroBias: [b[0] + d, b[1] + d, b[2] + d] });
-      const sigma = m.features?.sigma.faceTiltDeg ?? 0;
-      expect(sigma).toBeGreaterThanOrEqual(previous);
-      previous = sigma;
+    const noReestimation = {
+      ...DEFAULT_ANALYSIS_PARAMS,
+      leverRadiusM: SPEC.leverRadiusM,
+      biasMaxDps: 0,
+    };
+    for (const dps of [1, 3]) {
+      const m = analyse(capture, wrongBias(dps));
+      expect(m.quality.gyroBiasCorrectionDps ?? 0).toBeCloseTo(dps, 0);
+      for (const e of angleErrors(m, truth)) expect(e).toBeLessThan(0.5);
+      // σ is back at the model value (the measured residual is gone).
+      expect(m.features?.sigma.faceTiltDeg).toBeCloseTo(
+        clean.features?.sigma.faceTiltDeg ?? NaN,
+        1,
+      );
+      expectHonest(m, truth, clean, { ...TOL, angleDeg: 0.5 });
+      // Without re-estimation (analysis version 5) the drift stays in the angles.
+      const old = analyzeSwing(toImuSeries(capture), wrongBias(dps), noReestimation);
+      expect(old.quality.gyroBiasCorrectionDps).toBe(0);
+      if (dps === 3) expect(Math.max(...angleErrors(old, truth))).toBeGreaterThan(1.5);
+    }
+  });
+
+  it('a wrong gyro bias at or above the 5 deg/s limit is kept and widens σ', () => {
+    const { capture, truth } = simulateSwing(SPEC, v2(104));
+    const clean = analyse(capture);
+    for (const dps of [5, 8]) {
+      const m = analyse(capture, wrongBias(dps));
+      expect(m.quality.gyroBiasCorrectionDps).toBe(0);
+      expect(m.features?.sigma.faceTiltDeg ?? 0).toBeGreaterThan(3); // ≈ dps × 0.9 s
       expectHonest(m, truth, clean, { ...TOL, angleDeg: 0.5 });
       expect(Math.abs((m.tipElevationDeg ?? NaN) - truth.tipElevationDeg)).toBeLessThanOrEqual(
         3 * (m.features?.sigma.tipElevationDeg ?? 0),
       );
     }
-    expect(previous).toBeGreaterThan(3); // ≈ 5 deg/s × 0.9 s
   });
 });

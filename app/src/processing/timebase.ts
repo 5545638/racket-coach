@@ -152,6 +152,15 @@ export interface UniformSeries {
   readonly quality: TimebaseQuality;
 }
 
+/** Series fields that describe the capture rather than individual samples. */
+const passThrough = (
+  series: ImuSeries,
+): Pick<ImuSeries, 'temperatureC' | 'baseRateHz' | 'lostBeforeStart'> => ({
+  ...(series.temperatureC !== undefined ? { temperatureC: series.temperatureC } : {}),
+  ...(series.baseRateHz !== undefined ? { baseRateHz: series.baseRateHz } : {}),
+  ...(series.lostBeforeStart ? { lostBeforeStart: true } : {}),
+});
+
 const lerp3 = (a: Vec3, b: Vec3, w: number): Vec3 => [
   a[0] + (b[0] - a[0]) * w,
   a[1] + (b[1] - a[1]) * w,
@@ -204,11 +213,16 @@ export function resampleUniform(
       accelSaturated: series.accelSaturated,
       gyroSaturated: series.gyroSaturated,
       triggerIndex: series.triggerIndex,
+      ...passThrough(series),
+      ...(series.gyroMeasured ? { gyroMeasured: series.gyroMeasured } : {}),
+      ...(series.accelMeasured ? { accelMeasured: series.accelMeasured } : {}),
     };
+    const gap = new Array<boolean>(n).fill(unlocated);
+    if (series.lostBeforeStart && n > 0) gap[0] = true;
     return {
       series: base,
       interpolated: new Array<boolean>(n).fill(false),
-      gap: new Array<boolean>(n).fill(unlocated),
+      gap,
       reconstructed: Array.from({ length: n }, (_, i) => reconstructed[i] ?? false),
       unrecovered: Array.from({ length: n }, (_, i) => unrecovered[i] ?? false),
       quality: {
@@ -217,7 +231,7 @@ export function resampleUniform(
         maxGapSamples: 0,
         jitterUs: 0,
         interpolatedSamples: 0,
-        gapSamples: unlocated ? n : 0,
+        gapSamples: gap.filter(Boolean).length,
         droppedSamples: dropped,
       },
     };
@@ -250,6 +264,8 @@ export function resampleUniform(
   const unrec: boolean[] = [];
   const interpolated: boolean[] = [];
   const gap: boolean[] = [];
+  const gyroMeasured: boolean[] = [];
+  const accelMeasured: boolean[] = [];
   let j = 0;
   for (let k = 0; k < count; k++) {
     const tk = k * stepUs;
@@ -286,10 +302,21 @@ export function resampleUniform(
     gyroSaturated.push(flag(series.gyroSaturated));
     recon.push(flag(reconstructed));
     unrec.push(flag(unrecovered));
+    // Measured only when every input sample that contributes was measured.
+    const measured = (f: readonly boolean[] | undefined): boolean =>
+      (!from0 || (f?.[lo] ?? true)) && (!from1 || (f?.[lo + 1] ?? true));
+    gyroMeasured.push(measured(series.gyroMeasured));
+    accelMeasured.push(measured(series.accelMeasured));
     const inside = tk - t0 > 0.5 * est.periodUs && t1 - tk > 0.5 * est.periodUs;
     interpolated.push(inside && shortGap(j));
     gap.push(inside && longGap(j));
   }
+  // Losses the firmware counted but the timestamps do not show (v2 frame
+  // times are derived from one period, so a FIFO reset inside the window is
+  // invisible in them) cannot be located: every sample is suspect.
+  const located = est.gaps.reduce((acc, g) => acc + g.missing, 0);
+  if (dropped > located) gap.fill(true);
+  if (series.lostBeforeStart && gap.length > 0) gap[0] = true;
   const triggerUs = t[Math.max(0, Math.min(n - 1, series.triggerIndex))] ?? 0;
   return {
     series: {
@@ -299,6 +326,9 @@ export function resampleUniform(
       accelSaturated,
       gyroSaturated,
       triggerIndex: Math.max(0, Math.min(count - 1, Math.round(triggerUs / stepUs))),
+      ...passThrough(series),
+      ...(series.gyroMeasured ? { gyroMeasured } : {}),
+      ...(series.accelMeasured ? { accelMeasured } : {}),
     },
     interpolated,
     gap,

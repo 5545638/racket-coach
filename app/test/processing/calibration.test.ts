@@ -55,4 +55,20 @@ describe('two-pose mounting calibration', () => {
       reason: expect.stringContaining('rotation') as string,
     });
   });
+
+  it('stores the IMU temperature of the poses when the sensor reports it (v2)', () => {
+    const warm = (up: Vec3, temperatureC: number) => {
+      const result = extractStaticPose(
+        toImuSeries({ ...simulateStatic(up, SKEWED_MOUNT, 104, 104), temperatureC }),
+      );
+      if (!result.ok) throw new Error(result.reason);
+      return result.pose;
+    };
+    const result = calibrateMount(warm([0, 0, 1], 21), warm([1, 0, 0], 22));
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.calibration.temperatureC).toBeCloseTo(21.5, 9);
+    // v1 sensors: no temperature, none stored.
+    const v1 = calibrateMount(pose([0, 0, 1]), pose([1, 0, 0]));
+    expect(v1.ok && v1.calibration.temperatureC).toBeUndefined();
+  });
 });
