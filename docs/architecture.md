@@ -54,8 +54,8 @@ has no knowledge of the browser.
 4. **`CoachController`** assesses with the player's policy (level, style,
    hand), updates the fatigue detector, runs one `coachStep` (focus per
    stroke type, phrase ladder, overcorrection, mode), voices `step.speech`
-   (learning and training; in match mode only a persistent major fault, from
-   a timer once play pauses), adds the stroke to the personal baseline and
+   through the speech policy and queue (see [Speech](#speech); in match mode
+   only a persistent major fault, from a timer once play pauses), adds the stroke to the personal baseline and
    the profile history, appends it to the session and persists the raw
    capture together with its metrics, the coaching outcome (with categories,
    mode, phrase level and fatigue flag) and the provenance needed to
@@ -74,8 +74,10 @@ IndexedDB (`storage/repository.ts`), everything on the device. Stores:
 personal baseline uses) and `kv` (per-device calibration, settings). Each
 stroke also keeps its coaching outcome (`coach`: utterance kind, correction,
 focus, and since the adaptive coach mode, deviation categories, phrase level
-and fatigue flag; absent on older records). Settings (version 4) hold the
-coaching mode and the player inputs.
+and fatigue flag; absent on older records). Settings (version 5) hold the
+coaching mode, the player inputs and the speech settings (`feedbackFrequency`,
+`voice` = { lang, voiceURI?, rate, pitch, volume }, `speechMuted`,
+`autoRallyMute`; version 5 moved the old `speechRate` into `voice.rate`).
 
 **Reproducibility.** Raw data is kept so strokes can be re-analysed, which only
 works if the inputs are kept too. Every stroke record therefore stores, next to
@@ -104,6 +106,56 @@ existing records; the fields above are optional properties, not schema).
 `blocked` (another tab holds an older version) is logged; `blocking` closes this
 tab's connection so the other tab's upgrade can proceed.
 
+## Speech
+
+The coach decides *what* to say; three layers decide whether and when it is
+heard (`feedback/`):
+
+1. **Policy** (`speechPolicy.ts`, applied in `CoachController.handleSwing`
+   after `coachStep`): quick mute (`speechMuted`, `controller.toggleMute()`),
+   automatic rally mute (`autoRallyMute`: ≥ 3 strokes < 3.5 s apart silence
+   stroke cues until a ≥ 6 s pause; `RallyDetector`) and the feedback frequency
+   (`FeedbackGate`): `every`, `changes` (a correction only when its text
+   differs from the last one heard in the lane), `every2` / `every3` (at most
+   one heard correction per 2 / 3 strokes), `off`. "Better", the reinforce
+   phrase and system messages pass `changes` / `everyN`; mute and rally mute
+   silence every stroke cue but never system messages. Match mode keeps its own
+   policy (nothing per stroke, the break-time cue respects only mute).
+2. **Text** (`spokenText.ts`, `speechStrings.ts`): the spoken language is
+   `voice.lang`, but Estonian only when the device has an Estonian voice
+   (iOS may have none; the settings then show "Eestikeelset häält pole selles
+   seadmes — kasutan inglise keelt"). Estonian cue texts come through a
+   tolerant adapter (`spokenEt` on a correction, `FEEDBACK_PHRASES_ET`); a
+   phrase without Estonian text is spoken in English with an English voice.
+   System messages (sensor connected / disconnected / lost / battery low)
+   exist in both languages.
+3. **Queue** (`SpeechQueue` in `speech.ts`, Web Speech): one utterance at a
+   time, never the engine's own queue; priorities system > correction >
+   feedback > info; at most one queued item per category; a new stroke's item
+   replaces queued older stroke items (and the controller drops not-yet-started
+   stroke items when the next stroke arrives); an item older than
+   `maxAgeMs` (2.5 s from the stroke's `receivedAt`) when it would start is
+   dropped; a speaking item is cut only after its minimum (`minSpeakMs`: a
+   3-word cue finishes), only by a newer stroke's item or a system message,
+   and a system message only by another system message. WebKit quirks: a
+   paused engine is resumed before speaking, leftovers are cancelled, a missing
+   `onstart` (1.5 s) triggers cancel + resume and one retry, a missing `onend`
+   (watchdog from the phrase length) cancel + resume. Late events of
+   utterances given up on are ignored. The voice object is cached per
+   language/voice; `prime()` runs on the connect tap.
+
+**Heard truth.** The coach builds on heard cues only ("Better" and the
+reinforce phrase need a heard cue; the ladder advances per heard cue). A cue
+the policy suppresses is decided again with `coachStep(…, speaking = false)`
+before the state is committed. A cue the queue drops (`onDrop`) rolls the
+state back to that unheard decision when nothing happened since; otherwise
+`withCueUnheard` clears the focus' `lastHeardLevel`. `FeedbackGate` and
+`lastSpeech` learn from `onStart` only.
+
+**Diagnostics.** `controller.speechStats`: stroke-to-`onstart` latency per
+cue with p50 / p95, drops by reason and suppressions by reason, reset per
+session; shown under Settings → Speech.
+
 ## Latency budget (target ≤ 1 s from contact to speech)
 
 | Stage | Typical |
@@ -115,7 +167,8 @@ tab's connection so the other tab's upgrade can proceed.
 
 This is fast enough between fed balls; in rallies the cue would overlap the
 next shot, hence the **match** mode, silent per stroke and speaking only
-between points.
+between points, and the automatic rally mute. The measured stroke-to-speech
+latency is in `speechStats` (p50 / p95).
 
 ## Testing strategy
 
@@ -132,6 +185,10 @@ between points.
   analysis. This also enforces the protocol constants on both sides.
 - **Controller end-to-end** with the simulated transport: connect,
   calibrate over the wire, analyse, speak, persist.
+- **Speech**: `SpeechQueue` against a fake `speechSynthesis` with WebKit's
+  quirks (`app/test/feedback/fakeSpeech.ts`: start/end events, stuck `onstart`,
+  missing `onend`, paused engine, voices); controller speech policy with a
+  scripted speaker (`app/test/app/speechController.test.ts`).
 - **Hardware geometry** tests for both mounts (watertight, fits, validates input).
 
 Real recorded strokes become fixtures in `app/test/fixtures` once hardware is

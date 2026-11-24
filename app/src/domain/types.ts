@@ -613,17 +613,48 @@ export interface PlayerInputs {
   readonly level: PlayerLevel;
 }
 
+/**
+ * How often stroke cues are spoken (feedback/speechPolicy.ts): every cue the
+ * coach decided on, only changed cues, at most one correction per 2 or 3
+ * strokes, or none. "Better", the reinforce phrase and system messages are
+ * not limited by 'changes' / 'every2' / 'every3'.
+ */
+export type FeedbackFrequency = 'every' | 'changes' | 'every2' | 'every3' | 'off';
+
+/** Language of the spoken cues. */
+export type SpokenLanguage = 'en' | 'et';
+
+/** Voice profile of the spoken cues. */
+export interface VoiceSettings {
+  /** Wanted language; Estonian is only used when the device has an Estonian voice. */
+  readonly lang: SpokenLanguage;
+  /** `SpeechSynthesisVoice.voiceURI` of the chosen voice; missing = the best voice for `lang`. */
+  readonly voiceURI?: string;
+  /** Rate multiplier, 0.5–2. */
+  readonly rate: number;
+  /** Pitch, 0.5–2. */
+  readonly pitch: number;
+  /** Volume, 0–1. */
+  readonly volume: number;
+}
+
 /** User-adjustable settings. Defaults and validation live in `app/settings.ts`. */
 export interface Settings extends PlayerInputs {
   /** Schema version of the stored settings (see app/settings.ts SETTINGS_VERSION). */
   readonly version: number;
   readonly mode: CoachMode;
-  /** Language of the on-screen explanations. Spoken cues are always English. */
+  /** Language of the on-screen explanations (the spoken language is `voice.lang`). */
   readonly language: Language;
   /** Also say "Good" when no rule fires. */
   readonly speakGood: boolean;
-  /** Speech rate multiplier, 0.5–2. */
-  readonly speechRate: number;
+  /** How often stroke cues are spoken. */
+  readonly feedbackFrequency: FeedbackFrequency;
+  /** Voice, language, rate, pitch and volume of the spoken cues. */
+  readonly voice: VoiceSettings;
+  /** Quick mute: no stroke speech (system messages are still spoken). */
+  readonly speechMuted: boolean;
+  /** Silence stroke cues while a rally is detected (strokes < 3.5 s apart). */
+  readonly autoRallyMute: boolean;
   /**
    * See AnalysisParams.leverRadiusM. Head speed is a model estimate that
    * scales with this lever; best used as a personal trend.

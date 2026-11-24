@@ -1,6 +1,20 @@
-import type { CoachMode, PlayerInputs, Settings } from '../domain/types';
+import type {
+  CoachMode,
+  FeedbackFrequency,
+  PlayerInputs,
+  Settings,
+  VoiceSettings,
+} from '../domain/types';
 
-export type { CoachMode, FeedbackMode, PlayerInputs, Settings } from '../domain/types';
+export type {
+  CoachMode,
+  FeedbackFrequency,
+  FeedbackMode,
+  PlayerInputs,
+  Settings,
+  SpokenLanguage,
+  VoiceSettings,
+} from '../domain/types';
 export type { Language } from '../coaching/guidance';
 
 /**
@@ -11,8 +25,11 @@ export type { Language } from '../coaching/guidance';
  * Version 4 replaced the modes `drill` / `rally` by `learning` / `training` /
  * `match` (drill → training, rally → match) and added the player inputs
  * `dominantHand`, `backhand`, `forehandStyle` and `level` (missing = defaults).
+ * Version 5 moved `speechRate` into the voice profile `voice` ({ lang, voiceURI,
+ * rate, pitch, volume }; rate = the old speechRate) and added
+ * `feedbackFrequency`, `speechMuted` and `autoRallyMute`.
  */
-export const SETTINGS_VERSION = 4;
+export const SETTINGS_VERSION = 5;
 
 /** First version whose default lever is 0.72 m. */
 const LEVER_DEFAULT_CHANGED_IN = 2;
@@ -22,7 +39,10 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'training',
   language: 'et',
   speakGood: false,
-  speechRate: 1.1,
+  feedbackFrequency: 'every',
+  voice: { lang: 'en', rate: 1.1, pitch: 1, volume: 1 },
+  speechMuted: false,
+  autoRallyMute: false,
   leverRadiusM: 0.72,
   baselineResetAt: 0,
   experimentalM416: false,
@@ -95,7 +115,14 @@ export function resolveSettings(stored: Partial<Settings> | null): Settings {
         : DEFAULT_SETTINGS.language,
     speakGood:
       typeof stored.speakGood === 'boolean' ? stored.speakGood : DEFAULT_SETTINGS.speakGood,
-    speechRate: inRange(stored.speechRate, 0.5, 2) ?? DEFAULT_SETTINGS.speechRate,
+    feedbackFrequency: oneOf<FeedbackFrequency>(
+      stored.feedbackFrequency,
+      ['every', 'changes', 'every2', 'every3', 'off'],
+      DEFAULT_SETTINGS.feedbackFrequency,
+    ),
+    voice: migrateVoice(stored),
+    speechMuted: stored.speechMuted === true,
+    autoRallyMute: stored.autoRallyMute === true,
     leverRadiusM: inRange(migrateLeverRadius(stored), 0.5, 2) ?? DEFAULT_SETTINGS.leverRadiusM,
     baselineResetAt: inRange(stored.baselineResetAt, 0, Number.MAX_SAFE_INTEGER) ?? 0,
     experimentalM416: stored.experimentalM416 === true,
@@ -108,6 +135,27 @@ export function resolveSettings(stored: Partial<Settings> | null): Settings {
     ),
     level: oneOf(stored.level, ['beginner', 'intermediate', 'advanced'], DEFAULT_SETTINGS.level),
   };
+}
+
+/**
+ * The voice profile of stored settings. Before version 5 only `speechRate`
+ * existed: it becomes the profile's rate (language English, pitch and volume 1).
+ */
+export function migrateVoice(stored: Partial<Settings>): VoiceSettings {
+  const legacyRate: unknown = (stored as Record<string, unknown>)['speechRate'];
+  const value: unknown = stored.voice;
+  const raw: Partial<Record<keyof VoiceSettings, unknown>> =
+    typeof value === 'object' && value !== null ? value : {};
+  const d = DEFAULT_SETTINGS.voice;
+  const voice: VoiceSettings = {
+    lang: oneOf(raw.lang, ['en', 'et'], d.lang),
+    rate: inRange(raw.rate, 0.5, 2) ?? inRange(legacyRate, 0.5, 2) ?? d.rate,
+    pitch: inRange(raw.pitch, 0.5, 2) ?? d.pitch,
+    volume: inRange(raw.volume, 0, 1) ?? d.volume,
+  };
+  return typeof raw.voiceURI === 'string' && raw.voiceURI !== ''
+    ? { ...voice, voiceURI: raw.voiceURI }
+    : voice;
 }
 
 function inRange(value: unknown, min: number, max: number): number | null {

@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { CoachController } from './app/controller';
-import { SilentSpeaker, WebSpeechSpeaker } from './feedback/speech';
+import { SilentSpeaker, SpeechQueue } from './feedback/speech';
 import { BrowserScreenLock, NO_SCREEN_LOCK } from './feedback/wakeLock';
 import { IndexedDbRepository } from './storage/repository';
 import { App } from './ui/App';
@@ -14,7 +14,7 @@ async function bootstrap(): Promise<void> {
   const repository = await IndexedDbRepository.open();
   const speaker =
     'speechSynthesis' in globalThis
-      ? new WebSpeechSpeaker(globalThis.speechSynthesis)
+      ? new SpeechQueue(globalThis.speechSynthesis)
       : new SilentSpeaker();
   const screenLock = BrowserScreenLock.isSupported() ? new BrowserScreenLock() : NO_SCREEN_LOCK;
   const controller = new CoachController({ repository, speaker, screenLock });
