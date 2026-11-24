@@ -66,7 +66,9 @@ export function toCsv(strokes: readonly StrokeRecord[]): string {
  * Each stroke carries its `analysisVersion`, `analysisParams` and `calibration`
  * (when recorded; strokes saved by older app versions lack them), so a session
  * can be re-analysed exactly without the app's database. Format version 2 only
- * adds those optional stroke fields to version 1.
+ * adds those optional stroke fields to version 1. Captures received over
+ * protocol v2 carry further optional fields (see RawCapture); `gyroHr.data`
+ * is base64 like `samples`.
  */
 export function toJson(session: SessionInfo, strokes: readonly StrokeRecord[]): string {
   return JSON.stringify(
@@ -76,7 +78,14 @@ export function toJson(session: SessionInfo, strokes: readonly StrokeRecord[]): 
       session,
       strokes: strokes.map((s) => ({
         ...s,
-        capture: { ...s.capture, samples: int16ToBase64(s.capture.samples) },
+        capture: {
+          ...s.capture,
+          samples: int16ToBase64(s.capture.samples),
+          // v2 high-rate gyro section (optional), base64 like the samples.
+          ...(s.capture.gyroHr
+            ? { gyroHr: { ...s.capture.gyroHr, data: int16ToBase64(s.capture.gyroHr.data) } }
+            : {}),
+        },
       })),
     },
     null,

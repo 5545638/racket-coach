@@ -19,6 +19,8 @@ async function bootstrap(): Promise<void> {
   const screenLock = BrowserScreenLock.isSupported() ? new BrowserScreenLock() : NO_SCREEN_LOCK;
   const controller = new CoachController({ repository, speaker, screenLock });
   await controller.init();
+  // Bring-up hook (docs/bring-up.md): racketCoach.runBench(test, param) in the console.
+  Object.assign(globalThis, { racketCoach: controller });
 
   render(<App controller={controller} />, root);
 }

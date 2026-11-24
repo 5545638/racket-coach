@@ -1,7 +1,7 @@
 import type { UtteranceReason } from '../coach/coachEngine';
 import { CORRECTIONS } from '../coaching/corrections';
 import type { Language } from '../coaching/guidance';
-import type { StrokeType } from '../domain/types';
+import type { SensorDiagnostics, StrokeType } from '../domain/types';
 import type { NotAssessableReason } from '../elements/catalog';
 
 /** All on-screen text. Spoken cues stay English (see ADR 0004). */
@@ -136,6 +136,11 @@ export interface Strings {
     readonly resetBaseline: string;
     readonly resetConfirm: string;
     readonly resetDone: (date: string) => string;
+    readonly sensor: string;
+    readonly experimentalM416: string;
+    readonly experimentalM416Hint: string;
+    readonly diagnostics: string;
+    readonly diagnosticsLine: (d: SensorDiagnostics) => string;
   };
 }
 
@@ -299,6 +304,13 @@ const en: Strings = {
     resetConfirm:
       'Reset the personal baseline? Older strokes will no longer be used; saved data stays.',
     resetDone: (date) => `Last reset ${date}.`,
+    sensor: 'Sensor',
+    experimentalM416: 'Experimental: 416 Hz gyro around the stroke (M416)',
+    experimentalM416Hint:
+      'Needs firmware 0.2 or later. Not verified on hardware; the default is 104 Hz (M104).',
+    diagnostics: 'Diagnostics',
+    diagnosticsLine: (d) =>
+      `mode ${d.mode} · P ${d.payloadBytes} B · FIFO overruns ${d.fifoOverruns} · dropped strokes ${d.droppedCaptures} · errors ${d.errors} · free memory ${d.freeVars}`,
   },
 };
 
@@ -448,6 +460,13 @@ const et: Strings = {
     resetConfirm:
       'Lähtestada isiklik baas? Vanu lööke enam ei kasutata, salvestatud andmed jäävad alles.',
     resetDone: (date) => `Viimati lähtestatud ${date}.`,
+    sensor: 'Andur',
+    experimentalM416: 'Katseline: güroskoop 416 Hz löögi ümber (M416)',
+    experimentalM416Hint:
+      'Vajab püsivara 0.2 või uuemat. Riistvaral kontrollimata; vaikimisi on 104 Hz (M104).',
+    diagnostics: 'Diagnostika',
+    diagnosticsLine: (d) =>
+      `režiim ${d.mode} · P ${d.payloadBytes} B · FIFO ületäitumisi ${d.fifoOverruns} · kadunud lööke ${d.droppedCaptures} · vigu ${d.errors} · vaba mälu ${d.freeVars}`,
   },
 };
 
