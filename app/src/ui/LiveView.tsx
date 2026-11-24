@@ -168,10 +168,11 @@ export function LiveView({ controller }: { readonly controller: CoachController 
             </p>
           )}
         </div>
-        {(extras.fatigueBadge || extras.categoryLine) && (
+        {/* The per-element category line lives in Detailid: on the card it
+            reads like stroke counts ("Hindamata 8" after one stroke). */}
+        {extras.fatigueBadge && (
           <p class="badges">
-            {extras.fatigueBadge && <span class="badge fatigue">{extras.fatigueBadge}</span>}
-            {extras.categoryLine && <span class="note">{extras.categoryLine}</span>}
+            <span class="badge fatigue">{extras.fatigueBadge}</span>
           </p>
         )}
       </div>
@@ -230,6 +231,7 @@ export function LiveView({ controller }: { readonly controller: CoachController 
           {details.baselineNote && <p class="note">{details.baselineNote}</p>}
           {focus.comparedWith && <p class="note">{focus.comparedWith}</p>}
           {view.baselineProgress && <p class="note">{view.baselineProgress}</p>}
+          {extras.categoryLine && <p class="note">{extras.categoryLine}</p>}
           {m.faceTiltDeg !== null && groundstroke && <FaceGauge tiltDeg={m.faceTiltDeg} t={t} />}
           {details.groups.map((group) => (
             <div key={group.id}>
