@@ -32,3 +32,31 @@ describe('lever radius default and migration', () => {
     expect(resolveSettings({ ...current, leverRadiusM: 1.0 }).leverRadiusM).toBe(1.0);
   });
 });
+
+describe('settings version 3: baseline reset timestamp', () => {
+  it('migrates version 2 settings: no reset recorded, other values kept', () => {
+    const migrated = resolveSettings({
+      version: 2,
+      mode: 'rally',
+      language: 'en',
+      speakGood: true,
+      speechRate: 1.3,
+      leverRadiusM: 1.0,
+    });
+    expect(migrated.version).toBe(3);
+    expect(SETTINGS_VERSION).toBe(3);
+    expect(migrated.baselineResetAt).toBe(0);
+    expect(migrated.mode).toBe('rally');
+    // 1.0 m was chosen with version 2 (current default then): it must stick.
+    expect(migrated.leverRadiusM).toBe(1.0);
+  });
+
+  it('keeps a valid timestamp and discards a malformed one', () => {
+    expect(resolveSettings({ baselineResetAt: 1_700_000_000_000 }).baselineResetAt).toBe(
+      1_700_000_000_000,
+    );
+    expect(resolveSettings({ baselineResetAt: -5 }).baselineResetAt).toBe(0);
+    expect(resolveSettings({ baselineResetAt: 'x' as never }).baselineResetAt).toBe(0);
+    expect(DEFAULT_SETTINGS.baselineResetAt).toBe(0);
+  });
+});

@@ -162,6 +162,19 @@ forward start, anchor with its window statistics, attitude series).
 Implementation `app/src/metrics/features.ts`, tests
 `app/test/metrics/features.test.ts`.
 
+**Screens.** Live: the latest utterance is the headline (correction title in
+the UI language, English cue small; "Better", "That's it", "Good", or
+"Counted" with the reason when silent), then Why / Change / Drill for a
+correction, the focus of the stroke type with its confidence (p of the focus
+fault) and what it is compared with (your usual stroke, n; reference limits),
+baseline progress below 15 strokes, and the metrics in three groups with
+± σ, faults marked and not-assessable values greyed with the reason. G50 is
+shown as "Late acceleration (proxy)". Session: per stroke type the strokes
+counted, top corrections, "Better"/"That's it" counts and the engine's focus
+(`sessionCoachSummary`). Setup: the fixed pMin and the baseline counts, with
+"Reset personal baseline", which stores `baselineResetAt` (settings version 3);
+strokes received before it are no longer used for the baseline.
+
 **Evidence status.** Every definition and threshold in this section is an
 **engineering choice** (`DEFAULT_FEATURE_PARAMS`, `DEFAULT_UNCERTAINTY_PARAMS`).
 The only evidence behind them is agreement with the simulator, whose truth is

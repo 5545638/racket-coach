@@ -1,9 +1,9 @@
 import type { CoachController } from '../app/controller';
 import { toCsv, toJson } from '../app/export';
-import { guidanceFor } from '../coaching/guidance';
 import { buildSessionReport } from '../coaching/sessionReport';
 import { type Statistic, summarize } from '../coaching/summary';
-import { cueLabel, strings } from './strings';
+import { strings } from './strings';
+import { guidanceBlocks, sessionCoachSummary, titleFor } from './viewModel';
 
 /**
  * Hands a file to the user. Uses the share sheet where available (iOS web
@@ -41,7 +41,8 @@ export function SessionView({ controller }: { readonly controller: CoachControll
   const strokes = controller.strokes.value;
   const summaries = summarize(strokes);
   const report = buildSessionReport(strokes);
-  const focusGuidance = report.focus ? guidanceFor(report.focus.ruleId, language) : null;
+  const coach = sessionCoachSummary(strokes);
+  const focused = coach.filter((c) => c.focus !== null);
   const stamp = session ? new Date(session.startedAt).toISOString().slice(0, 16) : 'session';
 
   return (
@@ -54,37 +55,31 @@ export function SessionView({ controller }: { readonly controller: CoachControll
 
       <article class="card coach">
         <h3>{t.session.focusTitle}</h3>
-        {report.focus && focusGuidance ? (
-          <>
-            <p class="cue fix small">{cueLabel(t, report.focus.ruleId, report.focus.cue)}</p>
-            <p class="note">
-              {t.session.focusLine(
-                t.stroke[report.focus.strokeType],
-                report.focus.count,
-                report.byStroke.find((s) => s.strokeType === report.focus?.strokeType)?.rated ?? 0,
-              )}{' '}
-              ({percent(report.focus.share)})
-            </p>
-            <dl class="guidance">
-              <dt>{t.meaning}</dt>
-              <dd>{focusGuidance.meaning}</dd>
-              <dt>{t.fix}</dt>
-              <dd>{focusGuidance.fix}</dd>
-              {focusGuidance.drill && (
-                <>
-                  <dt>{t.drill}</dt>
-                  <dd>{focusGuidance.drill}</dd>
-                </>
-              )}
-            </dl>
-          </>
+        {focused.length > 0 ? (
+          focused.map((c) => {
+            const blocks = c.focus ? guidanceBlocks(c.focus, language) : null;
+            return (
+              <div key={c.strokeType}>
+                <h4>{t.stroke[c.strokeType]}</h4>
+                <p class="cue fix small">{c.focus ? titleFor(c.focus, language) : ''}</p>
+                {blocks && (
+                  <dl class="guidance">
+                    <dt>{t.live.change}</dt>
+                    <dd>{blocks.change}</dd>
+                    <dt>{t.live.drill}</dt>
+                    <dd>{blocks.drill}</dd>
+                  </dl>
+                )}
+              </div>
+            );
+          })
         ) : (
           <p class="hint">{t.session.noFocus}</p>
         )}
       </article>
 
       {summaries.map((s) => {
-        const faults = report.byStroke.find((r) => r.strokeType === s.strokeType)?.faults ?? [];
+        const own = coach.find((c) => c.strokeType === s.strokeType);
         return (
           <article key={s.strokeType} class="card">
             <h3>
@@ -107,26 +102,31 @@ export function SessionView({ controller }: { readonly controller: CoachControll
                 <dt>{t.metric.speed}</dt>
                 <dd>{stat(s.headSpeedMps, ' km/h', 3.6)}</dd>
               </div>
-              {s.looseWristShare !== null && (
-                <div class="metric">
-                  <dt>{t.wrist.looseShare}</dt>
-                  <dd>{percent(s.looseWristShare)}</dd>
-                </div>
-              )}
             </dl>
-            {faults.length > 0 && (
+            {own && (
               <>
+                <p class="pill-row">
+                  <span>{t.session.counted(own.counted)}</span>
+                  <span>{t.session.betterTimes(own.better)}</span>
+                  <span>{t.session.thatsItTimes(own.keepIt)}</span>
+                </p>
                 <h4>{t.session.corrections}</h4>
-                <ul class="faults">
-                  {faults.slice(0, 3).map((f) => (
-                    <li key={f.ruleId}>
-                      {cueLabel(t, f.ruleId, f.cue)}{' '}
-                      <span class="count">
-                        {f.count}× · {percent(f.share)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                {own.corrections.length > 0 ? (
+                  <ul class="faults corrections">
+                    {own.corrections.slice(0, 3).map((c) => (
+                      <li key={c.correctionId}>
+                        {titleFor(c.correctionId, language)} <span class="count">{c.count}×</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p class="hint">{t.session.noCorrections}</p>
+                )}
+                {own.focus && (
+                  <p class="note">
+                    {t.session.focusNow}: {titleFor(own.focus, language)}
+                  </p>
+                )}
               </>
             )}
           </article>

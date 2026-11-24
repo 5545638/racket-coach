@@ -342,4 +342,9 @@ export interface Settings {
    * scales with this lever; best used as a personal trend.
    */
   readonly leverRadiusM: number;
+  /**
+   * Time (ms since epoch) of the last "reset personal baseline"; strokes
+   * received before it no longer enter the personal baseline. 0 = never reset.
+   */
+  readonly baselineResetAt: number;
 }

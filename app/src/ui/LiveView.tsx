@@ -1,9 +1,7 @@
 import type { CoachController } from '../app/controller';
-import { guidanceFor } from '../coaching/guidance';
-import { wristHint } from '../coaching/wrist';
 import { FaceGauge } from './FaceGauge';
-import { TARGETS, deg, dps, kmh, ms } from './format';
-import { cueLabel, strings } from './strings';
+import { strings } from './strings';
+import { type MetricRow, liveViewModel } from './viewModel';
 
 export function LiveView({ controller }: { readonly controller: CoachController }) {
   const language = controller.settings.value.language;
@@ -20,11 +18,19 @@ export function LiveView({ controller }: { readonly controller: CoachController 
   }
 
   const m = stroke.metrics;
-  // Target bands and the face gauge describe topspin/flat drives only.
+  const view = liveViewModel({
+    metrics: m,
+    assessment: controller.assessment.value,
+    utterance: controller.utterance.value,
+    cue: stroke.cue,
+    focus: controller.focus.value[m.strokeType],
+    baselineCount: controller.baselineCounts.value[m.strokeType],
+    baselineLoading: controller.baselineLoading.value,
+    language,
+  });
+  const { headline, blocks, focus } = view;
+  // The face gauge describes topspin/flat drives only.
   const groundstroke = m.strokeType !== 'overhead' && m.swingStyle !== 'slice';
-  const guidance = guidanceFor(stroke.cue.ruleId, language);
-  const hint = wristHint(m);
-  const target = (band: string): string | null => (groundstroke ? `${t.target} ${band}` : null);
 
   return (
     <section class="live">
@@ -36,77 +42,75 @@ export function LiveView({ controller }: { readonly controller: CoachController 
         </span>
         <span class="count">#{count}</span>
       </p>
-      <p class={`cue ${stroke.cue.severity}`} aria-live="polite">
-        {cueLabel(t, stroke.cue.ruleId, stroke.cue.text)}
-      </p>
 
-      {guidance && (
+      <p class={`cue ${headline.tone}`} aria-live="polite" aria-atomic="true">
+        {headline.title}
+      </p>
+      {headline.spoken && headline.spoken !== headline.title && (
+        <p class="spoken">
+          {t.live.voice}: „{headline.spoken}“
+        </p>
+      )}
+      {headline.detail && <p class="detail">{headline.detail}</p>}
+
+      {blocks && (
         <dl class="guidance">
-          <dt>{t.meaning}</dt>
-          <dd>{guidance.meaning}</dd>
-          {guidance.fix && (
+          <dt>{t.live.why}</dt>
+          <dd>{blocks.why}</dd>
+          {blocks.change && (
             <>
-              <dt>{t.fix}</dt>
-              <dd>{guidance.fix}</dd>
+              <dt>{t.live.change}</dt>
+              <dd>{blocks.change}</dd>
+            </>
+          )}
+          {blocks.drill && (
+            <>
+              <dt>{t.live.drill}</dt>
+              <dd>{blocks.drill}</dd>
             </>
           )}
         </dl>
       )}
 
+      <div class="focus">
+        <p class="focus-line">
+          <span class="focus-label">{t.live.focus}</span>
+          {focus.title ?? t.live.noFocus}
+          {focus.statusText && <span class="note"> · {focus.statusText}</span>}
+        </p>
+        {focus.confidencePercent !== null && (
+          <p class="note">{t.live.confidence(focus.confidencePercent)}</p>
+        )}
+        {focus.comparedWith && <p class="note">{focus.comparedWith}</p>}
+        {view.baselineProgress && <p class="note">{view.baselineProgress}</p>}
+      </div>
+
       {m.faceTiltDeg !== null && groundstroke && <FaceGauge tiltDeg={m.faceTiltDeg} t={t} />}
-      {!m.impactDetected && <p class="note">{t.noContact}</p>}
 
-      <h3>{t.group.preparation}</h3>
-      <dl class="metrics">
-        <Metric label={t.metric.preparationTime} value={ms(m.preparationTimeMs, false)} />
-        <Metric label={t.metric.backswing} value={deg(m.backswingArcDeg)} />
-        <Metric label={t.metric.racketDrop} value={deg(m.racketDropDeg)} />
-        <Metric label={t.metric.faceAtDrop} value={deg(m.faceAtDropDeg)} />
-        <Metric label={t.metric.pause} value={ms(m.backswingPauseMs, false)} />
-        <Metric label={t.metric.forwardSwing} value={deg(m.forwardSwingArcDeg)} />
-      </dl>
-
-      <h3>{t.group.contact}</h3>
-      <dl class="metrics">
-        <Metric label={t.metric.speed} value={kmh(m.headSpeedMps, m.quality.gyroSaturated)} />
-        <Metric label={t.metric.face} value={deg(m.faceTiltDeg)} note={target(TARGETS.face)} />
-        <Metric label={t.metric.path} value={deg(m.swingPathDeg)} note={target(TARGETS.path)} />
-        <Metric
-          label={t.metric.peakSpeed}
-          value={ms(m.peakSpeedOffsetMs)}
-          note={`${t.target} ${TARGETS.timing}`}
-        />
-      </dl>
-
-      <h3>{t.group.wrist}</h3>
-      <p class={`wrist ${hint ?? 'unknown'}`}>
-        {hint === 'loose' ? t.wrist.loose : hint === 'stiff' ? t.wrist.stiff : t.wrist.unknown}
-      </p>
-      <dl class="metrics">
-        <Metric label={t.metric.whip} value={ms(m.peakAccelerationOffsetMs)} />
-        <Metric label={t.metric.faceClosing} value={dps(m.faceClosingRateDps)} />
-      </dl>
-      <p class="note">{t.wrist.disclaimer}</p>
-
-      <h3>{t.group.finish}</h3>
-      <dl class="metrics">
-        <Metric label={t.metric.followThrough} value={deg(m.followThroughArcDeg)} />
-      </dl>
+      {view.groups.map((group) => (
+        <div key={group.id}>
+          <h3>{group.title}</h3>
+          <dl class="metrics">
+            {group.rows.map((row) => (
+              <Metric key={row.id} row={row} />
+            ))}
+          </dl>
+        </div>
+      ))}
     </section>
   );
 }
 
-function Metric(props: {
-  readonly label: string;
-  readonly value: string;
-  readonly note?: string | null;
-}) {
+function Metric({ row }: { readonly row: MetricRow }) {
   return (
-    <div class="metric">
-      <dt>{props.label}</dt>
+    <div
+      class={`metric ${row.status}`}
+      title={row.status === 'not-assessable' ? (row.note ?? undefined) : undefined}
+    >
+      <dt>{row.label}</dt>
       <dd>
-        {props.value}
-        {props.note && <span class="target">{props.note}</span>}
+        {row.value}
+        {row.note && <span class="target">{row.note}</span>}
       </dd>
     </div>
   );

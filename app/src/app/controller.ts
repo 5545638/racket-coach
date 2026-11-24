@@ -291,13 +291,30 @@ export class CoachController {
       await this.safely('Loading baseline', async () => {
         const recent = await this.deps.repository.recentStrokes(BASELINE_LOAD_LIMIT);
         if (generation !== this.baselineGeneration) return;
+        // Strokes from before "reset personal baseline" no longer count.
+        const since = this.settings.value.baselineResetAt;
+        const counts = (r: StrokeRecord): boolean => r.capture.receivedAt >= since;
         const current = this.strokes.value;
         const ids = new Set(current.map((r) => r.id));
-        this.baseline.value = buildBaseline([...recent.filter((r) => !ids.has(r.id)), ...current]);
+        this.baseline.value = buildBaseline(
+          [...recent.filter((r) => !ids.has(r.id)), ...current].filter(counts),
+        );
       });
     } finally {
       if (generation === this.baselineGeneration) this.baselineLoading.value = false;
     }
+  }
+
+  /**
+   * Forgets the personal baseline: clears it now and, via a stored timestamp,
+   * ignores every stroke received before this moment when the baseline is
+   * rebuilt at the next session start. Stored strokes themselves stay.
+   */
+  async resetBaseline(): Promise<void> {
+    this.baselineGeneration++; // a load still in flight must not bring the old strokes back
+    this.baselineLoading.value = false;
+    this.baseline.value = EMPTY_BASELINE;
+    await this.updateSettings({ baselineResetAt: this.now() });
   }
 
   async updateSettings(patch: Partial<Settings>): Promise<void> {

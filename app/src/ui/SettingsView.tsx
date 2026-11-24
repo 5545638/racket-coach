@@ -1,4 +1,6 @@
 import type { CoachController } from '../app/controller';
+import { DEFAULT_ASSESS_CONFIG } from '../elements/assess';
+import { DEFAULT_BASELINE_CONFIG } from '../coach/baseline';
 import { strings } from './strings';
 
 export function SettingsView({ controller }: { readonly controller: CoachController }) {
@@ -122,6 +124,37 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
         />
       </label>
       <p class="hint">{t.setup.leverHint}</p>
+
+      <h2>{t.setup.engine}</h2>
+      <p class="hint">{t.setup.confidenceInfo(Math.round(DEFAULT_ASSESS_CONFIG.pMin * 100))}</p>
+      <h3>{t.setup.baseline}</h3>
+      <p class="hint">{t.setup.baselineInfo(DEFAULT_BASELINE_CONFIG.minStrokes)}</p>
+      <ul class="baseline-counts">
+        {(['forehand', 'backhand', 'overhead'] as const).map((type) => (
+          <li key={type}>
+            {controller.baselineLoading.value
+              ? `${t.stroke[type]}: ${t.setup.baselineLoading}`
+              : t.setup.baselineCount(
+                  t.stroke[type],
+                  controller.baselineCounts.value[type],
+                  DEFAULT_BASELINE_CONFIG.minStrokes,
+                )}
+          </li>
+        ))}
+      </ul>
+      <div class="actions">
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm(t.setup.resetConfirm)) void controller.resetBaseline();
+          }}
+        >
+          {t.setup.resetBaseline}
+        </button>
+      </div>
+      {settings.baselineResetAt > 0 && (
+        <p class="hint">{t.setup.resetDone(new Date(settings.baselineResetAt).toLocaleString())}</p>
+      )}
 
       {status && (
         <p class="hint">

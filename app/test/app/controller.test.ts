@@ -112,6 +112,25 @@ describe('CoachController end-to-end with the simulated sensor', () => {
     );
   });
 
+  it('resets the personal baseline and ignores older strokes from then on', async () => {
+    const repository = new InMemoryRepository();
+    for (let i = 0; i < 20; i++) {
+      await repository.saveStroke(earlierStroke(`old-${String(i)}`, i));
+    }
+    const { controller } = await setup(repository);
+    expect(controller.baselineCounts.value.forehand).toBe(20);
+
+    await controller.resetBaseline();
+    expect(controller.baselineCounts.value.forehand).toBe(0);
+    expect(controller.baseline.value.entries).toEqual({});
+    expect(controller.settings.value.baselineResetAt).toBe(1_700_000_000_000);
+    expect(repository.settings?.baselineResetAt).toBe(1_700_000_000_000);
+
+    // The next session does not bring the old strokes back.
+    await controller.startSession();
+    expect(controller.baselineCounts.value.forehand).toBe(0);
+  });
+
   it('stores version, parameters and calibration so a stroke can be re-analysed exactly', async () => {
     const { controller, repository, transport } = await setup();
     await controller.capturePose('faceUp');
