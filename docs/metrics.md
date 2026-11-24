@@ -1,7 +1,9 @@
 # Metrics
 
-Implementation: `app/src/metrics/analyzeSwing.ts`. Verified against the forward
-model in `app/src/simulation/swingModel.ts` (`app/test/metrics`).
+Implementation: `app/src/metrics/analyzeSwing.ts` (metrics), with the shared
+pipeline steps in `kinematics.ts`, the coaching features in `features.ts` and
+their uncertainty in `uncertainty.ts`. Verified against the forward model in
+`app/src/simulation/swingModel.ts` (`app/test/metrics`).
 
 ## Frames
 
@@ -149,6 +151,108 @@ marked "No reading", not spoken, and left out of the good-share statistic.
 A swing without detected ball contact (shadow swing or miss) is **not rated**
 ("Counted"): its metrics describe the moment of peak racket speed, not a hit,
 and every threshold comes from studies of real contacts.
+
+## Coaching features
+
+`StrokeMetrics.features` (analysis version 3 and later; optional because older
+records lack it). Pure functions of the intermediate `SwingKinematics`
+(`app/src/metrics/kinematics.ts`: racket-frame signals, contact reference,
+forward start, anchor with its window statistics, attitude series).
+Implementation `app/src/metrics/features.ts`, tests
+`app/test/metrics/features.test.ts`.
+
+**Evidence status.** Every definition and threshold in this section is an
+**engineering choice** (`DEFAULT_FEATURE_PARAMS`, `DEFAULT_UNCERTAINTY_PARAMS`).
+The only evidence behind them is agreement with the simulator, whose truth is
+built from the same idealised rigid-lever model; none has been validated on
+recorded strokes or video, and none has a literature reference value yet. They
+are measurement building blocks for later coaching rules, not rules.
+
+Notation: t_c contact time (impact sample − ½, or the peak sample without an
+impact), t_c⁻ the last pre-impact sample, ω⊥ = hypot(ωy, ωz), θ tip
+elevation, φ hitting-face normal elevation, γ swing path. Times in ms.
+
+### Phase timeline (`features.phases`)
+
+Times are ms from the first capture sample.
+
+| Event | Definition | Null when |
+| --- | --- | --- |
+| `readyEndMs` | First sample after the last ≥ 0.3 s standstill (‖ω‖ < 0.5 rad/s) before the forward swing (same as the preparation start) | no such standstill in the capture |
+| `forwardStartMs` | Start of the active phase (ω⊥ > 15 % of peak) | — |
+| `contactMs`, `contactSample` | t_c, and the sample t_c⁻ that kinematics are read from | — |
+| `followEndMs` | First sample after contact with ω⊥ < 0.3 · ω⊥(t_c⁻) | the capture ends first |
+| `recoveryEndMs` | Start of the first run of ≥ 0.2 s with ‖ω‖ < 0.5 rad/s after the follow-through end | the capture ends first |
+
+### Features
+
+| Feature | Definition | Null when |
+| --- | --- | --- |
+| `takebackTurnDeg` | \|∫ (q ω)·ẑ dt\| from `readyEnd` (or the anchor sample) to forward start: rotation about the world vertical | no usable attitude |
+| `takebackTimeMs` | t_c − readyEnd (equals `preparationTimeMs`) | no ready position |
+| `takebackTipDeg`, `takebackFaceDeg` | θ and φ at forward start | no usable attitude |
+| `lateGainFraction` | G50 = 1 − ω⊥(t_c − 50 ms) / ω⊥(t_c⁻), ω⊥ interpolated linearly. Positive = still accelerating into contact; negative = slowing down | no impact, or gyro clipped in the forward swing |
+| `forwardSwingMs` | t_c − forward start | — |
+| `hitchCount` | Local minima of ω⊥ in [forward start, t_c⁻] more than 15 % below the running maximum. Hysteresis: after a counted dip ω⊥ must climb back by the same margin before another counts, so noise on one dip's floor is not counted twice | — |
+| `contactStabilityDps` | Mean over the 3 pre-impact samples of \|dφ/dt\| + \|ωx\|, deg/s | contact angles withheld |
+| `brushAngleDeg` | γ − φ at contact | contact angles withheld |
+| `brakingTimeMs` | follow-through end − t_c | no follow-through end |
+| `finishTipDeg` | θ at the follow-through end | no follow-through end or no usable attitude |
+| `recoveryMs` | recovery end − t_c | no recovery end |
+
+"Usable attitude" at an event: an anchor exists and at most
+`maxSaturatedSamples` (6) gyro samples clipped between the anchor and that
+event. This is per event, so take-back angles of a serve stay available when
+clipping near contact withholds the contact angles. Contact angles themselves
+keep the existing rule (`attitudeReliable`).
+
+### Serve features (`features.serve`, overheads only)
+
+| Feature | Definition |
+| --- | --- |
+| `dropTipDeg`, `dropToContactMs` | Lowest θ in [readyEnd (or anchor), t_c⁻] (the back-scratch), and t_c minus its sample |
+| `trophyTipDeg` | θ at the slowest sample (min ‖ω‖) in the 0.8 s before the drop. The window starts no earlier than `readyEnd`, otherwise the ready position's standstill would always win (engineering choice) |
+| `rollPeakDps`, `rollPeakOffsetMs` | ωx of largest magnitude within t_c ± 50 ms (signed: the sign tells pronation from supination for a given grip) and its time relative to t_c |
+| `rollAngleDeg` | ∫ ωx dt over [t_c, t_c + 100 ms] (piecewise-linear interpolant); null when the capture ends sooner |
+| `rollSaturated` | Any clipped gyro sample in [t_c − 50 ms, t_c + 100 ms]: roll peak and angle are then lower bounds |
+| `contactTipDeg`, `contactTipReliable` | θ at t_c from the classification attitude; given even when the displayed angles are withheld for clipping, with `contactTipReliable = false` and σ null |
+
+The window t_c ± 50 ms includes post-impact samples, so an off-centre hit's
+roll jolt (the simulator's assumed 9 rad/s at the impact sample) adds to the
+roll peak and angle. The serve test switches the jolt off to isolate
+pronation; real data must show how large the jolt is.
+
+### Uncertainty (`features.sigma`)
+
+`app/src/metrics/uncertainty.ts`. 1-σ per feature, degrees for angles, ms for
+times, m/s for head speed. Null means not assessable: the feature is
+unavailable, or more than `maxSaturatedSamples` gyro samples clipped between
+the anchor and the event. Terms are combined as a root-sum-square.
+
+| Term | Model | Basis |
+| --- | --- | --- |
+| Anchor σ_anchor | max(σ_noise, √(2 e_g)/3) rad. σ_noise = mean per-axis std of the window / √N (g ≈ rad). e_g = \|‖ā‖ − 1 g\|: a steady perpendicular acceleration a_p gives e_g ≈ a_p²/2 and a tilt ≈ a_p ≈ √(2 e_g); that bound is treated as 3σ | geometry (exact); the 3σ reading is an engineering choice |
+| Drift σ_drift | b · Δt, b = 1 deg/s residual gyro bias (calibration residual + temperature), Δt from anchor to event | engineering assumption, to be measured |
+| Contact timing | \|dx/dt\| · T_s/√12 · ½ for angles at contact (rate by finite difference of the two pre-impact samples; ½ because the half-sample extrapolation removes part of the quantisation error). 0 without an impact (the reference is the peak sample itself) | uniform quantisation (exact); the ½ is an engineering choice |
+| Timing features | T_s/√12 ≈ 2.8 ms at 104 Hz | uniform quantisation |
+| Model | swing path + 3° (hand translation the lever model cannot see: ≈ 6–7° at 3 m/s of hand speed in simulation, `simulatorRealism.test.ts`); head speed 15 % relative (lever and centre of rotation unknown) | engineering choices |
+
+Combinations: brush angle = RSS of face and path σ (treats them as
+independent, which overestimates the shared anchor tilt). Take-back turn = RSS
+of b · (interval length) and σ_anchor · (rotation path of the interval), since
+a tilt δ mixes at most δ of every horizontal rotation into the vertical
+component. Head speed and `peakSpeedOffsetMs` σ are null when the gyro clipped
+in the forward swing.
+
+Checked in simulation: σ grows with the anchor's gravity error and with the
+time since the anchor; with a steady 0.2 g sideways push during the ready
+position the face error stays below 3σ. Not yet checked: whether the σ match
+the scatter of real repeated strokes.
+
+Known gap: the contact extrapolation is linear, so an angle at an extremum at
+contact is biased and its σ (from the rate) does not cover it. For the
+simulated serve the tip is at the top of its arc at contact and `contactTipDeg`
+(like `tipElevationDeg`) reads ≈ 3° high at 28 rad/s.
 
 ## Coaching thresholds
 

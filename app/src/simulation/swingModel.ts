@@ -51,6 +51,27 @@ export interface SwingSpec {
   readonly backswingLeadS: number;
   /** Peak roll rate about the racket long axis around contact, rad/s (forearm pronation). */
   readonly rollRateRadPerS: number;
+  /** Time of the roll-rate peak relative to contact, s (serves pronate mostly after contact). */
+  readonly rollPeakOffsetS: number;
+  /** Width (σ) of the roll-rate Gaussian, s. */
+  readonly rollSigmaS: number;
+  /**
+   * A hitch in the forward swing: the rate is multiplied by
+   * 1 − depth · exp(−½((t − t_c − at)/width)²). Depth 0 disables it.
+   */
+  readonly hitchDepth: number;
+  readonly hitchAtS: number;
+  readonly hitchWidthS: number;
+  /**
+   * Take-back turn about the world vertical, deg: the racket starts at heading
+   * −turn and turns (smoothly, quintic smoothstep) to its contact heading
+   * between `takebackTurnStartS` and `takebackTurnStartS + takebackTurnDurationS`
+   * (relative to contact). A vertical rotation changes no elevation. 0 disables it.
+   * Hand translation (`centreVelocityMps`) is ignored in its acceleration terms.
+   */
+  readonly takebackTurnDeg: number;
+  readonly takebackTurnStartS: number;
+  readonly takebackTurnDurationS: number;
   /**
    * Offset of the centre of rotation from the racket axis, world frame, m.
    * Non-zero violates the rigid-lever assumption the analysis makes (ADR 0003).
@@ -106,6 +127,14 @@ export const DEFAULT_SWING: SwingSpec = {
   backswingRateRadPerS: 0,
   backswingLeadS: 0.45,
   rollRateRadPerS: 0,
+  rollPeakOffsetS: 0,
+  rollSigmaS: 0.1,
+  hitchDepth: 0,
+  hitchAtS: -0.1,
+  hitchWidthS: 0.015,
+  takebackTurnDeg: 0,
+  takebackTurnStartS: -1,
+  takebackTurnDurationS: 0.5,
   centreOffsetM: [0, 0, 0],
   centreVelocityMps: [0, 0, 0],
   withImpact: true,
@@ -115,6 +144,28 @@ export const DEFAULT_SWING: SwingSpec = {
   impactRollKickRadPerS: 0,
   noiseStd: { accelG: 0, gyroDps: 0 },
   seed: 1,
+};
+
+/**
+ * A serve-like overhead (use with a capture that has ≥ 1 s before contact):
+ * tip 70° up at contact, a fast forward swing whose ≈ 250° arc before contact
+ * takes the tip down behind the back (back-scratch, tip ≈ −70°), a reversed
+ * take-back that stops at a "trophy" pause, and forearm pronation (long-axis
+ * roll) peaking 20 ms after contact. A kinematic sketch for testing the
+ * serve features, not a measured serve.
+ */
+export const SERVE_SWING: Partial<SwingSpec> = {
+  tipElevationDeg: 70,
+  swingPathDeg: 0,
+  faceTiltDeg: 0,
+  peakRateRadPerS: 30,
+  riseSigmaS: 0.12,
+  fallSigmaS: 0.16,
+  backswingRateRadPerS: 5,
+  backswingLeadS: 0.6,
+  rollRateRadPerS: 20,
+  rollPeakOffsetS: 0.02,
+  rollSigmaS: 0.06,
 };
 
 /**
@@ -171,6 +222,22 @@ export interface SwingTruth {
   readonly faceAtDropDeg: number;
   /** Rate at which the hitting face closes at contact, deg/s. */
   readonly faceClosingRateDps: number;
+  /** Noise-free per-sample truth (index = sample). */
+  readonly series: TruthSeries;
+  /** True roll about the long axis between two times (s), deg. */
+  readonly rollAngleDeg: (fromS: number, toS: number) => number;
+}
+
+/** Per-sample ground truth of the simulated swing, without noise, bias or impact jolt. */
+export interface TruthSeries {
+  /** Tip (long-axis) elevation, deg. */
+  readonly tipDeg: readonly number[];
+  /** Hitting-face normal elevation, deg. */
+  readonly faceDeg: readonly number[];
+  /** Angular rate in the racket frame, rad/s. */
+  readonly omegaRacket: readonly Vec3[];
+  /** Vertical (world z) component of the angular rate, rad/s. */
+  readonly omegaWorldZ: readonly number[];
 }
 
 const UP: Vec3 = [0, 0, 1];
@@ -231,9 +298,17 @@ export function simulateSwing(
   const retained = (t: number): number =>
     spec.withImpact && t > tContact ? spec.impactRateRetention : 1;
   const sigma = (t: number): number => (t < tPeak ? spec.riseSigmaS : spec.fallSigmaS);
-  const forward = (t: number): number =>
+  const base = (t: number): number =>
     retained(t) * spec.peakRateRadPerS * Math.exp(-0.5 * ((t - tPeak) / sigma(t)) ** 2);
-  const forwardDot = (t: number): number => (-forward(t) * (t - tPeak)) / sigma(t) ** 2;
+  const baseDot = (t: number): number => (-base(t) * (t - tPeak)) / sigma(t) ** 2;
+  // Optional hitch: a multiplicative dip (factor 1 and slope 0 when disabled).
+  const tHitch = tContact + spec.hitchAtS;
+  const dipShape = (t: number): number =>
+    spec.hitchDepth * Math.exp(-0.5 * ((t - tHitch) / spec.hitchWidthS) ** 2);
+  const dip = (t: number): number => 1 - dipShape(t);
+  const dipDot = (t: number): number => (dipShape(t) * (t - tHitch)) / spec.hitchWidthS ** 2;
+  const forward = (t: number): number => base(t) * dip(t);
+  const forwardDot = (t: number): number => baseDot(t) * dip(t) + base(t) * dipDot(t);
   const back = (t: number): number =>
     -spec.backswingRateRadPerS * Math.exp(-0.5 * ((t - tBack) / backSigma) ** 2);
   const rate = (t: number): number => forward(t) + back(t);
@@ -243,8 +318,10 @@ export function simulateSwing(
     spec.peakRateRadPerS > 0 ? f / spec.peakRateRadPerS : 0;
   const centreVelocity = (t: number): Vec3 => scale(spec.centreVelocityMps, handShare(forward(t)));
   const centreAccel = (t: number): Vec3 => scale(spec.centreVelocityMps, handShare(forwardDot(t)));
+  const tRoll = tContact + spec.rollPeakOffsetS;
   const rollRate = (t: number): number =>
-    spec.rollRateRadPerS * Math.exp(-0.5 * ((t - tContact) / 0.1) ** 2);
+    spec.rollRateRadPerS * Math.exp(-0.5 * ((t - tRoll) / spec.rollSigmaS) ** 2);
+  const turn = takebackTurn(spec, tContact);
 
   // θ(t) and roll φ(t), relative to contact, by fine trapezoidal integration.
   const integrate = (f: (t: number) => number): Float64Array => {
@@ -276,17 +353,31 @@ export function simulateSwing(
   let racketDropDeg = Number.POSITIVE_INFINITY;
   let faceAtDropDeg = 0;
   const hitNormalRacket: Vec3 = spec.hittingFace === 'forehand' ? [0, 0, 1] : [0, 0, -1];
+  const tipSeries: number[] = [];
+  const faceSeries: number[] = [];
+  const omegaSeries: Vec3[] = [];
+  const omegaZSeries: number[] = [];
 
   for (let i = 0; i < n; i++) {
     const t = i / fs;
     // Attitude: swing rotation about `axis`, then roll about the racket's own long axis.
     const swingRot = fromAxisAngle(axis, theta[i] ?? 0);
     const rollRot = fromAxisAngle([1, 0, 0], roll[i] ?? 0);
+    const heading = turn(t);
+    const turnRot = fromAxisAngle(UP, heading.angle);
+    // Without the take-back turn; the turn itself is applied below.
     const toRacket = (vWorld: Vec3): Vec3 =>
       rotate(
         conjugate(rollRot),
         mulVec(contactRacketFromWorld, rotate(conjugate(swingRot), vWorld)),
       );
+    const tipWorld = rotate(swingRot, xContact);
+    tipSeries.push(elevationDeg(tipWorld));
+    faceSeries.push(
+      elevationDeg(
+        rotate(swingRot, mulVec(worldFromRacketAtContact, rotate(rollRot, hitNormalRacket))),
+      ),
+    );
 
     if (i < contactIndex) {
       const tip = elevationDeg(rotate(swingRot, xContact));
@@ -305,8 +396,27 @@ export function simulateSwing(
       centreAccel(t),
       add(scale(cross(axis, r), rateDot(t)), scale(cross(axis, cross(axis, r)), w * w)),
     );
-    let specificForce = toRacket(add(accelWorld, [0, 0, STANDARD_GRAVITY]));
-    const omega = add(toRacket(scale(axis, w)), [rollRate(t), 0, 0]);
+    // A turn ψ about the vertical (through the centre at contact) rotates the
+    // whole motion: p = Rz(ψ) s gives p'' = Rz(ψ)(s'' + 2ψ̇ ẑ×s' + ψ̈ ẑ×s + ψ̇² ẑ×(ẑ×s)).
+    // Rz(ψ) itself leaves gravity unchanged and cancels in the racket frame.
+    const sDot = add(scale(cross(axis, r), w), centreVelocity(t));
+    const turnAccel = add(
+      add(scale(cross(UP, sDot), 2 * heading.rate), scale(cross(UP, r), heading.accel)),
+      scale(cross(UP, cross(UP, r)), heading.rate * heading.rate),
+    );
+    let specificForce = toRacket(add(add(accelWorld, turnAccel), [0, 0, STANDARD_GRAVITY]));
+    // World vertical in the frame without the turn is still ẑ.
+    const omega = add(
+      add(toRacket(scale(axis, w)), [rollRate(t), 0, 0]),
+      toRacket(scale(UP, heading.rate)),
+    );
+    omegaSeries.push(omega);
+    omegaZSeries.push(
+      rotate(
+        turnRot,
+        add(scale(axis, w), add(scale(tipWorld, rollRate(t)), scale(UP, heading.rate))),
+      )[2],
+    );
 
     if (spec.withImpact && (i === contactIndex || i === contactIndex + 1)) {
       // Ball impact: a large, brief push along the hitting-face normal.
@@ -365,7 +475,44 @@ export function simulateSwing(
       racketDropDeg,
       faceAtDropDeg,
       faceClosingRateDps,
+      series: {
+        tipDeg: tipSeries,
+        faceDeg: faceSeries,
+        omegaRacket: omegaSeries,
+        omegaWorldZ: omegaZSeries,
+      },
+      rollAngleDeg: (fromS, toS) => integrateFine(rollRate, fromS, toS, 400) * RAD_TO_DEG,
     },
+  };
+}
+
+/** Heading angle ψ (rad) of the take-back turn and its first two derivatives. */
+interface Heading {
+  readonly angle: number;
+  readonly rate: number;
+  readonly accel: number;
+}
+
+/**
+ * Take-back turn about the vertical: ψ goes from −turn to 0 along a quintic
+ * smoothstep (continuous rate and acceleration), then stays at 0.
+ */
+function takebackTurn(spec: SwingSpec, tContact: number): (t: number) => Heading {
+  const total = spec.takebackTurnDeg * DEG_TO_RAD;
+  const t0 = tContact + spec.takebackTurnStartS;
+  const d = spec.takebackTurnDurationS;
+  return (t) => {
+    if (total === 0) return { angle: 0, rate: 0, accel: 0 };
+    const u = Math.max(0, Math.min(1, (t - t0) / d));
+    const inside = u > 0 && u < 1;
+    const smooth = u * u * u * (10 - 15 * u + 6 * u * u);
+    const smoothDot = inside ? 30 * u * u * (1 - u) * (1 - u) : 0;
+    const smoothDdot = inside ? 60 * u * (1 - u) * (1 - 2 * u) : 0;
+    return {
+      angle: -total * (1 - smooth),
+      rate: (total * smoothDot) / d,
+      accel: (total * smoothDdot) / (d * d),
+    };
   };
 }
 

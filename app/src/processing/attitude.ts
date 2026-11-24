@@ -51,6 +51,10 @@ export interface AttitudeAnchor {
   readonly gravity: Vec3;
   /** |‖gravity‖ − g|, in g. */
   readonly errorG: number;
+  /** Population standard deviation of each specific-force axis over the window, g. */
+  readonly accelStdG: Vec3;
+  /** Number of samples in the window. */
+  readonly samples: number;
 }
 
 /**
@@ -115,13 +119,13 @@ function quietWindow(
     imu.sampleRateHz,
   );
   const gravity = meanVec(local);
-  const stdG = axisStd(local, gravity).map((s) => s / STANDARD_GRAVITY);
+  const stdG = scale(axisStd(local, gravity), 1 / STANDARD_GRAVITY);
   if (stdG.some((s) => s > criteria.maxAccelStdG)) return null;
   const driftG = halfDrift(local).map((d) => Math.abs(d) / STANDARD_GRAVITY);
   if (driftG.some((d) => d > criteria.maxAccelDriftG)) return null;
   const errorG = Math.abs(norm(gravity) / STANDARD_GRAVITY - 1);
   if (errorG > criteria.maxGravityErrorG) return null;
-  return { index: end, start, gravity, errorG };
+  return { index: end, start, gravity, errorG, accelStdG: stdG, samples: end - start + 1 };
 }
 
 /**
