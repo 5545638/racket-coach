@@ -53,16 +53,17 @@ function feedbackKeyOf(text: string): string | null {
 }
 
 /** The Estonian text of a stroke utterance, or null when any part is missing. */
-function estonian(utterance: Utterance, speech: string): string | null {
+function estonian(utterance: Utterance, _speech: string): string | null {
   const id = utterance.correctionId;
   switch (utterance.kind) {
     case 'correction': {
       if (id === undefined) return null;
       const cue = spokenEt(id)?.variants[utterance.level ?? 0] ?? null;
       if (cue === null) return null;
-      // Learning mode: the English explanation follows the cue; in Estonian
-      // the on-screen adjustment text is said instead.
-      if (speech !== utterance.spoken) return `${cue}. ${CORRECTIONS.et[id].adjustment}`;
+      // Learning mode adds an English explanation sentence (≤ 12 words). The
+      // Estonian on-screen adjustment texts are longer than the gap between
+      // two balls, so in Estonian only the cue is spoken; the explanation
+      // stays on screen.
       return cue;
     }
     case 'keep-it':
