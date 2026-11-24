@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { CoachController } from '../../src/app/controller';
 import { ANALYSIS_VERSION } from '../../src/metrics/version';
 import { analyzeCapture } from '../../src/app/pipeline';
+import { INITIAL_COACH_STATE, coachStep, focusByStroke } from '../../src/coach/coachEngine';
+import { EMPTY_BASELINE } from '../../src/coach/baseline';
+import { assessStroke } from '../../src/elements/assess';
 import { DEFAULT_RULES } from '../../src/coaching/defaultRules';
 import { SilentSpeaker } from '../../src/feedback/speech';
 import { SimulatedTransport } from '../../src/transport/simulatedTransport';
@@ -43,13 +46,17 @@ class ManualTimers {
   }
 }
 
-async function setup(repository = new InMemoryRepository(), timers = new ManualTimers()) {
+async function setup(
+  repository = new InMemoryRepository(),
+  timers = new ManualTimers(),
+  now: () => number = () => 1_700_000_000_000,
+) {
   const speaker = new SilentSpeaker();
   let id = 0;
   const controller = new CoachController({
     repository,
     speaker,
-    now: () => 1_700_000_000_000,
+    now,
     newId: () => `id-${++id}`,
     sleep: () => Promise.resolve(),
     setTimer: timers.set,
@@ -246,6 +253,84 @@ describe('CoachController end-to-end with the simulated sensor', () => {
     };
     controller.checkMatchBreak();
     expect(speaker.spoken).toEqual(['Face too open']);
+  });
+
+  // H3 review fix: a session left open over a long gap made the fatigue
+  // detector and the coach compare strokes across hours.
+  it('starts a new session after more than 30 minutes without a stroke; stored data stays', async () => {
+    let t = 1_700_000_000_000;
+    const repository = new InMemoryRepository();
+    const { controller, transport } = await setup(repository, new ManualTimers(), () => t);
+    await controller.capturePose('faceUp');
+    await controller.capturePose('tipUp');
+    transport.emitSwing();
+    transport.emitSwing();
+    const first = controller.session.value?.id;
+    t += 29 * 60_000;
+    transport.emitSwing();
+    expect(controller.session.value?.id).toBe(first);
+    t += 31 * 60_000;
+    transport.emitSwing();
+    await new Promise((r) => setTimeout(r, 0));
+    const second = controller.session.value?.id;
+    expect(second).not.toBe(first);
+    expect(controller.strokes.value).toHaveLength(1);
+    expect(controller.strokes.value[0]?.sessionId).toBe(second);
+    // Nothing stored is lost: both sessions and all four strokes.
+    expect(repository.sessions.size).toBe(2);
+    expect(repository.strokes).toHaveLength(4);
+    expect(repository.strokes.filter((r) => r.sessionId === first)).toHaveLength(3);
+    expect(controller.fatigue.value.sessionStart).toBe(t);
+  });
+
+  it('starts a new session when the sensor reconnects after more than 30 minutes', async () => {
+    let t = 1_700_000_000_000;
+    const { controller, transport } = await setup(
+      new InMemoryRepository(),
+      new ManualTimers(),
+      () => t,
+    );
+    await controller.capturePose('faceUp');
+    await controller.capturePose('tipUp');
+    transport.emitSwing();
+    const first = controller.session.value?.id;
+    t += 31 * 60_000;
+    transport.simulateLinkLoss();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(controller.connection.value).toBe('connected');
+    expect(controller.session.value?.id).not.toBe(first);
+    expect(controller.strokes.value).toHaveLength(0);
+  });
+
+  // Review fix: disconnecting left the match timer running and speech queued.
+  it('disconnecting stops the match timer and drops queued speech', async () => {
+    const timers = new ManualTimers();
+    const { controller, speaker, transport } = await setup(new InMemoryRepository(), timers);
+    await controller.capturePose('faceUp');
+    await controller.capturePose('tipUp');
+    await controller.updateSettings({ mode: 'match' });
+    transport.emitSwing();
+    expect(timers.live()).toHaveLength(1);
+    await controller.disconnect();
+    expect(timers.live()).toHaveLength(0);
+    expect(speaker.cancelled).toBeGreaterThan(0);
+  });
+
+  // M1 regression: a focus (and its ladder) survived a mode change.
+  it('forgets every focus when the coaching mode changes', async () => {
+    const { controller } = await setup();
+    const flat = { ...GOOD_FOREHAND_V3, swingPathDeg: 0 };
+    controller.coachState.value = coachStep(
+      INITIAL_COACH_STATE,
+      assessStroke(flat, EMPTY_BASELINE),
+    ).state;
+    expect(controller.focus.value.forehand).toBe('path-flat');
+    await controller.updateSettings({ mode: 'learning' });
+    expect(focusByStroke(controller.coachState.value)).toEqual({
+      forehand: null,
+      backhand: null,
+      overhead: null,
+    });
   });
 
   it('rebuilds the baseline when the playing hand changes', async () => {

@@ -15,7 +15,10 @@ export interface PlanConfig {
   readonly ballsPerSet: number;
   /** Maintenance item: sets × balls. */
   readonly maintenanceSets: number;
-  /** Success: fault rate below max(this floor, current rate × `targetFactor`), rounded up to 5 %. */
+  /**
+   * Success: fault rate below max(this floor, latest-session rate ×
+   * `targetFactor`), rounded up to 5 %.
+   */
   readonly targetFloor: number;
   readonly targetFactor: number;
   /** Maintenance: an element counts as improved when its fault rate fell by at least this. */
@@ -85,12 +88,15 @@ export function targetRate(current: number, config: PlanConfig = DEFAULT_PLAN_CO
 
 const TREND_ORDER: Readonly<Record<Trend, number>> = { worsening: 0, stable: 1, improving: 2 };
 
-/** Worsening first, then highest weight × fault rate; ties by correction id. */
+/** Fault rate of the latest session (sessions with enough judged strokes), else the window rate. */
+export const latestRate = (w: Weakness): number => w.sessionRates.at(-1) ?? w.faultRate;
+
+/** Worsening first, then highest weight × latest-session fault rate; ties by correction id. */
 export function rankWeaknesses(weaknesses: readonly Weakness[]): Weakness[] {
   return [...weaknesses].sort(
     (a, b) =>
       TREND_ORDER[a.trend] - TREND_ORDER[b.trend] ||
-      b.weight * b.faultRate - a.weight * a.faultRate ||
+      b.weight * latestRate(b) - a.weight * latestRate(a) ||
       a.correctionId.localeCompare(b.correctionId),
   );
 }
@@ -150,15 +156,19 @@ export function buildPlan(
       trend,
     };
   };
-  const chosen = rankWeaknesses(profile.weaknesses).slice(0, config.maxWeaknesses);
+  // Targets start from the latest session; a weakness already under its
+  // target there needs no plan item.
+  const chosen = rankWeaknesses(profile.weaknesses)
+    .filter((w) => latestRate(w) >= targetRate(latestRate(w), config))
+    .slice(0, config.maxWeaknesses);
   const items: PlanItem[] = chosen.map((w) =>
     item(
       'weakness',
       w.correctionId,
-      w.faultRate,
+      latestRate(w),
       w.trend,
       config.sets,
-      targetRate(w.faultRate, config),
+      targetRate(latestRate(w), config),
     ),
   );
   const improved = bestImproved(

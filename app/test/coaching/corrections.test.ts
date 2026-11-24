@@ -101,6 +101,10 @@ describe('correction catalogue', () => {
       consistency: 'Same swing every time',
       fatigue: 'Take a short break',
       stuck: 'Try the drill',
+      nowTooOpen: 'Now too open',
+      nowTooClosed: 'Now too closed',
+      nowTooFlat: 'Now too flat',
+      nowTooSteep: 'Now too steep',
     });
   });
 
@@ -138,9 +142,40 @@ describe('correction catalogue', () => {
         expect(words(v), `${id}/variant${i}`).toBeLessThanOrEqual(5);
       });
       expect(words(c.reinforce), `${id}/reinforce`).toBeLessThanOrEqual(6);
-      expect(words(c.learningSpoken), `${id}/learning`).toBeLessThanOrEqual(14);
+      // H4: the learning sentence is spoken between strokes, so at most 12 words.
+      expect(words(c.learningSpoken), `${id}/learning`).toBeLessThanOrEqual(12);
       expect(c.learningSpoken, id).toMatch(/[.]$/);
     }
+  });
+
+  // M5: the sensor sees the racket only; it cannot know where the ball went or how it felt.
+  it('reinforces with racket descriptions, never ball outcomes or feelings', () => {
+    const outcome = /\b(ball|net|in|out|felt|feel|floating)\b/i;
+    for (const id of ids) expect(CORRECTIONS.en[id].reinforce, id).not.toMatch(outcome);
+  });
+
+  it('names a short drill (≤ 3 words) for every correction', () => {
+    for (const lang of LANGS) {
+      for (const id of ids) {
+        const short = CORRECTIONS[lang][id].drillShort ?? '';
+        expect(short.trim().length, `${lang}/${id}`).toBeGreaterThan(0);
+        expect(short.trim().split(/\s+/).length, `${lang}/${id}`).toBeLessThanOrEqual(3);
+        expect(short, id).toBe(CORRECTIONS.en[id].drillShort);
+      }
+    }
+  });
+
+  // M6 / LOW: variants that contradicted a paired cue or were unclear.
+  it('words paired and unclear cues so they do not pull against each other', () => {
+    const v = (id: CorrectionId) => CORRECTIONS.en[id].spokenVariants;
+    expect(v('unstable-contact')[1]).toBe('Smooth through the ball');
+    expect(v('serve-no-drop')).not.toContain('Scratch your back');
+    expect(CORRECTIONS.en['serve-no-drop'].drill).not.toMatch(/pause/i);
+    expect(CORRECTIONS.et['serve-no-drop'].drill).not.toMatch(/peatu/i);
+    expect(v('high-takeback')[1]).toBe('Lower take-back');
+    expect(CORRECTIONS.en['small-turn'].spoken).toBe('Turn more');
+    expect(v('serve-hitch')).not.toContain('Say one, two');
+    expect(v('serve-no-pronation')).not.toContain('Strings face away after');
   });
 
   it('starts reinforcement with Good or Yes', () => {

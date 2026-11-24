@@ -4,7 +4,9 @@ import {
   cueVariant,
   feedbackPhrase,
   learningSentence,
+  overcorrectedPhrase,
   reinforcePhrase,
+  stuckPhrase,
 } from '../../src/coach/phrases';
 import type { CorrectionId } from '../../src/coaching/corrections';
 import type { PhraseLevel, StrokeMetrics } from '../../src/domain/types';
@@ -20,8 +22,6 @@ import { type StrokeRow, baselineFrom, play, rows } from './harness';
 const cue = (id: CorrectionId, level: PhraseLevel = 0): string => cueVariant(id, level);
 const SAY = {
   better: feedbackPhrase('better'),
-  stuck: feedbackPhrase('stuck'),
-  less: feedbackPhrase('overcorrected'),
   same: feedbackPhrase('consistency'),
   rest: feedbackPhrase('fatigue'),
 };
@@ -44,7 +44,7 @@ describe('scenario: early acceleration ladder', () => {
       line('peak −100 ms', cue(id, 1)),
       line('peak −100 ms', cue(id, 1)),
       line('peak −100 ms', cue(id, 2)),
-      line('peak −100 ms', SAY.stuck),
+      line('peak −100 ms', stuckPhrase(id)),
       line('peak −100 ms', '—'),
       line('peak −100 ms', '—'),
       line('peak −100 ms', cue(id, 0)),
@@ -53,13 +53,17 @@ describe('scenario: early acceleration ladder', () => {
       line('peak −100 ms', cue(id, 1)),
     ]);
     expect(cue(id, 0)).toBe('Accelerate through contact');
+    // The drill is named when it has a short name.
+    expect(stuckPhrase(id)).toBe('Try the whoosh drill');
     // Every stroke is one technical error.
     for (const p of run.played) expect(p.step.categories.counts['technical-error']).toBe(1);
   });
 });
 
 describe('scenario: improvement', () => {
-  it('"Better", then the reinforce phrase, then the focus is cleared', () => {
+  // Changed with H2: the reinforce phrase needs two strokes inside the band
+  // (one could be luck), so it moved from the first to the second fixed stroke.
+  it('"Better", then the reinforce phrase on the second fixed stroke, then the focus is cleared', () => {
     const run = play([
       { label: 'peak −100 ms', metrics: early(-100) },
       { label: 'peak −60 ms', metrics: early(-60) },
@@ -70,8 +74,8 @@ describe('scenario: improvement', () => {
     expect(run.table).toEqual([
       line('peak −100 ms', cue('accelerated-early')),
       line('peak −60 ms', SAY.better),
-      line('peak 0 ms', reinforcePhrase('accelerated-early')),
       line('peak 0 ms', '—'),
+      line('peak 0 ms', reinforcePhrase('accelerated-early')),
       line('peak 0 ms', '—'),
     ]);
     expect(run.played[1]?.step.categories.byElement['accelerated-early']).toBe('improvement');
@@ -79,24 +83,164 @@ describe('scenario: improvement', () => {
     expect(focusByStroke(run.state).forehand).toBeNull();
   });
 
-  it('keeps the variant that worked after "Better"', () => {
+  // Changed with H1: "Better" no longer resets the ladder (only the reinforce
+  // phrase does), and it is said at most once per 3 strokes.
+  it('"Better" does not reset the ladder and comes at most once per 3 strokes', () => {
     const id = 'accelerated-early';
     const run = play([
       ...rows(3, 'peak −200 ms', early(-200)),
-      { label: 'peak −150 ms', metrics: early(-150) },
-      ...rows(3, 'peak −150 ms', early(-150)),
+      ...rows(4, 'peak −150 ms', early(-150)),
     ]);
     expect(run.table).toEqual([
       line('peak −200 ms', cue(id, 0)),
       line('peak −200 ms', cue(id, 0)),
       line('peak −200 ms', cue(id, 1)),
       line('peak −150 ms', SAY.better),
-      // The ladder restarts from variant 1, the one that earned the "Better".
-      line('peak −150 ms', cue(id, 1)),
+      // Still better than the median, but "Better" was just said: the ladder goes on.
       line('peak −150 ms', cue(id, 1)),
       line('peak −150 ms', cue(id, 2)),
+      // The median has caught up: no improvement any more, and the ladder has run out.
+      line('peak −150 ms', stuckPhrase(id)),
     ]);
     expect(run.played[3]?.step.utterance.level).toBe(1);
+  });
+
+  it('the reinforce phrase resets the ladder to the variant that worked', () => {
+    const id = 'path-flat';
+    const run = play([
+      ...rows(3, 'path 0°', path(0)),
+      ...rows(2, 'path 25°', path(25)),
+      ...rows(2, 'path 0°', path(0)),
+    ]);
+    expect(run.table).toEqual([
+      line('path 0°', cue(id, 0)),
+      line('path 0°', cue(id, 0)),
+      line('path 0°', cue(id, 1)),
+      line('path 25°', '—'),
+      line('path 25°', reinforcePhrase(id)),
+      line('path 0°', cue(id, 1)),
+      line('path 0°', cue(id, 1)),
+    ]);
+  });
+});
+
+/** Deterministic N(mean, sd) samples (Box–Muller on a small LCG). */
+function normals(n: number, mean: number, sd: number, seed = 7): number[] {
+  let x = seed;
+  const uniform = (): number => {
+    x = (x * 1_103_515_245 + 12_345) % 2_147_483_648;
+    return (x + 1) / 2_147_483_649;
+  };
+  return Array.from(
+    { length: n },
+    () => mean + sd * Math.sqrt(-2 * Math.log(uniform())) * Math.cos(2 * Math.PI * uniform()),
+  );
+}
+
+const spokenShare = (said: readonly string[]): number =>
+  said.filter((s) => s !== '—').length / said.length;
+
+describe('scenario: the ladder ends on a noisy or alternating player (H1)', () => {
+  it('a noisy player (path ~ N(2°, 5°), limit 12°) is not talked to on every stroke', () => {
+    const paths = normals(60, 2, 5);
+    const run = play(paths.map((p) => ({ label: `path ${p.toFixed(0)}°`, metrics: path(p) })));
+    const said = run.played.map((p) => p.said);
+    // Before: 59 of 60 strokes were spoken ("Better" against the previous
+    // stroke, praise for one lucky stroke, both resetting the ladder).
+    expect(spokenShare(said.slice(10))).toBeLessThanOrEqual(1 / 3);
+    expect(said).toContain(stuckPhrase('path-flat'));
+    // "Better" at most once per 3 strokes.
+    const betters = said.flatMap((s, i) => (s === SAY.better ? [i] : []));
+    for (let i = 1; i < betters.length; i++) {
+      expect((betters[i] ?? 0) - (betters[i - 1] ?? 0)).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('alternating fault / ok does not get a cue or praise forever', () => {
+    const run = play(
+      Array.from({ length: 60 }, (_, i) =>
+        i % 2 === 0
+          ? { label: 'path 0°', metrics: path(0) }
+          : { label: 'path 25°', metrics: path(25) },
+      ),
+    );
+    const said = run.played.map((p) => p.said);
+    expect(spokenShare(said.slice(10))).toBeLessThanOrEqual(1 / 3);
+    // One stroke inside the band is not "fixed": no praise.
+    expect(said).not.toContain(reinforcePhrase('path-flat'));
+  });
+});
+
+describe('scenario: praise only inside the band (H2)', () => {
+  it('no reinforce phrase while the focus is outside the band but not a sure fault', () => {
+    // path 11°: d = 1°, p ≈ 0.62 < pMin: no fault, but not fixed either ('uncertain').
+    const run = play([
+      { label: 'path 0°', metrics: path(0) },
+      { label: 'path 11°', metrics: path(11) },
+      { label: 'path 11°', metrics: path(11) },
+    ]);
+    expect(run.table).toEqual([
+      line('path 0°', cue('path-flat')),
+      line('path 11°', '—'),
+      line('path 11°', '—'),
+    ]);
+    expect(run.played[1]?.step.categories.byElement['path-flat']).toBe('uncertain');
+  });
+});
+
+describe('scenario: no praise for a cue never heard (M1)', () => {
+  it('a focus found in match mode gets no reinforce phrase in training', () => {
+    const match = play([{ label: 'path 0°', metrics: path(0) }], { mode: 'match' });
+    const run = play(rows(2, 'path 25°', path(25)), { state: match.state });
+    expect(run.table).toEqual([line('path 25°', '—'), line('path 25°', '—')]);
+  });
+});
+
+describe('scenario: slice and drive are coached separately (M3)', () => {
+  it('a slice chop does not block the path cue of the next drives', () => {
+    const chop: StrokeMetrics = {
+      ...GOOD_FOREHAND_V3,
+      swingStyle: 'slice',
+      faceTiltDeg: 10,
+      swingPathDeg: -50,
+    };
+    const run = play([
+      { label: 'slice, path −50°', metrics: chop },
+      ...rows(4, 'drive, path 0°', path(0)),
+    ]);
+    expect(run.table.slice(0, 2)).toEqual([
+      line('slice, path −50°', cue('slice-chop')),
+      line('drive, path 0°', cue('path-flat')),
+    ]);
+  });
+});
+
+describe('scenario: the drill is named when it is suggested', () => {
+  it('"Try the brush-up drill" for a flat swing path', () => {
+    const run = play(rows(6, 'path 0°', path(0)));
+    expect(run.table.at(-1)).toBe(line('path 0°', 'Try the brush-up drill'));
+  });
+});
+
+describe("scenario: the profile's best cue variant starts the ladder", () => {
+  it('starts at the variant that earned the most "Better"s', () => {
+    const run = play(rows(3, 'path 0°', path(0)), { preferredLevels: { 'path-flat': 1 } });
+    expect(run.table).toEqual([
+      line('path 0°', cue('path-flat', 1)),
+      line('path 0°', cue('path-flat', 1)),
+      line('path 0°', cue('path-flat', 2)),
+    ]);
+  });
+});
+
+describe('scenario: a break restarts the "Better" reference', () => {
+  it('no "Better" against a stroke from before a 4-minute break', () => {
+    const run = play([
+      { label: 'path −30°', metrics: path(-30), at: 0 },
+      { label: 'path −30°', metrics: path(-30), at: 5_000 },
+      { label: 'after break, path −20°', metrics: path(-20), at: 5_000 + 4 * 60_000 },
+    ]);
+    expect(run.table.at(-1)).toBe(line('after break, path −20°', cue('path-flat', 1)));
   });
 });
 
@@ -145,59 +289,62 @@ describe('scenario: uncertain stroke', () => {
 
 describe('scenario: fatigue onset in a long session', () => {
   const fresh = GOOD_FOREHAND_V3;
+  // −12.5 % head speed, +14 % forward swing, and sloppier: face open, short finish.
   const tired: StrokeMetrics = {
     ...GOOD_FOREHAND_V3,
-    headSpeedMps: 21, // −12.5 %
-    features: { ...GOOD_FEATURES, forwardSwingMs: 200 }, // +14 %
+    headSpeedMps: 21,
+    faceTiltDeg: 8,
+    followThroughArcDeg: 30,
+    features: { ...GOOD_FEATURES, forwardSwingMs: 200 },
   };
-  const tiredFaulty: StrokeMetrics = { ...tired, faceTiltDeg: 8 };
 
+  // Changed with H3: fatigue now needs the faults as well as the speed drop
+  // and 15 minutes of play, so the tired strokes carry faults (coached
+  // normally until the detector fires) and come every 30 s.
   it('says "Take a short break" once, freezes the focus and tags faults', () => {
     const sequence: StrokeRow[] = [
-      ...rows(34, 'fresh', fresh, 0, 20_000),
-      ...rows(6, 'slower', tired, 34, 20_000),
-      ...rows(6, 'slower + face open', tiredFaulty, 40, 20_000),
+      ...rows(34, 'fresh', fresh, 0, 30_000),
+      ...rows(12, 'tired', tired, 34, 30_000),
     ];
     const run = play(sequence, { detectFatigue: true });
-    const tail = run.table.slice(33);
-    expect(tail).toEqual([
-      line('fresh', '—'),
-      line('slower', '—'),
-      line('slower', '—'),
-      line('slower', '—'),
-      line('slower', '—'),
-      line('slower', '—'),
-      // 40 rated strokes, last-10 median speed −12.5 %, forward swing +14 %.
-      line('slower', SAY.rest),
-      line('slower + face open', '—'),
-      line('slower + face open', '—'),
-      line('slower + face open', '—'),
-      line('slower + face open', '—'),
-      line('slower + face open', '—'),
-      line('slower + face open', '—'),
-    ]);
+    // The 6th tired stroke moves the median of the last 10.
+    expect(run.table[39]).toBe(line('tired', SAY.rest));
+    expect(run.table.slice(40)).toEqual(Array.from({ length: 6 }, () => line('tired', '—')));
     expect(run.played.filter((p) => p.said === SAY.rest)).toHaveLength(1);
-    // No new focus while tired; the face faults are fatigue-related.
-    expect(focusByStroke(run.state).forehand).toBeNull();
     const last = run.played.at(-1)?.step;
     expect(last?.categories.byElement['face-open']).toBe('fatigue-related');
     expect(last?.utterance.reason).toBe('fatigue-hold');
 
     // After a 3-minute break the detector clears and coaching resumes.
     const after = play(
-      [{ label: 'after break, face open', metrics: face(8), at: 46 * 20_000 + 180_000 }],
-      {
-        detectFatigue: true,
-        state: run.state,
-        fatigue: run.fatigue,
-      },
+      [{ label: 'after break, face open', metrics: face(8), at: 45 * 30_000 + 180_000 }],
+      { detectFatigue: true, state: run.state, fatigue: run.fatigue },
     );
-    expect(after.table).toEqual([line('after break, face open', cue('face-open'))]);
+    expect(after.played[0]?.step.utterance.reason).not.toBe('fatigue-hold');
+    expect(after.played[0]?.step.categories.byElement['face-open']).toBe('technical-error');
+  });
+
+  // H3 regression: before, coaching stayed frozen for as long as the flag did.
+  it('freezes coaching for at most 20 strokes, then coaches normally while still flagged', () => {
+    const run = play(
+      [...rows(34, 'fresh', fresh, 0, 30_000), ...rows(40, 'tired', tired, 34, 30_000)],
+      { detectFatigue: true },
+    );
+    const reasons = run.played.map((p) => p.step.utterance.reason);
+    const held = reasons.filter((r) => r === 'fatigue' || r === 'fatigue-hold');
+    expect(held).toHaveLength(20);
+    expect(reasons.slice(39, 59).every((r) => r === 'fatigue' || r === 'fatigue-hold')).toBe(true);
+    expect(run.fatigue.byType.forehand.active).toBe(true);
+    expect(reasons[59]).not.toBe('fatigue-hold');
+    // Coaching is back: something about the focus is said again.
+    expect(run.played.slice(59).some((p) => p.said !== '—')).toBe(true);
   });
 });
 
 describe('scenario: overcorrection', () => {
-  it('face open → face closed: "A little less", and the focus stays until the third', () => {
+  // Changed with M2: the overcorrection phrase names the new fault and is
+  // said once per episode; then the opposite gets its own cue.
+  it('face open → face closed: "Now too closed" once, then "Face too closed"', () => {
     const run = play([
       { label: 'face +8°', metrics: face(8) },
       { label: 'face −40°', metrics: face(-40) },
@@ -206,22 +353,40 @@ describe('scenario: overcorrection', () => {
     ]);
     expect(run.table).toEqual([
       line('face +8°', cue('face-open')),
-      line('face −40°', SAY.less),
-      line('face −40°', SAY.less),
-      // Third opposite fault in a row: the focus switches, but "Face too
-      // closed" would contradict "Face too open" said 3 strokes ago.
-      line('face −40°', SAY.less),
+      line('face −40°', 'Now too closed'),
+      line('face −40°', cue('face-closed')),
+      line('face −40°', cue('face-closed')),
     ]);
     expect(run.played[1]?.step.utterance).toMatchObject({
       kind: 'overcorrected',
       correctionId: 'face-open',
       reason: 'overcorrected',
     });
-    expect(run.played[3]?.step.utterance.reason).toBe('contradiction');
+    expect(run.played[2]?.step.utterance.reason).toBe('focus-replaced');
     expect(focusByStroke(run.state).forehand).toBe('face-closed');
   });
 
-  it('never contradicts a cue of the last 5 strokes', () => {
+  it('a switch the player did not hear about: the phrase once, then the cue', () => {
+    const run = play(
+      [
+        { label: 'path 0°', metrics: path(0) },
+        { label: 'path 70°', metrics: path(70) },
+        { label: 'path 70°', metrics: path(70) },
+      ],
+      { config: { oppositeStreakToSwitch: 1 } },
+    );
+    expect(run.table).toEqual([
+      line('path 0°', cue('path-flat')),
+      line('path 70°', overcorrectedPhrase('path-steep')),
+      line('path 70°', cue('path-steep')),
+    ]);
+    expect(overcorrectedPhrase('path-steep')).toBe('Now too steep');
+    expect(run.played[1]?.step.utterance.reason).toBe('contradiction');
+  });
+
+  // M2 regression: before, a fixed and cleared focus still blocked its opposite
+  // for 5 strokes with "A little less".
+  it('after a focus was fixed and cleared, a new opposite fault gets its own cue', () => {
     const run = play([
       { label: 'path 0°', metrics: path(0) },
       ...rows(3, 'path 25°', path(25)),
@@ -229,16 +394,13 @@ describe('scenario: overcorrection', () => {
     ]);
     expect(run.table).toEqual([
       line('path 0°', cue('path-flat')),
-      line('path 25°', reinforcePhrase('path-flat')),
       line('path 25°', '—'),
+      line('path 25°', reinforcePhrase('path-flat')),
       // Third ok stroke: path-flat cleared.
       line('path 25°', '—'),
-      // New focus path-steep, but "Swing low to high" was said 4 strokes ago.
-      line('path 70°', SAY.less),
-      // Still within 5 strokes of it (strokes 1–5 before this one).
-      line('path 70°', SAY.less),
-      // The window (the previous 5 strokes) is clear: the steep cue may be said.
       line('path 70°', cue('path-steep')),
+      line('path 70°', cue('path-steep')),
+      line('path 70°', cue('path-steep', 1)),
     ]);
   });
 });
@@ -254,13 +416,26 @@ describe('scenario: oscillation', () => {
     ]);
     expect(run.table).toEqual([
       line('face +8°', cue('face-open')),
-      line('face −40°', SAY.less),
+      line('face −40°', overcorrectedPhrase('face-closed')),
       line('face +8°', cue('face-open')),
       line('face −40°', SAY.same),
       // At most once per 10 strokes: silent, and still neither cue.
       line('face +8°', '—'),
     ]);
     expect(run.played[4]?.step.utterance.reason).toBe('oscillation');
+  });
+
+  // Regression: the oscillation branch dropped decide()'s bookkeeping, so the
+  // switch to the opposite (its phrase already heard) never happened.
+  it('keeps the focus bookkeeping while it says "Same swing every time"', () => {
+    const run = play([
+      { label: 'face +8°', metrics: face(8) },
+      { label: 'face −40°', metrics: face(-40) },
+      { label: 'face +8°', metrics: face(8) },
+      { label: 'face −40°', metrics: face(-40) },
+    ]);
+    expect(run.table.at(-1)).toBe(line('face −40°', SAY.same));
+    expect(focusByStroke(run.state).forehand).toBe('face-closed');
   });
 });
 
@@ -327,6 +502,92 @@ describe('scenario: learning mode', () => {
       line('path 0°', `${cue('path-flat')}. ${learningSentence('path-flat')}`),
     ]);
     expect(run.played[0]?.step.utterance.spoken).toBe(cue('path-flat'));
+  });
+
+  // H4 regression: before, every correction in learning mode carried the sentence.
+  it('explains only the first cue of a focus, once per correction per session', () => {
+    const run = play(
+      [
+        ...rows(3, 'path 0°', path(0), 0, 8_000),
+        ...rows(3, 'path 25°', path(25), 3, 8_000),
+        ...rows(2, 'path 0°', path(0), 6, 8_000),
+        // Another lane, another correction: its own explanation.
+        { label: 'backhand face +8°', metrics: { ...face(8), strokeType: 'backhand' }, at: 64_000 },
+      ],
+      { mode: 'learning' },
+    );
+    expect(run.table).toEqual([
+      line('path 0°', `${cue('path-flat')}. ${learningSentence('path-flat')}`),
+      line('path 0°', cue('path-flat')),
+      line('path 0°', cue('path-flat', 1)),
+      line('path 25°', '—'),
+      line('path 25°', reinforcePhrase('path-flat')),
+      line('path 25°', '—'),
+      // A new focus of the same correction: already explained this session.
+      line('path 0°', cue('path-flat')),
+      line('path 0°', cue('path-flat')),
+      line('backhand face +8°', `${cue('face-open')}. ${learningSentence('face-open')}`),
+    ]);
+  });
+
+  it('keeps to the short cue when the strokes come fast (gap < 6 s)', () => {
+    const run = play(
+      [
+        { label: 'good', metrics: GOOD_FOREHAND_V3, at: 0 },
+        { label: 'path 0°', metrics: path(0), at: 3_000 },
+        { label: 'path 0°', metrics: path(0), at: 11_000 },
+      ],
+      { mode: 'learning' },
+    );
+    expect(run.table).toEqual([
+      line('good', '—'),
+      line('path 0°', cue('path-flat')),
+      // Not the first cue of the focus any more.
+      line('path 0°', cue('path-flat')),
+    ]);
+  });
+});
+
+describe('scenario: soft contradictions (M6)', () => {
+  const style = (i: number): StrokeMetrics => ({
+    ...GOOD_FOREHAND_V3,
+    features: {
+      ...GOOD_FEATURES,
+      lateGainFraction: 0.28 + (i % 5) * 0.01,
+      contactStabilityDps: 190 + (i % 5) * 5,
+    },
+  });
+  const baseline = baselineFrom(Array.from({ length: 30 }, (_, i) => style(i)));
+  const stiff: StrokeMetrics = {
+    ...GOOD_FOREHAND_V3,
+    features: { ...GOOD_FEATURES, lateGainFraction: 0.05 },
+  };
+  const unstable: StrokeMetrics = {
+    ...GOOD_FOREHAND_V3,
+    features: { ...GOOD_FEATURES, contactStabilityDps: 900 },
+  };
+
+  it('no "steady" cue within 5 strokes of "Loosen the wrist", unless it is the focus', () => {
+    const run = play(
+      [
+        { label: 'late gain 5 %', metrics: stiff },
+        ...rows(3, 'usual', style(2)),
+        ...rows(3, 'unstable', unstable),
+      ],
+      { baseline },
+    );
+    expect(run.table).toEqual([
+      line('late gain 5 %', 'Loosen the wrist'),
+      line('usual', '—'),
+      line('usual', reinforcePhrase('stiff-arm')),
+      line('usual', '—'),
+      // "Steady through contact" could pull against "Loosen the wrist" said
+      // within the previous 5 strokes.
+      line('unstable', '—'),
+      line('unstable', '—'),
+      line('unstable', cue('unstable-contact')),
+    ]);
+    expect(run.played[4]?.step.utterance.reason).toBe('soft-conflict');
   });
 });
 

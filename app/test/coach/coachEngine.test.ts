@@ -13,7 +13,7 @@ import {
   oppositeOf,
   phraseLevelOf,
 } from '../../src/coach/coachEngine';
-import { cueVariant, feedbackPhrase, reinforcePhrase } from '../../src/coach/phrases';
+import { cueVariant, reinforcePhrase, stuckPhrase } from '../../src/coach/phrases';
 import type { StrokeMetrics } from '../../src/domain/types';
 import { type StrokeAssessment, assessStroke } from '../../src/elements/assess';
 import { DEFAULT_ANALYSIS_PARAMS, analyzeSwing } from '../../src/metrics/analyzeSwing';
@@ -55,7 +55,7 @@ describe('coach engine', () => {
       flatCue(1),
       flatCue(1),
       flatCue(2),
-      feedbackPhrase('stuck'),
+      stuckPhrase('path-flat'),
       '',
       '',
       flatCue(0),
@@ -76,11 +76,23 @@ describe('coach engine', () => {
     expect(focusByStroke(state).forehand).toBe('path-flat');
   });
 
-  it('still pauses a phrase said three times in a row ("Better")', () => {
-    // Each stroke improves by more than the noise: "Better" ×3, then 2 silent.
+  // Changed with H1: "Better" now comes at most once per 3 strokes, so it can
+  // no longer run three times in a row; the repeat limit is shown with "Good".
+  it('still pauses a phrase said three times in a row ("Good")', () => {
+    const { said } = session(repeat(6, GOOD_FOREHAND_V3), { config: { speakGood: true } });
+    expect(said.map((u) => u.spoken)).toEqual(['Good', 'Good', 'Good', '', '', 'Good']);
+    expect(said[3]).toMatchObject({ kind: 'silent', reason: 'repeat-pause' });
+  });
+
+  it('says "Better" at most once per 3 strokes, even when every stroke improves', () => {
     const { said } = session([path(-30), path(-24), path(-18), path(-12), path(-6)]);
-    expect(said.slice(1, 4).map((u) => u.kind)).toEqual(['better', 'better', 'better']);
-    expect(said[4]).toMatchObject({ kind: 'silent', reason: 'repeat-pause' });
+    expect(said.map((u) => u.kind)).toEqual([
+      'correction',
+      'better',
+      'correction',
+      'correction',
+      'better',
+    ]);
   });
 
   it('says "Better" after a clear improvement of the focus fault', () => {
@@ -95,10 +107,11 @@ describe('coach engine', () => {
     expect(said[1]).toMatchObject({ kind: 'correction', reason: 'focus-persists' });
   });
 
-  it('says "That\'s it" when the fault is gone and clears the focus after three ok strokes', () => {
+  // Changed with H2: praise needs two strokes inside the band in a row.
+  it('says "That\'s it" when the fault is gone twice and clears the focus after three ok strokes', () => {
     const { said, state } = session([path(0), path(25), path(25)]);
-    expect(said[1]).toMatchObject({ kind: 'keep-it', spoken: reinforcePhrase('path-flat') });
-    expect(said[2]).toMatchObject({ kind: 'good', spoken: '' });
+    expect(said[1]).toMatchObject({ kind: 'good', spoken: '' });
+    expect(said[2]).toMatchObject({ kind: 'keep-it', spoken: reinforcePhrase('path-flat') });
     expect(focusByStroke(state).forehand).toBe('path-flat');
     const after = session([path(25)], { state });
     expect(focusByStroke(after.state).forehand).toBeNull();
@@ -251,15 +264,17 @@ describe('coaching simulated strokes', () => {
     return analyzeSwing(toImuSeries(simulateSwing(spec, LONG).capture), SKEWED_MOUNT, params);
   };
 
+  // Changed with H2: the praise comes on the second fixed stroke.
   it('corrects a flat swing path and then praises the fix', () => {
     const flat = [1, 2, 3].map((seed) => simulate({ swingPathDeg: 0 }, seed));
-    const fixed = simulate({ swingPathDeg: 25 }, 4);
-    for (const m of [...flat, fixed]) expect(m.impactDetected).toBe(true);
-    const { said } = session([...flat, fixed]);
+    const fixed = [4, 5].map((seed) => simulate({ swingPathDeg: 25 }, seed));
+    for (const m of [...flat, ...fixed]) expect(m.impactDetected).toBe(true);
+    const { said } = session([...flat, ...fixed]);
     expect(spoken(said)).toEqual([
       flatCue(0),
       flatCue(0),
       flatCue(1),
+      '',
       reinforcePhrase('path-flat'),
     ]);
   });

@@ -67,11 +67,17 @@ export const STYLE_PATH_LIMITS = { flatMinDeg: 5, topspinMaxDeg: 65 } as const;
  */
 export const SERVE_ROLL_SIGN: Readonly<Record<DominantHand, 1 | -1>> = { right: 1, left: -1 };
 
-/** Pronation of a serve for the player's hand: a roll in the wrong direction counts as none. */
-export function servePronationDeg(m: StrokeMetrics, hand: DominantHand): number | null {
+/** Serve roll corrected for the playing hand: positive = pronation direction. */
+export function signedServeRollDeg(m: StrokeMetrics, hand: DominantHand): number | null {
   const angle = m.features?.serve?.rollAngleDeg;
   if (angle === null || angle === undefined) return null;
-  return Math.max(0, SERVE_ROLL_SIGN[hand] * angle);
+  return SERVE_ROLL_SIGN[hand] * angle;
+}
+
+/** Pronation of a serve for the player's hand: a roll in the wrong direction counts as none. */
+export function servePronationDeg(m: StrokeMetrics, hand: DominantHand): number | null {
+  const signed = signedServeRollDeg(m, hand);
+  return signed === null ? null : Math.max(0, signed);
 }
 
 function adjustForStyle(spec: ElementSpec, style: ForehandStyle): ElementSpec {
@@ -126,12 +132,20 @@ export function coachingPolicy(inputs: PlayerInputs = DEFAULT_PLAYER_INPUTS): Co
 export interface ProfileConfig {
   /** Rated strokes (all types) the weaknesses are computed over. */
   readonly window: number;
-  /** A weakness: fault rate ≥ this… */
+  /** A weakness: fault rate ≥ this over the window… */
   readonly weaknessMinRate: number;
-  /** …with faults in at least this many sessions… */
+  /**
+   * …in at least this many sessions, each with a session fault rate ≥
+   * `weaknessMinRate` on ≥ `trendMinStrokes` judged strokes (all loaded
+   * sessions, not only those in the window)…
+   */
   readonly weaknessMinSessions: number;
   /** …and at least this many strokes on which the correction was judged. */
   readonly weaknessMinAssessed: number;
+  /** A single session with this many judged strokes… */
+  readonly newWeaknessMinAssessed: number;
+  /** …and at least this fault rate makes a weakness on its own, labelled new. */
+  readonly newWeaknessMinRate: number;
   /** Trend: latest session rate vs the mean of up to 3 earlier ones, ± this. */
   readonly trendDelta: number;
   /** Sessions count for the trend with at least this many judged strokes. */
@@ -145,6 +159,8 @@ export const DEFAULT_PROFILE_CONFIG: ProfileConfig = {
   weaknessMinRate: 0.2,
   weaknessMinSessions: 2,
   weaknessMinAssessed: 10,
+  newWeaknessMinAssessed: 30,
+  newWeaknessMinRate: 0.3,
   trendDelta: 0.1,
   trendMinStrokes: 5,
   typicalWindow: 200,
@@ -420,8 +436,10 @@ export interface Weakness {
   readonly faultRate: number;
   readonly faults: number;
   readonly assessed: number;
-  /** Sessions (in the window) with at least one such fault. */
+  /** Sessions whose own fault rate reaches the weakness rate (see ProfileConfig). */
   readonly sessions: number;
+  /** Found in one session only (enough strokes, high rate): a new weakness. */
+  readonly isNew: boolean;
   readonly trend: Trend;
   /** Per-session fault rates, oldest first (sessions with enough judged strokes). */
   readonly sessionRates: readonly number[];
@@ -509,7 +527,12 @@ export function sessionRates(
   return out;
 }
 
-/** The weaknesses: frequent faults (≥ 20 % over the last 200 rated strokes, in ≥ 2 sessions). */
+/**
+ * The weaknesses: frequent faults (≥ 20 % over the last 200 rated strokes)
+ * that showed in ≥ 2 sessions, counted from the per-session fault rates so
+ * that one long session cannot push the earlier ones out of the window; or
+ * one session with ≥ 30 judged strokes and ≥ 30 % faults (labelled new).
+ */
 export function weaknessesOf(
   state: ProfileState,
   catalog: readonly ElementSpec[] = ELEMENT_CATALOG,
@@ -517,31 +540,31 @@ export function weaknessesOf(
 ): Weakness[] {
   const weights = weightsOf(catalog);
   const ordered = sessionsInOrder(state);
-  const stats = new Map<
-    CorrectionId,
-    { assessed: number; faults: number; sessions: Set<string> }
-  >();
+  const stats = new Map<CorrectionId, { assessed: number; faults: number }>();
   for (const d of state.window) {
     for (const id of d.assessed) {
-      const s = stats.get(id) ?? { assessed: 0, faults: 0, sessions: new Set<string>() };
+      const s = stats.get(id) ?? { assessed: 0, faults: 0 };
       s.assessed++;
-      if (d.faults.includes(id)) {
-        s.faults++;
-        s.sessions.add(d.sessionId);
-      }
+      if (d.faults.includes(id)) s.faults++;
       stats.set(id, s);
     }
   }
   const out: Weakness[] = [];
   for (const [id, s] of stats) {
     const rate = s.faults / s.assessed;
-    if (
-      s.assessed < config.weaknessMinAssessed ||
-      rate < config.weaknessMinRate ||
-      s.sessions.size < config.weaknessMinSessions
-    ) {
-      continue;
-    }
+    if (s.assessed < config.weaknessMinAssessed || rate < config.weaknessMinRate) continue;
+    const perSession = ordered
+      .map((session) => session.corrections[id])
+      .filter((r): r is Rate => r !== undefined && r.assessed >= config.trendMinStrokes);
+    const faulty = perSession.filter((r) => r.faults / r.assessed >= config.weaknessMinRate);
+    const isNew =
+      faulty.length < config.weaknessMinSessions &&
+      perSession.some(
+        (r) =>
+          r.assessed >= config.newWeaknessMinAssessed &&
+          r.faults / r.assessed >= config.newWeaknessMinRate,
+      );
+    if (faulty.length < config.weaknessMinSessions && !isNew) continue;
     const rates = sessionRates(ordered, id, config.trendMinStrokes);
     out.push({
       correctionId: id,
@@ -550,7 +573,8 @@ export function weaknessesOf(
       faultRate: rate,
       faults: s.faults,
       assessed: s.assessed,
-      sessions: s.sessions.size,
+      sessions: faulty.length,
+      isNew,
       trend: trendOf(rates, config.trendDelta),
       sessionRates: rates,
     });

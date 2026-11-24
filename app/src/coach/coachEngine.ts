@@ -6,6 +6,7 @@ import type {
   PhraseLevel,
   StrokeCategories,
   StrokeType,
+  SwingStyle,
   UtteranceKind,
 } from '../domain/types';
 import {
@@ -15,12 +16,19 @@ import {
   type StrokeAssessment,
   byCorrection,
 } from '../elements/assess';
-import { classifyStroke } from './classify';
-import { cueVariant, feedbackPhrase, learningSentence, reinforcePhrase } from './phrases';
+import { classifyStroke, sigmaTooLarge } from './classify';
+import {
+  cueVariant,
+  feedbackPhrase,
+  learningSentence,
+  overcorrectedPhrase,
+  reinforcePhrase,
+  stuckPhrase,
+} from './phrases';
 
 /**
  * Live coaching: turns one stroke's assessment into at most one spoken
- * phrase, keeping one focus per stroke type, with an adaptive phrase ladder,
+ * phrase, keeping one focus per stroke type and swing style, with an adaptive phrase ladder,
  * overcorrection / oscillation handling, fatigue and coaching modes. Pure
  * step function; the controller owns the state. See docs/metrics.md,
  * "Coaching engine" and "Adaptive coach".
@@ -32,33 +40,53 @@ export interface CoachConfig {
   readonly maxRepeats: number;
   /** …then this many strokes of silence. */
   readonly pauseAfterRepeats: number;
-  /** The focus is cleared after this many consecutive ok strokes. */
+  /**
+   * The focus is cleared after this many strokes inside its band with no
+   * fault of it in between (uncertain strokes do not count, nor interrupt).
+   */
   readonly okStrokesToClear: number;
+  /** The reinforce phrase needs this many consecutive strokes with the focus inside its band. */
+  readonly inBandToReinforce: number;
   /** A different fault takes over only with a score ≥ this × the focus fault's score. */
   readonly replaceRatio: number;
   /** The focus is cleared after this many consecutive strokes on which it was not assessable. */
   readonly notAssessableToClear: number;
   /** Ladder: spoken corrections of one focus before "Try the drill" / sparse mode (2 × v0, 2 × v1, 1 × v2). */
   readonly ladderLength: number;
-  /** Sparse mode: the cue only on every n-th faulty stroke. */
+  /** Spoken corrections of one focus (never reset while it is the focus) after which it stays sparse. */
+  readonly lifetimeLimit: number;
+  /** Sparse mode: the focus is spoken about only on every n-th faulty stroke. */
   readonly sparseEvery: number;
-  /** No cue that contradicts one spoken in this many previous strokes of the type. */
+  /** "Better" compares with the median of up to this many previous focus distances. */
+  readonly betterWindow: number;
+  /** "Better" at most once per this many strokes of the lane. */
+  readonly betterEvery: number;
+  /**
+   * The overcorrection phrase instead of a cue whose opposite was the focus
+   * replaced at most this many strokes ago (once per episode).
+   */
   readonly contradictionWindow: number;
-  /** Consecutive opposite faults after which the focus switches to the opposite. */
+  /** Consecutive opposite faults after which the focus switches when the phrase was not heard. */
   readonly oppositeStreakToSwitch: number;
   /** Oscillation: ≥ `oscillationSwitches` switches between opposites in the last `oscillationWindow` strokes. */
   readonly oscillationWindow: number;
   readonly oscillationSwitches: number;
-  /** "Same swing every time" at most once per this many strokes of the type. */
+  /** "Same swing every time" at most once per this many strokes of the lane. */
   readonly consistencyEvery: number;
   /** "Take a short break" not again within this time, ms. */
   readonly fatigueRepeatMs: number;
+  /** A fatigue episode freezes coaching for at most this many strokes of the type. */
+  readonly fatigueMaxHold: number;
+  /** A gap this long between strokes is a break: "Better" references and sparse counters restart. */
+  readonly breakMs: number;
+  /** Learning mode: the explanation only when the previous gap between strokes was at least this, ms. */
+  readonly learningMinGapMs: number;
   readonly match: MatchConfig;
 }
 
 /** Match mode: only a persistent major fault, between points. */
 export interface MatchConfig {
-  /** Rated strokes of the type looked at. */
+  /** Rated strokes of the lane looked at. */
   readonly window: number;
   /** Strokes in the window with the same fault. */
   readonly minFaults: number;
@@ -77,16 +105,23 @@ export const DEFAULT_COACH_CONFIG: CoachConfig = {
   maxRepeats: 3,
   pauseAfterRepeats: 2,
   okStrokesToClear: 3,
+  inBandToReinforce: 2,
   replaceRatio: 2,
   notAssessableToClear: 5,
   ladderLength: 5,
+  lifetimeLimit: 10,
   sparseEvery: 3,
+  betterWindow: 5,
+  betterEvery: 3,
   contradictionWindow: 5,
   oppositeStreakToSwitch: 3,
   oscillationWindow: 6,
   oscillationSwitches: 3,
   consistencyEvery: 10,
   fatigueRepeatMs: 10 * 60_000,
+  fatigueMaxHold: 20,
+  breakMs: 3 * 60_000,
+  learningMinGapMs: 6_000,
   match: {
     window: 8,
     minFaults: 5,
@@ -113,7 +148,39 @@ export const OPPOSITES: Readonly<Partial<Record<CorrectionId, CorrectionId>>> = 
 
 export const oppositeOf = (id: CorrectionId): CorrectionId | null => OPPOSITES[id] ?? null;
 
+/**
+ * Soft conflicts: different metrics whose cues can pull against each other
+ * ("loosen" vs "steady"; "turn more" / "finish" vs "lower take-back"; "drop
+ * the racket" vs "no pause"). A cue of a pair is not started within
+ * `contradictionWindow` strokes of the other's cue, unless it already is the focus.
+ */
+export const SOFT_CONFLICTS: readonly (readonly [CorrectionId, CorrectionId])[] = [
+  ['stiff-arm', 'unstable-contact'],
+  ['small-turn', 'high-takeback'],
+  ['short-finish', 'high-takeback'],
+  ['serve-no-drop', 'serve-hitch'],
+];
+
+export function softConflictsOf(id: CorrectionId): CorrectionId[] {
+  return SOFT_CONFLICTS.flatMap(([a, b]) => (a === id ? [b] : b === id ? [a] : []));
+}
+
 export type { UtteranceKind } from '../domain/types';
+
+/** Coaching lane: one focus per stroke type and swing style (unknown style = drive). */
+export type CoachLane = `${StrokeType}-${SwingStyle}`;
+
+export const COACH_LANES: readonly CoachLane[] = [
+  'forehand-drive',
+  'forehand-slice',
+  'backhand-drive',
+  'backhand-slice',
+  'overhead-drive',
+  'overhead-slice',
+];
+
+export const laneOf = (type: StrokeType, style: SwingStyle | null): CoachLane =>
+  `${type}-${style ?? 'drive'}`;
 
 export interface Utterance {
   readonly kind: UtteranceKind;
@@ -144,52 +211,79 @@ export type UtteranceReason =
   | 'ladder-sparse'
   | 'overcorrected'
   | 'contradiction'
+  | 'soft-conflict'
   | 'oscillation'
   | 'fatigue'
   | 'fatigue-hold'
   | 'persistent-major-fault';
 
+/** One previous fault distance of the focus element. */
+export interface DistanceSample {
+  readonly distance: number;
+  readonly sigma: number;
+}
+
 export interface FocusState {
   readonly correctionId: CorrectionId;
-  /** d and σ of the focus on the previous stroke of this type, when it was a fault there. */
-  readonly lastDistance: number | null;
-  readonly lastSigma: number | null;
+  /**
+   * d and σ of the focus on its previous faulty strokes, newest last (at most
+   * `betterWindow`); all of one element under one band.
+   */
+  readonly distances: readonly DistanceSample[];
   /**
    * Element (catalogue key) whose d and σ those are. One correction can have
    * several elements in different units, so "Better" compares like with like.
    */
   readonly lastKey: string | null;
-  /** Where the band of that stroke came from, and its bounds: d is only comparable within one band. */
+  /** Where the band of those strokes came from, and its bounds: d is only comparable within one band. */
   readonly lastBandSource: BandSource | null;
   readonly lastBand: Band | null;
   /** Score of the focus when it last was a fault (the bar for a replacement). */
   readonly faultScore: number;
+  /** Strokes inside the band since the focus was last at fault (uncertain ones skipped). */
   readonly okStreak: number;
+  /** Consecutive strokes with the focus inside its band (d = 0, not uncertain). */
+  readonly inBandStreak: number;
   readonly notAssessableStreak: number;
-  /** "That's it" has been said (heard) for the current ok run. */
+  /** The reinforce phrase has been said (heard) for the current ok run. */
   readonly thatsItSaid: boolean;
+  /** Lane stroke number of the last heard "Better" (null = none yet). */
+  readonly betterAt: number | null;
   /* Phrase ladder (heard corrections only). */
-  /** Corrections spoken since the ladder was last reset. */
+  /** Corrections spoken since the ladder was last reset (only the reinforce phrase resets it). */
   readonly spokenCount: number;
-  /** Variant the ladder starts from: the one that last worked. */
+  /** Corrections spoken while this is the focus; never reset. */
+  readonly lifetimeSpoken: number;
+  /** Variant the ladder starts from: the one that last worked (or the profile's best). */
   readonly baseLevel: PhraseLevel;
-  /** Variant of the last spoken correction. */
-  readonly lastLevel: PhraseLevel | null;
-  /** "Better" or "That's it" was heard for this focus. */
+  /** Variant of the last correction actually heard; null = the cue was never heard. */
+  readonly lastHeardLevel: PhraseLevel | null;
+  /** The reinforce phrase was heard for this focus. */
   readonly hadSuccess: boolean;
   readonly stuckSaid: boolean;
   /** Faulty strokes since the ladder ran out. */
   readonly sparseCount: number;
   /** Consecutive strokes with the opposite fault. */
   readonly oppositeStreak: number;
+  /** The overcorrection phrase was heard for this focus (once per episode). */
+  readonly overcorrectedSaid: boolean;
 }
 
-/** One previous stroke of a type, for contradiction and oscillation checks. */
+/** One previous stroke of a lane, for contradiction and oscillation checks. */
 export interface RecentStroke {
   /** Correction whose cue was spoken (heard) on the stroke. */
   readonly cue: CorrectionId | null;
   /** Faults of correction pairs (see OPPOSITES) on the stroke. */
   readonly pairFaults: readonly CorrectionId[];
+}
+
+/** A focus that another correction replaced (not one that was fixed and cleared). */
+export interface ReplacedFocus {
+  readonly correctionId: CorrectionId;
+  /** Lane stroke number of the replacement. */
+  readonly at: number;
+  /** The overcorrection phrase of this episode was heard. */
+  readonly overcorrectedSaid: boolean;
 }
 
 /** Faults of one rated stroke, for match mode. */
@@ -199,18 +293,24 @@ export interface RatedFault {
   readonly weight: number;
 }
 
-export interface StrokeTypeCoachState {
+export interface LaneCoachState {
   readonly focus: FocusState | null;
   /** Last non-empty phrase considered for speaking, and how many strokes in a row it was. */
   readonly lastSpoken: string | null;
   readonly repeat: number;
-  /** Previous strokes of this type, newest last (at most 6). */
+  /** Previous strokes of this lane, newest last (at most 6). */
   readonly recent: readonly RecentStroke[];
-  /** Strokes of this type since "Same swing every time" (null = not said yet). */
+  /** Strokes of this lane since "Same swing every time" (null = not said yet). */
   readonly sinceConsistency: number | null;
-  /** Faults of the last rated strokes of this type, newest last (match window). */
+  /** Faults of the last rated strokes of this lane, newest last (match window). */
   readonly rated: readonly (readonly RatedFault[])[];
+  /** Strokes with contact in this lane (numbers the strokes). */
+  readonly strokes: number;
+  readonly replaced: ReplacedFocus | null;
 }
+
+/** Former name of {@link LaneCoachState}. */
+export type StrokeTypeCoachState = LaneCoachState;
 
 export interface MatchState {
   /** A persistent major fault waiting for a break in play. */
@@ -218,31 +318,55 @@ export interface MatchState {
   readonly lastSpokenAt: number | null;
 }
 
+/** Fatigue hold of one stroke type. */
+export interface FatigueHold {
+  /** Strokes frozen in the current episode. */
+  readonly held: number;
+  /** The previous stroke of the type was frozen. */
+  readonly frozen: boolean;
+}
+
 export interface CoachState {
-  readonly byStroke: Readonly<Record<StrokeType, StrokeTypeCoachState>>;
+  readonly byLane: Readonly<Record<CoachLane, LaneCoachState>>;
   /** `capture.receivedAt` of the previous stroke with contact, ms. */
   readonly lastStrokeAt: number | null;
   /** When "Take a short break" was last said, ms. */
   readonly fatigueSpokenAt: number | null;
   /** Said in the current fatigue episode (used when no time is known). */
   readonly fatigueSpokenInEpisode: boolean;
+  readonly fatigueHold: Readonly<Record<StrokeType, FatigueHold>>;
+  /** Corrections whose learning sentence was said in this session. */
+  readonly learningSaid: readonly CorrectionId[];
   readonly match: MatchState;
 }
 
-const IDLE: StrokeTypeCoachState = {
+const IDLE: LaneCoachState = {
   focus: null,
   lastSpoken: null,
   repeat: 0,
   recent: [],
   sinceConsistency: null,
   rated: [],
+  strokes: 0,
+  replaced: null,
 };
 
+const NO_HOLD: FatigueHold = { held: 0, frozen: false };
+
 export const INITIAL_COACH_STATE: CoachState = {
-  byStroke: { forehand: IDLE, backhand: IDLE, overhead: IDLE },
+  byLane: {
+    'forehand-drive': IDLE,
+    'forehand-slice': IDLE,
+    'backhand-drive': IDLE,
+    'backhand-slice': IDLE,
+    'overhead-drive': IDLE,
+    'overhead-slice': IDLE,
+  },
   lastStrokeAt: null,
   fatigueSpokenAt: null,
   fatigueSpokenInEpisode: false,
+  fatigueHold: { forehand: NO_HOLD, backhand: NO_HOLD, overhead: NO_HOLD },
+  learningSaid: [],
   match: { pending: null, lastSpokenAt: null },
 };
 
@@ -253,6 +377,8 @@ export interface CoachContext {
   readonly receivedAt: number | null;
   /** The fatigue detector is active for this stroke's type (coach/fatigue.ts). */
   readonly fatigueActive: boolean;
+  /** Per correction, the cue variant that earned the most "Better"s (profile); a new focus starts there. */
+  readonly preferredLevels?: Readonly<Partial<Record<CorrectionId, PhraseLevel>>>;
 }
 
 export const DEFAULT_COACH_CONTEXT: CoachContext = {
@@ -292,30 +418,56 @@ const cueUtterance = (
   level,
 });
 
-const newFocus = (e: ElementAssessment): FocusState => ({
+const betterUtterance = (id: CorrectionId, level: PhraseLevel): Utterance => ({
+  kind: 'better',
+  correctionId: id,
+  spoken: feedbackPhrase('better'),
+  reason: 'improved',
+  level,
+});
+
+const sample = (e: ElementAssessment): DistanceSample[] =>
+  e.sigma === null ? [] : [{ distance: e.distance, sigma: e.sigma }];
+
+const newFocus = (e: ElementAssessment, baseLevel: PhraseLevel = 0): FocusState => ({
   correctionId: e.correctionId,
-  lastDistance: e.distance,
-  lastSigma: e.sigma,
+  distances: sample(e),
   lastKey: e.key,
   lastBandSource: e.bandSource,
   lastBand: e.band,
   faultScore: e.score,
   okStreak: 0,
+  inBandStreak: 0,
   notAssessableStreak: 0,
   thatsItSaid: false,
+  betterAt: null,
   spokenCount: 0,
-  baseLevel: 0,
-  lastLevel: null,
+  lifetimeSpoken: 0,
+  baseLevel,
+  lastHeardLevel: null,
   hadSuccess: false,
   stuckSaid: false,
   sparseCount: 0,
   oppositeStreak: 0,
+  overcorrectedSaid: false,
 });
 
 const sameBand = (a: Band | null, b: Band | null): boolean =>
   a === null || b === null ? a === b : a.lo === b.lo && a.hi === b.hi;
 
 const levelOf = (n: number): PhraseLevel => (((n % 3) + 3) % 3) as PhraseLevel;
+
+const medianOf = (xs: readonly number[]): number => {
+  const sorted = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? (sorted[mid] as number)
+    : ((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2;
+};
+
+/** Inside the band for sure: d = 0 and σ small enough to tell it from a fault (not 'uncertain'). */
+export const inBand = (e: ElementAssessment): boolean =>
+  e.status === 'ok' && e.distance === 0 && !sigmaTooLarge(e);
 
 /** Variant of the n-th (1-based) spoken correction: n 1–2 → base, 3–4 → base + 1, 5 → base + 2. */
 export function ladderLevel(n: number, base: PhraseLevel): PhraseLevel {
@@ -324,21 +476,26 @@ export function ladderLevel(n: number, base: PhraseLevel): PhraseLevel {
   return levelOf(base + 2);
 }
 
-/** Ladder reset after a success ("Better", "That's it"): start again from the variant that worked. */
+/** Ladder reset after the reinforce phrase: start again from the variant that worked. */
 const succeeded = (f: FocusState): FocusState => ({
   ...f,
   spokenCount: 0,
-  baseLevel: f.lastLevel ?? f.baseLevel,
+  baseLevel: f.lastHeardLevel ?? f.baseLevel,
   hadSuccess: true,
   stuckSaid: false,
   sparseCount: 0,
+  distances: [],
 });
 
-/** A cue the ladder still has to turn into a phrase. */
+/** After a break or a fatigue episode: fresh "Better" reference and sparse counter. */
+const refreshed = (lane: LaneCoachState): LaneCoachState =>
+  lane.focus === null ? lane : { ...lane, focus: { ...lane.focus, distances: [], sparseCount: 0 } };
+
+/** A cue or a "Better" the ladder still has to turn into a phrase. */
 interface CueDecision {
-  readonly type: 'cue';
+  readonly type: 'cue' | 'better';
   readonly correctionId: CorrectionId;
-  readonly reason: 'new-focus' | 'focus-replaced' | 'focus-persists';
+  readonly reason: 'new-focus' | 'focus-replaced' | 'focus-persists' | 'improved';
 }
 
 interface FixedDecision {
@@ -353,6 +510,18 @@ interface Decided {
   readonly decision: Decision;
   /** Significant improvement of the focus on this stroke. */
   readonly improved: boolean;
+  /** The focus another correction replaced on this stroke. */
+  readonly replaced?: Omit<ReplacedFocus, 'at'>;
+  /** The focus was cleared (fixed, or not assessable for too long). */
+  readonly cleared?: boolean;
+}
+
+interface DecideEnv {
+  /** Lane stroke number of this stroke. */
+  readonly n: number;
+  /** Corrections that may not become the focus now (soft conflicts). */
+  readonly blocked: ReadonlySet<CorrectionId>;
+  readonly preferred: Readonly<Partial<Record<CorrectionId, PhraseLevel>>>;
 }
 
 const fixed = (utterance: Utterance): FixedDecision => ({ type: 'fixed', utterance });
@@ -362,20 +531,34 @@ function decide(
   focus: FocusState | null,
   assessment: StrokeAssessment,
   config: CoachConfig,
-  speaking: boolean,
+  heard: boolean,
+  env: DecideEnv,
 ): Decided {
   const verdicts = byCorrection(assessment);
-  const faults = assessment.faults;
+  const faults = assessment.faults.filter(
+    (f) => !env.blocked.has(f.correctionId) || f.correctionId === focus?.correctionId,
+  );
   const anyOk = assessment.elements.some((e) => e.status === 'ok');
   const good = (): FixedDecision =>
     fixed({ kind: 'good', spoken: config.speakGood ? GOOD_PHRASE : '', reason: 'no-faults' });
+  const start = (e: ElementAssessment): FocusState =>
+    newFocus(e, env.preferred[e.correctionId] ?? 0);
 
   const noFocus = (): Decided => {
     const top = faults[0];
     if (top) {
       return {
-        focus: newFocus(top),
+        focus: start(top),
         decision: { type: 'cue', correctionId: top.correctionId, reason: 'new-focus' },
+        improved: false,
+      };
+    }
+    const held = assessment.faults[0];
+    if (held) {
+      // Only soft-conflicting faults: none of them is started now.
+      return {
+        focus: null,
+        decision: fixed(silent('soft-conflict', held.correctionId)),
         improved: false,
       };
     }
@@ -387,28 +570,30 @@ function decide(
 
   const current = verdicts.get(focus.correctionId) ?? null;
 
-  // Overcorrection: the focus' opposite is at fault.
+  // Overcorrection: the focus' opposite is at fault. The phrase once per
+  // episode, then the opposite's own cue.
   const opposite = oppositeOf(focus.correctionId);
   const oppositeVerdict = opposite === null ? null : (verdicts.get(opposite) ?? null);
   if (oppositeVerdict?.status === 'fault') {
     const streak = focus.oppositeStreak + 1;
-    if (streak >= config.oppositeStreakToSwitch) {
+    if (focus.overcorrectedSaid || streak >= config.oppositeStreakToSwitch) {
       return {
-        focus: newFocus(oppositeVerdict),
+        focus: start(oppositeVerdict),
         decision: {
           type: 'cue',
           correctionId: oppositeVerdict.correctionId,
           reason: 'focus-replaced',
         },
         improved: false,
+        replaced: { correctionId: focus.correctionId, overcorrectedSaid: focus.overcorrectedSaid },
       };
     }
     return {
-      focus: { ...focus, oppositeStreak: streak, notAssessableStreak: 0 },
+      focus: { ...focus, oppositeStreak: streak, notAssessableStreak: 0, inBandStreak: 0 },
       decision: fixed({
         kind: 'overcorrected',
         correctionId: focus.correctionId,
-        spoken: feedbackPhrase('overcorrected'),
+        spoken: overcorrectedPhrase(oppositeVerdict.correctionId),
         reason: 'overcorrected',
       }),
       improved: false,
@@ -422,15 +607,16 @@ function decide(
   const challenger = faults.find((f) => f.correctionId !== base.correctionId);
   if (challenger && challenger.score >= config.replaceRatio * bar) {
     return {
-      focus: newFocus(challenger),
+      focus: start(challenger),
       decision: { type: 'cue', correctionId: challenger.correctionId, reason: 'focus-replaced' },
       improved: false,
+      replaced: { correctionId: base.correctionId, overcorrectedSaid: false },
     };
   }
 
   if (current === null || current.status === 'not-assessable') {
     const streak = base.notAssessableStreak + 1;
-    if (streak >= config.notAssessableToClear) return noFocus();
+    if (streak >= config.notAssessableToClear) return { ...noFocus(), cleared: true };
     return {
       focus: { ...base, notAssessableStreak: streak },
       decision: fixed(silent('focus-not-assessable', base.correctionId)),
@@ -444,66 +630,64 @@ function decide(
       base.lastKey === current.key &&
       base.lastBandSource === current.bandSource &&
       sameBand(base.lastBand, current.band);
+    const window = comparable ? base.distances : [];
+    // "Better": clearly better than the median of the previous faulty strokes,
+    // not just than the previous one (a noisy player would hear it constantly).
     const improved =
-      comparable &&
-      base.lastDistance !== null &&
-      base.lastSigma !== null &&
+      window.length > 0 &&
       current.sigma !== null &&
-      base.lastDistance - current.distance >= Math.hypot(base.lastSigma, current.sigma);
-    // An unheard "Better" (match) is not spent: the reference stays, so it can still be said.
-    const keepReference = improved && !speaking;
+      medianOf(window.map((x) => x.distance)) - current.distance >=
+        Math.hypot(medianOf(window.map((x) => x.sigma)), current.sigma);
+    // An unheard improvement (match) is not spent: the reference stays, so "Better" can still be said.
+    const keepReference = improved && !heard;
     const next: FocusState = {
       ...base,
-      lastDistance: keepReference ? base.lastDistance : current.distance,
-      lastSigma: keepReference ? base.lastSigma : current.sigma,
+      distances: keepReference
+        ? window
+        : [...window, ...sample(current)].slice(-config.betterWindow),
       lastKey: keepReference ? base.lastKey : current.key,
       lastBandSource: keepReference ? base.lastBandSource : current.bandSource,
       lastBand: keepReference ? base.lastBand : current.band,
       faultScore: current.score,
       okStreak: 0,
+      inBandStreak: 0,
       notAssessableStreak: 0,
       thatsItSaid: false,
     };
-    if (improved) {
-      const worked = base.lastLevel ?? base.baseLevel;
+    const due = base.betterAt === null || env.n - base.betterAt >= config.betterEvery;
+    // Only a cue that was heard can get better.
+    if (improved && due && base.lastHeardLevel !== null) {
       return {
-        // A heard "Better" resets the ladder and keeps the variant that worked.
-        focus: speaking ? succeeded(next) : next,
-        decision: fixed({
-          kind: 'better',
-          correctionId: base.correctionId,
-          spoken: feedbackPhrase('better'),
-          reason: 'improved',
-          level: worked,
-        }),
+        focus: next,
+        decision: { type: 'better', correctionId: base.correctionId, reason: 'improved' },
         improved: true,
       };
     }
     return {
       focus: next,
       decision: { type: 'cue', correctionId: base.correctionId, reason: 'focus-persists' },
-      improved: false,
+      improved,
     };
   }
 
-  // The focus element is ok on this stroke.
-  const okStreak = base.okStreak + 1;
-  if (okStreak >= config.okStrokesToClear) return noFocus();
-  const next: FocusState = {
-    ...base,
-    lastDistance: null,
-    lastSigma: null,
-    lastKey: null,
-    lastBandSource: null,
-    lastBand: null,
-    okStreak,
-    notAssessableStreak: 0,
-    // "That's it" is said once, and only when heard.
-    thatsItSaid: base.thatsItSaid || speaking,
-  };
-  if (!base.thatsItSaid && speaking) {
+  // The focus fault is gone on this stroke: inside the band, or uncertain
+  // (outside but not surely, or σ too large). An uncertain stroke is no
+  // evidence of a fix: it neither counts towards clearing nor towards praise.
+  const fixedNow = inBand(current);
+  const okStreak = fixedNow ? base.okStreak + 1 : base.okStreak;
+  if (okStreak >= config.okStrokesToClear) return { ...noFocus(), cleared: true };
+  const inBandStreak = fixedNow ? base.inBandStreak + 1 : 0;
+  const next: FocusState = { ...base, okStreak, inBandStreak, notAssessableStreak: 0 };
+  // Praise only what is really fixed (inside the band twice in a row), once
+  // per ok run, and only for a cue that was heard.
+  if (
+    heard &&
+    inBandStreak >= config.inBandToReinforce &&
+    !base.thatsItSaid &&
+    base.lastHeardLevel !== null
+  ) {
     return {
-      focus: succeeded(next),
+      focus: succeeded({ ...next, thatsItSaid: true }),
       decision: fixed({
         kind: 'keep-it',
         correctionId: base.correctionId,
@@ -520,45 +704,71 @@ function decide(
   };
 }
 
-/** Turns a cue decision into a phrase on the ladder; advances the ladder only when heard. */
+/**
+ * Turns a cue or "Better" decision into a phrase on the ladder; advances
+ * the ladder only when heard. Once the ladder has run out (or the focus has
+ * used up its lifetime count) the focus is in sparse mode: "Try the drill"
+ * once, then only every `sparseEvery`-th faulty stroke says anything.
+ */
 function applyLadder(
   focus: FocusState,
   decision: CueDecision,
   config: CoachConfig,
-  speaking: boolean,
+  heard: boolean,
+  n: number,
 ): { readonly focus: FocusState; readonly utterance: Utterance } {
   const id = decision.correctionId;
-  const n = focus.spokenCount + 1;
-  if (!speaking) {
-    const level = ladderLevel(Math.min(n, config.ladderLength), focus.baseLevel);
+  const better = decision.type === 'better';
+  const worked = focus.lastHeardLevel ?? focus.baseLevel;
+  if (!heard) {
+    if (better) return { focus, utterance: betterUtterance(id, worked) };
+    const level = ladderLevel(
+      Math.min(focus.spokenCount + 1, config.ladderLength),
+      focus.baseLevel,
+    );
     return { focus, utterance: cueUtterance(id, level, decision.reason) };
   }
-  if (n <= config.ladderLength) {
-    const level = ladderLevel(n, focus.baseLevel);
+  const sparse =
+    focus.spokenCount >= config.ladderLength || focus.lifetimeSpoken >= config.lifetimeLimit;
+  if (!sparse) {
+    if (better) return { focus: { ...focus, betterAt: n }, utterance: betterUtterance(id, worked) };
+    const count = focus.spokenCount + 1;
+    const level = ladderLevel(count, focus.baseLevel);
     return {
-      focus: { ...focus, spokenCount: n, lastLevel: level },
+      focus: {
+        ...focus,
+        spokenCount: count,
+        lifetimeSpoken: focus.lifetimeSpoken + 1,
+        lastHeardLevel: level,
+      },
       utterance: cueUtterance(id, level, decision.reason),
     };
   }
-  if (!focus.hadSuccess && !focus.stuckSaid) {
+  if (!better && !focus.hadSuccess && !focus.stuckSaid) {
     return {
       focus: { ...focus, stuckSaid: true },
-      utterance: {
-        kind: 'stuck',
-        correctionId: id,
-        spoken: feedbackPhrase('stuck'),
-        reason: 'stuck',
-      },
+      utterance: { kind: 'stuck', correctionId: id, spoken: stuckPhrase(id), reason: 'stuck' },
     };
   }
   const sparseCount = focus.sparseCount + 1;
   if (sparseCount % config.sparseEvery !== 0) {
     return { focus: { ...focus, sparseCount }, utterance: silent('ladder-sparse', id) };
   }
+  if (better) {
+    return {
+      focus: { ...focus, sparseCount, betterAt: n },
+      utterance: betterUtterance(id, worked),
+    };
+  }
   // Every n-th faulty stroke: the variants in turn, starting from the one that worked.
   const level = levelOf(focus.baseLevel + sparseCount / config.sparseEvery - 1);
   return {
-    focus: { ...focus, sparseCount, lastLevel: level },
+    focus: {
+      ...focus,
+      sparseCount,
+      lifetimeSpoken: focus.lifetimeSpoken + 1,
+      lastHeardLevel: level,
+    },
     utterance: cueUtterance(id, level, decision.reason),
   };
 }
@@ -576,15 +786,6 @@ function switches(sequence: readonly (readonly CorrectionId[])[], id: Correction
   let n = 0;
   for (let i = 1; i < side.length; i++) if (side[i] !== side[i - 1]) n++;
   return n;
-}
-
-function speechFor(utterance: Utterance, mode: CoachMode): string | null {
-  if (mode === 'match' || utterance.spoken === '') return null;
-  if (mode === 'learning' && utterance.kind === 'correction' && utterance.correctionId) {
-    const sentence = learningSentence(utterance.correctionId);
-    return `${utterance.spoken}. ${sentence}`;
-  }
-  return utterance.spoken;
 }
 
 /** Persistent major fault in the match window, or null. */
@@ -628,34 +829,70 @@ function ratedFaults(assessment: StrokeAssessment): RatedFault[] {
 const isRated = (assessment: StrokeAssessment): boolean =>
   assessment.elements.some((e) => e.status === 'ok' || e.status === 'fault');
 
+const mapLanes = (
+  byLane: Readonly<Record<CoachLane, LaneCoachState>>,
+  f: (lane: LaneCoachState, key: CoachLane) => LaneCoachState,
+): Record<CoachLane, LaneCoachState> => {
+  const out = { ...byLane };
+  for (const key of COACH_LANES) out[key] = f(byLane[key], key);
+  return out;
+};
+
+/**
+ * Forgets every focus, ladder and recent cue (all lanes), e.g. when the
+ * coaching mode changes: a cue heard in one mode is not built on in another.
+ * Stroke counters, the match window and the session's learning sentences stay.
+ */
+export function withoutFocus(state: CoachState): CoachState {
+  return {
+    ...state,
+    byLane: mapLanes(state.byLane, (lane) => ({
+      ...IDLE,
+      rated: lane.rated,
+      strokes: lane.strokes,
+    })),
+  };
+}
+
 /**
  * One coaching step for one stroke.
  *
- * - One focus per stroke type. Without a focus the highest-scoring fault
- *   becomes the focus and is spoken.
+ * - One focus per lane (stroke type × swing style). Without a focus the
+ *   highest-scoring fault becomes the focus and is spoken.
  * - Focus still at fault: "Better" when it improved by at least the combined
- *   measurement σ (d_prev − d_now ≥ √(σ_prev² + σ_now²)), else its cue again,
- *   on the phrase ladder (variant 0, 0, 1, 1, 2, then "Try the drill" once,
- *   then the cue on every 3rd faulty stroke). A heard "Better" or "That's
- *   it" resets the ladder to the variant that worked.
- * - Focus ok: its reinforce phrase ("That's it") on the first ok stroke;
- *   cleared after `okStrokesToClear` ok strokes in a row.
- * - The focus' opposite at fault: "A little less" (focus kept); after
- *   `oppositeStreakToSwitch` such strokes in a row the focus switches.
- * - No cue contradicting one spoken in the previous `contradictionWindow`
- *   strokes of the type ("A little less" instead); opposite faults
- *   alternating ≥ 3 times in 6 strokes: "Same swing every time" (once per 10
- *   strokes) instead of either cue.
- * - Fatigue active: focus frozen, "Take a short break" once (not again for
- *   10 min), faults marked fatigue-related.
+ *   σ on the median of up to 5 previous focus distances
+ *   (median(d) − d_now ≥ √(median(σ)² + σ_now²)), at most once per 3 strokes
+ *   and only for a cue that was heard; else its cue, on the phrase ladder
+ *   (v0, v0, v1, v1, v2, then "Try the … drill" once, then only every 3rd
+ *   faulty stroke). "Better" does not reset the ladder.
+ * - Focus inside its band on 2 strokes in a row (not uncertain): its
+ *   reinforce phrase, once per ok run and only for a heard cue; this resets
+ *   the ladder to the variant that worked. Cleared after `okStrokesToClear`
+ *   strokes in a row without its fault. After 10 spoken cues of one focus it
+ *   stays sparse even after a reset.
+ * - The focus' opposite at fault: the specific overcorrection phrase ("Now
+ *   too closed") once per episode, then the focus switches and the opposite's
+ *   own cue is said. A cue whose opposite was the focus replaced ≤ 5 strokes
+ *   ago gets the phrase instead, once per episode; a focus that was fixed and
+ *   cleared does not block its opposite.
+ * - Soft conflicts (SOFT_CONFLICTS): no new focus whose partner was spoken in
+ *   the last 5 strokes of the lane.
+ * - Opposite faults alternating ≥ 3 times in 6 strokes: "Same swing every
+ *   time" (once per 10 strokes) instead of either cue.
+ * - Fatigue active: focus frozen for at most `fatigueMaxHold` strokes of the
+ *   type, "Take a short break" once (not again for 10 min); then normal
+ *   coaching even while still flagged.
+ * - After a break (≥ 3 min) or a fatigue hold: "Better" references and
+ *   sparse counters restart.
  * - A different fault replaces the focus only with ≥ `replaceRatio` × its score.
  * - Focus not assessable: silent; cleared after `notAssessableToClear` strokes.
  * - No faults: 'good' (spoken only with `speakGood`).
  * - No contact (shadow swing, miss): silent, state unchanged.
  * - The same phrase (and variant) at most `maxRepeats` times in a row, then
  *   `pauseAfterRepeats` silent strokes (silent strokes do not break the run).
- * - Mode: learning adds a sentence to a correction, match says nothing per
- *   stroke (see `matchIdle`).
+ * - Mode: learning adds a sentence to the first cue of a focus (once per
+ *   correction per session, only after a gap of ≥ 6 s); match says nothing
+ *   per stroke (see `matchIdle`).
  */
 export function coachStep(
   state: CoachState,
@@ -664,13 +901,13 @@ export function coachStep(
   /**
    * Whether the utterance can be heard. When false the focus is still
    * tracked for the record, but the ladder, the repeat/pause counters and
-   * the once-only "Better" / "That's it" are not spent. Match mode implies false.
+   * the once-only "Better" / reinforce phrase are not spent. Match mode implies false.
    */
   speaking = true,
   context: CoachContext = DEFAULT_COACH_CONTEXT,
 ): CoachStep {
   const type = assessment.strokeType;
-  const own = state.byStroke[type];
+  const laneKey = laneOf(type, assessment.swingStyle);
   if (!assessment.contact) {
     return {
       state,
@@ -678,7 +915,7 @@ export function coachStep(
       speech: null,
       categories: classifyStroke(assessment, {
         fatigueActive: false,
-        focusBefore: own.focus?.correctionId ?? null,
+        focusBefore: state.byLane[laneKey].focus?.correctionId ?? null,
         improved: false,
       }),
     };
@@ -686,6 +923,24 @@ export function coachStep(
   const mode = context.mode;
   const heard = speaking && mode !== 'match';
   const now = context.receivedAt;
+  const gap = now !== null && state.lastStrokeAt !== null ? now - state.lastStrokeAt : null;
+
+  // Fatigue hold: at most `fatigueMaxHold` frozen strokes per episode.
+  const hold = state.fatigueHold[type];
+  const frozen = context.fatigueActive && hold.held < config.fatigueMaxHold;
+  const nextHold: FatigueHold = {
+    held: context.fatigueActive ? hold.held + (frozen ? 1 : 0) : 0,
+    frozen,
+  };
+
+  // A break, or the end of a fatigue hold: the old references do not apply.
+  let byLane: Readonly<Record<CoachLane, LaneCoachState>> = state.byLane;
+  if (gap !== null && gap >= config.breakMs) byLane = mapLanes(byLane, refreshed);
+  else if (hold.frozen && !frozen) {
+    byLane = mapLanes(byLane, (lane, key) => (key.startsWith(`${type}-`) ? refreshed(lane) : lane));
+  }
+  const own = byLane[laneKey];
+  const n = own.strokes + 1;
   const pairFaults = assessment.faults
     .map((f) => f.correctionId)
     .filter((id, i, all) => PAIRED.has(id) && all.indexOf(id) === i);
@@ -693,10 +948,11 @@ export function coachStep(
   let focus: FocusState | null;
   let utterance: Utterance;
   let improved = false;
+  let replaced = own.replaced;
   let fatigueSpokenAt = state.fatigueSpokenAt;
   let fatigueSpokenInEpisode = context.fatigueActive ? state.fatigueSpokenInEpisode : false;
 
-  if (context.fatigueActive) {
+  if (frozen) {
     // Focus frozen: no new focus, no ladder; the faults are fatigue-related.
     focus = own.focus;
     const due =
@@ -711,12 +967,25 @@ export function coachStep(
       utterance = silent('fatigue-hold', own.focus?.correctionId);
     }
   } else {
-    const decided = decide(own.focus, assessment, config, heard);
+    const recentCues = own.recent.slice(-config.contradictionWindow).map((r) => r.cue);
+    const blocked = new Set(
+      recentCues
+        .filter((c): c is CorrectionId => c !== null)
+        .flatMap(softConflictsOf)
+        .filter((id) => id !== own.focus?.correctionId),
+    );
+    const decided = decide(own.focus, assessment, config, heard, {
+      n,
+      blocked,
+      preferred: context.preferredLevels ?? {},
+    });
     improved = decided.improved;
+    if (decided.replaced) replaced = { ...decided.replaced, at: n };
+    else if (decided.cleared) replaced = null;
     const pre = decided.focus;
     const decision = decided.decision;
     const subject =
-      decision.type === 'cue'
+      decision.type !== 'fixed'
         ? decision.correctionId
         : decision.utterance.kind === 'overcorrected'
           ? (decision.utterance.correctionId ?? null)
@@ -734,7 +1003,8 @@ export function coachStep(
     ) {
       const due =
         own.sinceConsistency === null || own.sinceConsistency + 1 >= config.consistencyEvery;
-      focus = own.focus ?? pre;
+      // decide()'s bookkeeping (opposite streak, distances, switch) still applies.
+      focus = pre;
       utterance =
         heard && due
           ? { kind: 'consistency', spoken: feedbackPhrase('consistency'), reason: 'oscillation' }
@@ -744,19 +1014,23 @@ export function coachStep(
       utterance = decision.utterance;
     } else if (
       heard &&
+      decision.type === 'cue' &&
       against !== null &&
-      own.recent.slice(-config.contradictionWindow).some((r) => r.cue === against)
+      replaced !== null &&
+      replaced.correctionId === against &&
+      n - replaced.at <= config.contradictionWindow &&
+      !replaced.overcorrectedSaid
     ) {
-      // Never contradict a cue spoken in the last strokes of this type.
+      // The opposite was the focus a moment ago: say so once, the cue next time.
       focus = pre;
       utterance = {
         kind: 'overcorrected',
         correctionId: decision.correctionId,
-        spoken: feedbackPhrase('overcorrected'),
+        spoken: overcorrectedPhrase(decision.correctionId),
         reason: 'contradiction',
       };
     } else if (pre) {
-      const laddered = applyLadder(pre, decision, config, heard);
+      const laddered = applyLadder(pre, decision, config, heard, n);
       focus = laddered.focus;
       utterance = laddered.utterance;
     } else {
@@ -783,8 +1057,34 @@ export function coachStep(
     }
   }
 
-  const spokenNow =
-    heard && utterance.kind === 'correction' ? (utterance.correctionId ?? null) : null;
+  // The overcorrection phrase is said once per episode.
+  if (heard && utterance.kind === 'overcorrected') {
+    if (utterance.reason === 'overcorrected' && focus !== null) {
+      focus = { ...focus, overcorrectedSaid: true };
+    } else if (utterance.reason === 'contradiction' && replaced !== null) {
+      replaced = { ...replaced, overcorrectedSaid: true };
+    }
+  }
+
+  // Learning mode: the explanation with the first cue of a focus, once per
+  // correction per session, and only when the player leaves time for it.
+  let speech = heard && utterance.spoken !== '' ? utterance.spoken : null;
+  let learningSaid = state.learningSaid;
+  const cueId = utterance.kind === 'correction' ? (utterance.correctionId ?? null) : null;
+  if (
+    speech !== null &&
+    mode === 'learning' &&
+    cueId !== null &&
+    focus?.correctionId === cueId &&
+    focus.lifetimeSpoken === 1 &&
+    !learningSaid.includes(cueId) &&
+    (gap === null || gap >= config.learningMinGapMs)
+  ) {
+    speech = `${speech}. ${learningSentence(cueId)}`;
+    learningSaid = [...learningSaid, cueId];
+  }
+
+  const spokenNow = heard && cueId !== null ? cueId : null;
   const sinceConsistency =
     utterance.kind === 'consistency'
       ? 0
@@ -794,7 +1094,7 @@ export function coachStep(
   const rated = isRated(assessment)
     ? [...own.rated, ratedFaults(assessment)].slice(-config.match.window)
     : own.rated;
-  const nextOwn: StrokeTypeCoachState = {
+  const nextOwn: LaneCoachState = {
     focus,
     lastSpoken,
     repeat,
@@ -803,6 +1103,8 @@ export function coachStep(
     ),
     sinceConsistency,
     rated,
+    strokes: n,
+    replaced,
   };
 
   let match = state.match;
@@ -816,14 +1118,16 @@ export function coachStep(
 
   return {
     state: {
-      byStroke: { ...state.byStroke, [type]: nextOwn },
+      byLane: { ...byLane, [laneKey]: nextOwn },
       lastStrokeAt: now ?? state.lastStrokeAt,
       fatigueSpokenAt,
       fatigueSpokenInEpisode,
+      fatigueHold: { ...state.fatigueHold, [type]: nextHold },
+      learningSaid,
       match,
     },
     utterance,
-    speech: heard ? speechFor(utterance, mode) : null,
+    speech,
     categories: classifyStroke(assessment, {
       fatigueActive: context.fatigueActive,
       focusBefore: own.focus?.correctionId ?? null,
@@ -854,15 +1158,19 @@ export function matchIdle(
   };
 }
 
-/** The current focus per stroke type, for display. */
+/** The current focus of the lane of a stroke type and swing style (unknown style = drive). */
+export const focusOf = (
+  state: CoachState,
+  type: StrokeType,
+  style: SwingStyle | null,
+): CorrectionId | null => state.byLane[laneOf(type, style)].focus?.correctionId ?? null;
+
+/** The current focus per stroke type, for display: the drive lane's, else the slice lane's. */
 export function focusByStroke(
   state: CoachState,
 ): Readonly<Record<StrokeType, CorrectionId | null>> {
-  return {
-    forehand: state.byStroke.forehand.focus?.correctionId ?? null,
-    backhand: state.byStroke.backhand.focus?.correctionId ?? null,
-    overhead: state.byStroke.overhead.focus?.correctionId ?? null,
-  };
+  const of = (type: StrokeType) => focusOf(state, type, 'drive') ?? focusOf(state, type, 'slice');
+  return { forehand: of('forehand'), backhand: of('backhand'), overhead: of('overhead') };
 }
 
 /** Cue variant to store with a stroke: of a correction, or the one that worked for 'better'. */

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { EMPTY_BASELINE, buildBaseline } from '../../src/coach/baseline';
-import { INITIAL_COACH_STATE, type Utterance, coachStep } from '../../src/coach/coachEngine';
+import {
+  INITIAL_COACH_STATE,
+  type Utterance,
+  coachStep,
+  focusOf,
+} from '../../src/coach/coachEngine';
 import { CORRECTIONS } from '../../src/coaching/corrections';
 import { NOT_RATED_CUE } from '../../src/coaching/rules';
 import type { StrokeCoaching, StrokeMetrics, StrokeRecord } from '../../src/domain/types';
@@ -9,6 +14,7 @@ import {
   formatMeasure,
   liveViewModel,
   metricGroups,
+  serveRollHint,
   sessionCoachSummary,
 } from '../../src/ui/viewModel';
 import { GOOD_FOREHAND_V3, GOOD_SERVE, strokeRecord, withFeatures } from '../fixtures';
@@ -33,7 +39,7 @@ function view(
     assessment,
     utterance,
     cue: GOOD_CUE,
-    focus: step.state.byStroke[metrics.strokeType].focus?.correctionId ?? null,
+    focus: focusOf(step.state, metrics.strokeType, metrics.swingStyle),
     baselineCount: options.baselineCount ?? 0,
     baselineLoading: options.loading ?? false,
     language: options.language ?? 'et',
@@ -222,6 +228,36 @@ describe('live view model: metric rows', () => {
     expect(formatMeasure('deg', null, 2)).toBe('—');
     expect(formatMeasure('count', 2, 0.25)).toBe('2');
     expect(formatMeasure('deg', -0.2, 0.3)).toBe('0° ± 0.3°');
+  });
+});
+
+describe('serve roll row', () => {
+  const serve = (roll: number): StrokeMetrics => {
+    const f = GOOD_SERVE.features;
+    if (!f?.serve) throw new Error('fixture');
+    return { ...GOOD_SERVE, features: { ...f, serve: { ...f.serve, rollAngleDeg: roll } } };
+  };
+  const rollRow = (m: StrokeMetrics, hand: 'left' | 'right') =>
+    metricGroups(m, assessStroke(m, EMPTY_BASELINE), 'en', hand)
+      .flatMap((g) => g.rows)
+      .find((r) => r.id === 'serveRoll');
+
+  // Review fix: the row showed |roll|, so a roll in the wrong direction for the
+  // playing hand (which the coach counts as no pronation) looked fine.
+  it('shows the roll as the coach reads it: hand-corrected and signed', () => {
+    expect(rollRow(serve(40), 'right')?.value).toMatch(/^40°/);
+    expect(rollRow(serve(40), 'left')?.value).toMatch(/^−40°/);
+    expect(rollRow(serve(-40), 'left')?.value).toMatch(/^40°/);
+  });
+
+  it('hints at the playing-hand setting when ≥ 80 % of ≥ 10 serves roll the wrong way', () => {
+    const rights = Array.from({ length: 10 }, (_, i) => serve(35 + i));
+    expect(serveRollHint(rights, 'right', 'et')).toBeNull();
+    expect(serveRollHint(rights, 'left', 'et')).toMatch(/Kontrolli mängivat kätt seadetes/);
+    expect(serveRollHint(rights, 'left', 'en')).toMatch(/playing hand/);
+    expect(serveRollHint(rights.slice(0, 9), 'left', 'et')).toBeNull();
+    // Forehands do not count.
+    expect(serveRollHint([...rights.slice(0, 9), GOOD_FOREHAND_V3], 'left', 'et')).toBeNull();
   });
 });
 

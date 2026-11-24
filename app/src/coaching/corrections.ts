@@ -48,10 +48,19 @@ export interface CorrectionText {
    * strokes; variant 2 is a third, preferably external-focus or image cue.
    */
   readonly spokenVariants: readonly [string, string, string];
-  /** English, max 6 words, spoken when the player fixed the problem. */
+  /**
+   * English, max 6 words, spoken when the player fixed the problem. Describes
+   * the racket only: the sensor cannot know where the ball went or how the
+   * stroke felt.
+   */
   readonly reinforce: string;
-  /** One English sentence (max 14 words) for learning mode: the why/how. */
+  /** One English sentence (max 12 words) for learning mode: the why/how. */
   readonly learningSpoken: string;
+  /**
+   * Short English name of the drill (max 3 words) for "Try the … drill";
+   * without it the coach says "Try the drill".
+   */
+  readonly drillShort?: string;
   /** On-screen name of the weakness in the player profile. */
   readonly weaknessLabel: string;
   /** What the racket showed and why it matters (max 2 sentences). */
@@ -72,6 +81,11 @@ export const FEEDBACK_PHRASES = {
   consistency: 'Same swing every time',
   fatigue: 'Take a short break',
   stuck: 'Try the drill',
+  /* Overcorrection of a pair, named by the fault that is there now. */
+  nowTooOpen: 'Now too open',
+  nowTooClosed: 'Now too closed',
+  nowTooFlat: 'Now too flat',
+  nowTooSteep: 'Now too steep',
 } as const;
 
 /** On-screen titles for the spoken feedback phrases. */
@@ -79,24 +93,32 @@ export const FEEDBACK_LABELS: Record<Language, Record<keyof typeof FEEDBACK_PHRA
   et: {
     better: 'Parem löök („Better“)',
     keepIt: "Just nii, hoia seda („That's it“)",
-    overcorrected: 'Parandasid üle („A little less“)',
+    overcorrected: 'Parandasid üle („Now too …“ / „A little less“)',
     consistency: 'Iga kord sama löök („Same swing every time“)',
     fatigue: 'Tee lühike paus („Take a short break“)',
     stuck: 'Proovi harjutust („Try the drill“)',
+    nowTooOpen: 'Nüüd liiga avatud („Now too open“)',
+    nowTooClosed: 'Nüüd liiga suletud („Now too closed“)',
+    nowTooFlat: 'Nüüd liiga lame („Now too flat“)',
+    nowTooSteep: 'Nüüd liiga järsk („Now too steep“)',
   },
   en: {
     better: 'Better stroke (“Better”)',
     keepIt: "Keep it (“That's it”)",
-    overcorrected: 'Overcorrected (“A little less”)',
+    overcorrected: 'Overcorrected (“Now too …” / “A little less”)',
     consistency: 'Consistency (“Same swing every time”)',
     fatigue: 'Fatigue (“Take a short break”)',
     stuck: 'Stuck (“Try the drill”)',
+    nowTooOpen: 'Overcorrected to open (“Now too open”)',
+    nowTooClosed: 'Overcorrected to closed (“Now too closed”)',
+    nowTooFlat: 'Overcorrected to flat (“Now too flat”)',
+    nowTooSteep: 'Overcorrected to steep (“Now too steep”)',
   },
 };
 
 type BaseText = Omit<
   CorrectionText,
-  'spokenVariants' | 'reinforce' | 'learningSpoken' | 'weaknessLabel'
+  'spokenVariants' | 'reinforce' | 'learningSpoken' | 'weaknessLabel' | 'drillShort'
 >;
 
 const EN_BASE: Record<CorrectionId, BaseText> = {
@@ -211,7 +233,7 @@ const EN_BASE: Record<CorrectionId, BaseText> = {
       'Shadow swings with a partner pointing left or right: turn the racket back at once, before they finish the signal.',
   },
   'small-turn': {
-    spoken: 'Turn earlier',
+    spoken: 'Turn more',
     title: 'Small turn',
     explanation:
       'During the take-back the racket turned less about the vertical than in your usual stroke. The sensor sees only the racket, not how much your body turned.',
@@ -255,7 +277,7 @@ const EN_BASE: Record<CorrectionId, BaseText> = {
     adjustment:
       'Let the racket head fall behind your back, like scratching your back, before swinging up.',
     drill:
-      'Slow serve motions without a ball: pause at the lowest point behind your back, then swing up.',
+      'Slow serve motions without a ball: let the racket fall low behind your back in one flow, then swing up.',
   },
   'serve-low-contact': {
     spoken: 'Reach up',
@@ -455,7 +477,7 @@ const ET_BASE: Record<CorrectionId, BaseText> = {
       'Reket ei langenud enne ülespoole hoogu selja taha madalale, seega on kiirendamiseks vähem teed.',
     adjustment: 'Lase reketi pea selja taha langeda, nagu kratsiksid selga, ja löö siis üles.',
     drill:
-      'Aeglased serviliigutused ilma pallita: peatu selja taga madalaimas punktis ja löö siis üles.',
+      'Aeglased serviliigutused ilma pallita: lase reketil ühe hooga selja taha madalale langeda ja löö siis üles.',
   },
   'serve-low-contact': {
     spoken: EN_BASE['serve-low-contact'].spoken,
@@ -507,145 +529,169 @@ const EXTRA: Record<
     variants: readonly [string, string];
     reinforce: string;
     learningSpoken: string;
+    drillShort: string;
     weakness: { et: string; en: string };
   }
 > = {
   'face-open': {
     variants: ['Tilt the face down', 'Send it just over tape'],
-    reinforce: 'Good. Ball is staying in.',
+    reinforce: 'Good. Face is square.',
     learningSpoken: 'Strings tilted up send the ball long, so aim lower.',
+    drillShort: 'service-line',
     weakness: { et: 'Reketi pind liiga avatud', en: 'Racket face too open' },
   },
   'face-closed': {
     variants: ['Tilt the face up', 'Lift it over the net'],
-    reinforce: 'Good. That clears the net.',
+    reinforce: 'Good. Face is open enough.',
     learningSpoken: 'Strings tilted down send the ball into the net, so aim higher.',
+    drillShort: 'net-clearance',
     weakness: { et: 'Reketi pind liiga suletud', en: 'Racket face too closed' },
   },
   'slice-face-closed': {
     variants: ['Strings slightly skyward', 'Let the ball ride'],
-    reinforce: 'Good. Slice is floating now.',
+    reinforce: 'Good. Face opened up.',
     learningSpoken: 'A slightly open face lets the slice float instead of diving.',
+    drillShort: 'floating slice',
     weakness: { et: "Slice'i pind suletud", en: 'Slice face too closed' },
   },
   'slice-chop': {
     variants: ['Swing forward, not down', 'Skid it low and long'],
     reinforce: 'Good. Forward, not down.',
     learningSpoken: 'Swinging forward keeps the slice low and deep instead of sitting up.',
+    drillShort: 'skidding slice',
     weakness: { et: 'Slice liiga järsult alla', en: 'Slice chopped too steeply' },
   },
   'path-flat': {
     variants: ['Start below the ball', 'Brush up the back'],
     reinforce: 'Good. Nice low-to-high path.',
     learningSpoken: 'Swinging low to high adds topspin and margin over the net.',
+    drillShort: 'brush-up',
     weakness: { et: 'Lame löögitee', en: 'Flat swing path' },
   },
   'path-steep': {
     variants: ['Swing out before up', 'Send it toward the target'],
-    reinforce: 'Good. Driving through the ball.',
+    reinforce: 'Good. Path drives forward.',
     learningSpoken: 'Going out toward the target adds depth and pace to your spin.',
+    drillShort: 'target-line',
     weakness: { et: 'Järsk löögitee', en: 'Steep swing path' },
   },
   'accelerated-early': {
     variants: ['Keep the racket accelerating longer', 'Fastest after the ball'],
     reinforce: 'Good. Keep that acceleration.',
     learningSpoken: 'Your racket should be fastest at contact, not before it.',
+    drillShort: 'whoosh',
     weakness: { et: 'Kiirendab liiga vara', en: 'Accelerates too early' },
   },
   'no-racket-drop': {
     variants: ['Let the tip fall', 'Tip toward the ground'],
     reinforce: 'Good. Racket head dropped nicely.',
     learningSpoken: 'Dropping the tip gives you room to swing up through the ball.',
+    drillShort: 'tip-down',
     weakness: { et: 'Reketi pea ei lange', en: 'No racket drop' },
   },
   'open-takeback': {
     variants: ['Strings toward the ground', 'Pat the dog'],
     reinforce: 'Good. Face stays down.',
     learningSpoken: 'A face pointing down early needs no fixing on the way up.',
+    drillShort: 'mirror',
     weakness: { et: 'Avatud pind tagahoos', en: 'Face open on the take-back' },
   },
   hitch: {
     variants: ['One smooth loop', 'Swing like a pendulum'],
     reinforce: 'Good. Smooth, continuous swing.',
     learningSpoken: 'A pause wastes momentum, so one flowing loop gives more speed.',
+    drillShort: 'one-and-two',
     weakness: { et: 'Paus löögis', en: 'Pause in the swing' },
   },
   'stiff-arm': {
     variants: ['Loose arm, firm contact', 'Let the racket lag'],
-    reinforce: 'Good. That felt loose.',
+    reinforce: 'Good. Loose and late acceleration.',
     learningSpoken: 'A loose arm lets the racket lag, then whip through the ball.',
+    drillShort: 'stiff-loose',
     weakness: { et: 'Jäik löök', en: 'Stiff swing' },
   },
   'short-finish': {
     variants: ['Swing all the way through', 'Hold the finish'],
     reinforce: 'Good. Full finish.',
     learningSpoken: 'Finishing fully means you accelerate through the ball instead of braking.',
+    drillShort: 'catch-the-racket',
     weakness: { et: 'Lühike lõpetus', en: 'Short finish' },
   },
   'late-preparation': {
     variants: ['Racket back sooner', 'Ready before the bounce'],
     reinforce: 'Good. Early preparation.',
     learningSpoken: 'Early preparation gives you time for a smooth, unhurried swing.',
+    drillShort: 'point-and-turn',
     weakness: { et: 'Hiline ettevalmistus', en: 'Late preparation' },
   },
   'small-turn': {
     variants: ['Turn sideways to the net', 'Show your back'],
     reinforce: 'Good. Full turn.',
     learningSpoken: 'A bigger turn stores more power and gives the swing more room.',
+    drillShort: 'shoulder-turn',
     weakness: { et: 'Väike pööre', en: 'Small turn' },
   },
   'high-takeback': {
-    variants: ['Take it back shorter', 'Small, tidy loop'],
+    variants: ['Lower take-back', 'Small, tidy loop'],
     reinforce: 'Good. Compact take-back.',
     learningSpoken: 'A smaller loop makes your timing simpler and more repeatable.',
+    drillShort: 'wall',
     weakness: { et: 'Liiga kõrge tagahoog', en: 'Take-back too high' },
   },
   'unstable-contact': {
-    variants: ["Swing, don't flick", 'Strings stay on target'],
+    variants: ['Smooth through the ball', 'Strings stay on target'],
     reinforce: 'Good. Steady through contact.',
     learningSpoken: 'A steady racket face sends the ball where you aim.',
+    drillShort: 'half-pace',
     weakness: { et: 'Rahutu tabamus', en: 'Unsteady contact' },
   },
   'slow-recovery': {
     variants: ['Racket back in front', 'Split step, ready'],
     reinforce: 'Good. Quick recovery.',
     learningSpoken: 'Getting ready quickly prepares you for the next ball.',
+    drillShort: 'ready-position',
     weakness: { et: 'Aeglane taastumine', en: 'Slow recovery' },
   },
   'serve-no-drop': {
-    variants: ['Let it fall behind', 'Scratch your back'],
+    variants: ['Let it fall behind', 'Let the racket drop low'],
     reinforce: 'Good. Deep racket drop.',
     learningSpoken: 'A deeper drop gives the racket more distance to build speed.',
+    drillShort: 'slow-motion serve',
     weakness: { et: 'Reket ei lange servil', en: 'No racket drop on the serve' },
   },
   'serve-low-contact': {
     variants: ['Toss a bit higher', 'Hit at full height'],
-    reinforce: 'Good. Reaching high.',
-    learningSpoken: 'Hitting higher gives you a better angle and more margin over the net.',
+    reinforce: 'Good. Racket tip high at contact.',
+    learningSpoken: 'Hitting higher gives a better angle and more margin.',
+    drillShort: 'full-reach',
     weakness: { et: 'Madal tabamus servil', en: 'Low contact on the serve' },
   },
   'serve-no-pronation': {
-    variants: ['Strings face away after', 'Let it roll over'],
+    variants: ['Snap the racket over', 'Let it roll over'],
     reinforce: 'Good. Racket turned over.',
     learningSpoken: 'Turning the racket over adds speed and keeps the ball on target.',
+    drillShort: 'turn-over',
     weakness: { et: 'Reket ei pöördu üle', en: 'Racket not turned over' },
   },
   'serve-accelerated-early': {
     variants: ['Speed up toward the ball', 'Fastest at the top'],
     reinforce: 'Good. Speed built toward contact.',
     learningSpoken: 'Building speed late puts the fastest racket moment at the ball.',
+    drillShort: 'serve whoosh',
     weakness: { et: 'Serv kiirendab liiga vara', en: 'Serve accelerates too early' },
   },
   'serve-hitch': {
-    variants: ['No pause, one motion', 'Say one, two'],
+    variants: ['No pause, one motion', 'One smooth motion'],
     reinforce: 'Good. Smooth serve rhythm.',
     learningSpoken: 'A smooth rhythm carries speed all the way up to the ball.',
+    drillShort: 'one-two rhythm',
     weakness: { et: 'Paus servis', en: 'Pause in the serve' },
   },
   'serve-short-finish': {
     variants: ['Follow through across you', 'Carry on past contact'],
     reinforce: 'Good. Full serve finish.',
     learningSpoken: 'Finishing across your body lets the racket keep speeding through contact.',
+    drillShort: 'opposite-hip',
     weakness: { et: 'Lühike servi lõpetus', en: 'Short serve finish' },
   },
 };
@@ -662,6 +708,7 @@ function build(
       spokenVariants: [EN_BASE[id].spoken, x.variants[0], x.variants[1]],
       reinforce: x.reinforce,
       learningSpoken: x.learningSpoken,
+      drillShort: x.drillShort,
       weaknessLabel: x.weakness[lang],
     };
   }

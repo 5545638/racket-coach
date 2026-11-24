@@ -2,6 +2,7 @@ import type { CoachController } from '../app/controller';
 import { FaceGauge } from './FaceGauge';
 import { strings } from './strings';
 import { liveExtras, matchLiveView } from './profileViewModel';
+import { focusOf } from '../coach/coachEngine';
 import { type MetricRow, liveViewModel } from './viewModel';
 
 export function LiveView({ controller }: { readonly controller: CoachController }) {
@@ -58,10 +59,12 @@ export function LiveView({ controller }: { readonly controller: CoachController 
     assessment: controller.assessment.value,
     utterance: controller.utterance.value,
     cue: stroke.cue,
-    focus: controller.focus.value[m.strokeType],
+    focus: focusOf(controller.coachState.value, m.strokeType, m.swingStyle),
     baselineCount: controller.baselineCounts.value[m.strokeType],
     baselineLoading: controller.baselineLoading.value,
     language,
+    dominantHand: controller.settings.value.dominantHand,
+    history: controller.strokes.value.map((s) => s.metrics),
   });
   const { headline, blocks, focus } = view;
   // The face gauge describes topspin/flat drives only.
@@ -129,6 +132,7 @@ export function LiveView({ controller }: { readonly controller: CoachController 
         )}
         {focus.comparedWith && <p class="note">{focus.comparedWith}</p>}
         {view.baselineProgress && <p class="note">{view.baselineProgress}</p>}
+        {view.rollHint && <p class="hint">{view.rollHint}</p>}
       </div>
 
       {m.faceTiltDeg !== null && groundstroke && <FaceGauge tiltDeg={m.faceTiltDeg} t={t} />}

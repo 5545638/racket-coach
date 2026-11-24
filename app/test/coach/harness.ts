@@ -2,6 +2,7 @@ import { EMPTY_BASELINE, type PersonalBaseline, buildBaseline } from '../../src/
 import { classifyStroke } from '../../src/coach/classify';
 import {
   type CoachConfig,
+  type CoachContext,
   type CoachState,
   type CoachStep,
   DEFAULT_COACH_CONFIG,
@@ -62,6 +63,8 @@ export function play(
     readonly fatigue?: FatigueState;
     /** Use the fatigue detector (needs `at` on every row). */
     readonly detectFatigue?: boolean;
+    /** The profile's best cue variant per correction. */
+    readonly preferredLevels?: CoachContext['preferredLevels'];
   } = {},
 ): Run {
   const policy = coachingPolicy({ ...DEFAULT_PLAYER_INPUTS, ...options.inputs });
@@ -84,6 +87,7 @@ export function play(
       mode: options.mode ?? 'training',
       receivedAt: row.at ?? null,
       fatigueActive: isFatigued(fatigue, row.metrics.strokeType),
+      ...(options.preferredLevels ? { preferredLevels: options.preferredLevels } : {}),
     });
     state = step.state;
     const said = step.speech ?? '—';

@@ -6,6 +6,8 @@ export interface Speaker {
    * started, and cues later arrive from Bluetooth events.
    */
   prime(): void;
+  /** Drops anything still being said or queued (e.g. on disconnect). Optional. */
+  cancel?(): void;
 }
 
 /**
@@ -32,6 +34,10 @@ export class WebSpeechSpeaker implements Speaker {
     this.synth.speak(utterance);
   }
 
+  cancel(): void {
+    this.synth.cancel();
+  }
+
   prime(): void {
     const silent = new SpeechSynthesisUtterance(' ');
     silent.volume = 0;
@@ -42,8 +48,14 @@ export class WebSpeechSpeaker implements Speaker {
 /** Used in tests and when speech is unavailable. */
 export class SilentSpeaker implements Speaker {
   readonly spoken: string[] = [];
+  /** How often queued speech was dropped. */
+  cancelled = 0;
   say(text: string): void {
     this.spoken.push(text);
+  }
+
+  cancel(): void {
+    this.cancelled++;
   }
 
   prime(): void {

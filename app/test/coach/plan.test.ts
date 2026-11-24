@@ -23,6 +23,7 @@ const weakness = (patch: Partial<Weakness> & Pick<Weakness, 'correctionId'>): We
   faults: 30,
   assessed: 100,
   sessions: 3,
+  isNew: false,
   trend: 'stable',
   sessionRates: [],
   ...patch,
@@ -120,6 +121,25 @@ describe('training plan', () => {
       targetFaultRate: 0.1,
       trend: 'improving',
     });
+  });
+
+  // Plan review fix: targets and ranking start from the latest session.
+  it('targets and ranks by the latest session and drops items already under target', () => {
+    const plan = buildPlan(
+      profile({
+        weaknesses: [
+          // 30 % over the window, but 60 % in the latest session.
+          weakness({ correctionId: 'face-open', faultRate: 0.3, sessionRates: [0.2, 0.6] }),
+          weakness({ correctionId: 'path-flat', faultRate: 0.4, sessionRates: [0.6, 0.4] }),
+          // Already under its target (10 %) in the latest session.
+          weakness({ correctionId: 'hitch', faultRate: 0.5, sessionRates: [0.8, 0.05] }),
+        ],
+      }),
+    );
+    expect(plan.items.map((i) => [i.correctionId, i.currentFaultRate, i.targetFaultRate])).toEqual([
+      ['face-open', 0.6, 0.3],
+      ['path-flat', 0.4, 0.2],
+    ]);
   });
 
   it('is empty without weaknesses or improvement', () => {

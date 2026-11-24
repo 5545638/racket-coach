@@ -15,11 +15,13 @@ import {
   coachStep,
   cueForStroke,
   focusByStroke,
+  focusOf,
   matchIdle,
   phraseLevelOf,
+  withoutFocus,
 } from '../coach/coachEngine';
 import { type FatigueState, initialFatigue, isFatigued, updateFatigue } from '../coach/fatigue';
-import { buildPlan } from '../coach/plan';
+import { bestLevel, buildPlan } from '../coach/plan';
 import {
   EMPTY_PROFILE_STATE,
   type ProfileState,
@@ -29,11 +31,13 @@ import {
   deriveProfile,
   withSessions,
 } from '../coach/profile';
+import type { CorrectionId } from '../coaching/corrections';
 import { DEFAULT_RULES } from '../coaching/defaultRules';
 import type { RuleSet } from '../coaching/rules';
 import type {
   CategoryCounts,
   MountCalibration,
+  PhraseLevel,
   RawCapture,
   SensorDiagnostics,
   SensorStatus,
@@ -87,6 +91,12 @@ export interface ControllerDeps {
 }
 
 const MAX_LOG = 20;
+
+/**
+ * A gap this long without a stroke ends the session: the next stroke (or a
+ * reconnect after it) starts a new one. Engineering choice.
+ */
+export const SESSION_GAP_MS = 30 * 60_000;
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -150,6 +160,17 @@ export class CoachController {
   readonly plan = computed(() => buildPlan(this.profile.value, this.settings.value.language));
   /** Current focus per stroke type. */
   readonly focus = computed(() => focusByStroke(this.coachState.value));
+  /** Per correction, the cue variant that earned the most "Better"s: a new focus starts there. */
+  readonly preferredLevels = computed(() => {
+    const out: Partial<Record<CorrectionId, PhraseLevel>> = {};
+    for (const [id, counts] of Object.entries(this.profileState.value.betterByLevel) as [
+      CorrectionId,
+      readonly [number, number, number],
+    ][]) {
+      if (counts[0] + counts[1] + counts[2] > 0) out[id] = bestLevel(counts);
+    }
+    return out;
+  });
   /** Strokes with contact in the baseline, per stroke type. */
   readonly baselineCounts = computed(() => this.baseline.value.strokeCounts);
   /**
@@ -272,12 +293,17 @@ export class CoachController {
       transport.send(Uint8Array.of(Command.RequestStatus)),
     );
     await this.screenLock.acquire();
-    if (!this.session.value) await this.startSession();
+    if (!this.session.value || this.sessionEnded(this.now())) await this.startSession();
   }
 
-  /** Disconnects, and cancels any connect() or reconnect still in progress. */
+  /**
+   * Disconnects, and cancels any connect() or reconnect still in progress.
+   * Stops the match-mode timer and drops speech still queued.
+   */
   async disconnect(): Promise<void> {
     this.generation++;
+    this.stopMatchTimer();
+    this.deps.speaker.cancel?.();
     await this.closeLink();
   }
 
@@ -326,14 +352,17 @@ export class CoachController {
           await transport.send(Uint8Array.of(Command.RequestStatus));
           this.appendLog(`Reconnected (attempt ${attempt}).`);
           this.deps.speaker.say('Sensor connected', rate);
+          // Back after a long gap: that is a new session.
+          if (this.sessionEnded(this.now())) await this.startSession();
           return;
         } catch (error) {
           this.appendLog(`Reconnect attempt ${attempt} failed: ${errorMessage(error)}`);
         }
       }
       if (generation === this.generation) {
-        this.deps.speaker.say('Sensor lost', rate);
+        // Said after disconnect(), which drops queued speech.
         await this.disconnect();
+        this.deps.speaker.say('Sensor lost', rate);
       }
     } finally {
       this.reconnecting = false;
@@ -342,6 +371,20 @@ export class CoachController {
 
   /* ------------------------------------------------------------- session */
 
+  /**
+   * The current session has had no stroke for more than SESSION_GAP_MS at
+   * `at`. A session without strokes never ends this way.
+   */
+  private sessionEnded(at: number): boolean {
+    const last = this.strokes.value.at(-1)?.capture.receivedAt;
+    return this.session.value !== null && last !== undefined && at - last > SESSION_GAP_MS;
+  }
+
+  /**
+   * Starts a new session: a fresh coach, fatigue detector and stroke list.
+   * Stored strokes and sessions stay; the baseline and the profile are
+   * rebuilt from them.
+   */
   async startSession(): Promise<void> {
     const startedAt = this.now();
     const session: SessionInfo = {
@@ -416,6 +459,8 @@ export class CoachController {
     this.settings.value = next;
     if (modeChanged) this.transport?.setSensorMode?.(this.sensorMode());
     if (next.mode !== 'match') this.stopMatchTimer();
+    // A cue heard in one coaching mode is not built on in another.
+    if (next.mode !== before.mode) this.coachState.value = withoutFocus(this.coachState.value);
     await this.safely('Saving settings', () => this.deps.repository.saveSettings(next));
     if (catalogChanged && this.session.value) await this.loadBaseline();
   }
@@ -552,12 +597,15 @@ export class CoachController {
    */
   private handleSwing(capture: RawCapture): void {
     const calibration = this.calibration.value;
-    const session = this.session.value;
     if (!calibration) {
       this.appendLog('Swing ignored: calibrate the sensor first.');
       return;
     }
-    if (!session) return;
+    if (!this.session.value) return;
+    // A long gap since the previous stroke: this stroke opens a new session.
+    // startSession() switches everything synchronously before its first await.
+    if (this.sessionEnded(capture.receivedAt)) void this.startSession();
+    const session = this.session.value;
 
     const settings = this.settings.value;
     const analysisParams: AnalysisParams = {
@@ -593,12 +641,13 @@ export class CoachController {
       mode: settings.mode,
       receivedAt: capture.receivedAt,
       fatigueActive,
+      preferredLevels: this.preferredLevels.value,
     });
     const { utterance } = step;
     const coach: StrokeCoaching = {
       utterance: utterance.kind,
       correctionId: utterance.correctionId ?? null,
-      focus: step.state.byStroke[assessment.strokeType].focus?.correctionId ?? null,
+      focus: focusOf(step.state, assessment.strokeType, assessment.swingStyle),
       mode: settings.mode,
       categories: step.categories,
       phraseLevel: phraseLevelOf(utterance),

@@ -1,9 +1,11 @@
 import type { UtteranceReason, Utterance } from '../coach/coachEngine';
 import { DEFAULT_BASELINE_CONFIG } from '../coach/baseline';
+import { signedServeRollDeg } from '../coach/profile';
 import { CORRECTIONS, type CorrectionId } from '../coaching/corrections';
 import { type Language, guidanceFor } from '../coaching/guidance';
 import type {
   Cue,
+  DominantHand,
   FeatureSigmaKey,
   StrokeMetrics,
   StrokeRecord,
@@ -352,6 +354,8 @@ interface RowSpec {
   /** Offsets relative to contact are shown with an explicit plus. */
   readonly signedMs?: boolean;
   readonly only?: StrokeType;
+  /** The value shown instead of the assessed one (e.g. signed where the coach clamps). */
+  readonly display?: (m: StrokeMetrics, hand: DominantHand) => number | null;
 }
 
 const sigmaOf = (m: StrokeMetrics, key: FeatureSigmaKey): number | null =>
@@ -517,6 +521,10 @@ const ROWS: readonly RowSpec[] = [
     unit: 'deg',
     metric: 'serve.rollAngleDeg',
     only: 'overhead',
+    // The roll as the coach reads it: corrected for the playing hand, with
+    // its sign (negative = the wrong direction, which the coach counts as none).
+    display: signedServeRollDeg,
+    plain: (m) => ({ value: m.features?.serve?.rollAngleDeg ?? null }),
   },
   {
     id: 'faceClosing',
@@ -567,12 +575,19 @@ function rowFor(
   m: StrokeMetrics,
   assessment: StrokeAssessment | null,
   t: Strings,
+  hand: DominantHand,
 ): MetricRow | null {
   if (spec.only !== undefined && m.strokeType !== spec.only) return null;
   const label = spec.label(t);
   const element = assessment && spec.metric ? elementFor(assessment, spec.metric) : null;
+  const shown = spec.display ? spec.display(m, hand) : undefined;
   if (element) {
-    const value = formatMeasure(spec.unit, element.value, element.sigma, spec.signedMs);
+    const value = formatMeasure(
+      spec.unit,
+      shown === undefined ? element.value : shown,
+      element.sigma,
+      spec.signedMs,
+    );
     if (element.status === 'not-assessable') {
       return {
         id: spec.id,
@@ -608,7 +623,12 @@ function rowFor(
   return {
     id: spec.id,
     label,
-    value: formatMeasure(spec.unit, plain.value, plain.sigma ?? null, spec.signedMs),
+    value: formatMeasure(
+      spec.unit,
+      shown === undefined ? plain.value : shown,
+      plain.sigma ?? null,
+      spec.signedMs,
+    ),
     status: 'info',
     note: null,
   };
@@ -619,6 +639,7 @@ export function metricGroups(
   m: StrokeMetrics,
   assessment: StrokeAssessment | null,
   language: Language,
+  hand: DominantHand = 'right',
 ): MetricGroup[] {
   const t = strings(language);
   const groups: GroupId[] = ['preparation', 'contact', 'finish'];
@@ -627,7 +648,7 @@ export function metricGroups(
       id,
       title: t.group[id],
       rows: ROWS.filter((s) => s.group === id)
-        .map((s) => rowFor(s, m, assessment, t))
+        .map((s) => rowFor(s, m, assessment, t, hand))
         .filter((r): r is MetricRow => r !== null),
     }))
     .filter((g) => g.rows.length > 0);
@@ -643,6 +664,8 @@ export interface LiveViewModel {
   /** "Personal baseline: 9/15 strokes"; null once the baseline is in use. */
   readonly baselineProgress: string | null;
   readonly groups: readonly MetricGroup[];
+  /** "Check the playing hand in Setup" when the serve roll mostly points the wrong way; else null. */
+  readonly rollHint: string | null;
 }
 
 export interface LiveViewInput {
@@ -657,6 +680,34 @@ export interface LiveViewInput {
   readonly baselineCount: number;
   readonly baselineLoading: boolean;
   readonly language: Language;
+  /** Playing hand from the settings (default right). */
+  readonly dominantHand?: DominantHand;
+  /** Metrics of the session's strokes (any type), for the serve-roll hint. */
+  readonly history?: readonly StrokeMetrics[];
+}
+
+/** Serves needed before the playing-hand hint can show. Engineering choice. */
+export const ROLL_HINT_MIN_SERVES = 10;
+/** Share of serves with a negative hand-corrected roll that triggers the hint. */
+export const ROLL_HINT_SHARE = 0.8;
+
+/**
+ * "Check the playing hand in Setup" when at least 80 % of ≥ 10 serves roll
+ * the wrong way for the configured hand: then the hand setting (or the roll
+ * sign convention) is likely wrong, and every serve would get the pronation cue.
+ */
+export function serveRollHint(
+  history: readonly StrokeMetrics[],
+  hand: DominantHand,
+  language: Language,
+): string | null {
+  const rolls = history
+    .filter((m) => m.strokeType === 'overhead' && m.impactDetected)
+    .map((m) => signedServeRollDeg(m, hand))
+    .filter((r): r is number => r !== null);
+  if (rolls.length < ROLL_HINT_MIN_SERVES) return null;
+  const wrong = rolls.filter((r) => r < 0).length;
+  return wrong / rolls.length >= ROLL_HINT_SHARE ? strings(language).live.checkHand : null;
 }
 
 /** Everything the live screen shows for the latest stroke. Pure. */
@@ -675,7 +726,11 @@ export function liveViewModel(input: LiveViewInput): LiveViewModel {
     blocks: blockId ? guidanceBlocks(blockId, language) : null,
     focus: focusModel(input.focus, input.assessment, t, language),
     baselineProgress: baselineProgressText(input.baselineCount, input.baselineLoading, language),
-    groups: metricGroups(input.metrics, input.assessment, language),
+    groups: metricGroups(input.metrics, input.assessment, language, input.dominantHand),
+    rollHint:
+      input.metrics.strokeType === 'overhead'
+        ? serveRollHint(input.history ?? [], input.dominantHand ?? 'right', language)
+        : null,
   };
 }
 

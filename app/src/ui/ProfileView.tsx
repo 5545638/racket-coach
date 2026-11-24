@@ -92,7 +92,10 @@ export function ProfileView({
         <ul class="card plain weak-list">
           {view.weaknesses.map((w) => (
             <li key={w.correctionId}>
-              <span class="weak-name">{w.label}</span>
+              <span class="weak-name">
+                {w.label}
+                {w.newBadge && <span class="badge"> {w.newBadge}</span>}
+              </span>
               <span class="weak-rate">
                 {w.rate} {p.faultRate}
               </span>

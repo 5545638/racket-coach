@@ -30,7 +30,7 @@ export const EMPTY_COUNTS: Readonly<Record<DeviationCategory, number>> = {
  * scaled by, with the value less than σ inside the bound. Such a value cannot
  * be told apart from a fault. Engineering choice.
  */
-function sigmaTooLarge(e: ElementAssessment): boolean {
+export function sigmaTooLarge(e: ElementAssessment): boolean {
   if (e.sigma === null || e.band === null) return false;
   const bound = e.direction === 'below' ? e.band.lo : e.band.hi;
   if (bound === null || e.value === null) return false;

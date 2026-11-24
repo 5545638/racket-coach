@@ -124,10 +124,49 @@ describe('profile from the stroke history', () => {
     expect(profile.ratedStrokes).toBe(90);
   });
 
-  it('needs faults in two sessions', () => {
+  // Changed with M4: one session with ≥ 30 judged strokes and ≥ 30 % faults
+  // now makes a weakness on its own, labelled new (first-session users).
+  it('needs two faulty sessions, or one clear session (then labelled new)', () => {
     const one = [...session('a', 0, 30, { flat: 20 }), ...session('b', 100_000, 30)];
     const profile = deriveProfile(buildProfileState(one), DEFAULT_PLAYER_INPUTS, EMPTY_BASELINE);
-    expect(profile.weaknesses).toEqual([]);
+    expect(profile.weaknesses.map((w) => [w.correctionId, w.isNew, w.sessions])).toEqual([
+      ['path-flat', true, 1],
+    ]);
+    // A short session (< 30 strokes) or a lower rate (< 30 %) is not enough alone.
+    const short = [...session('a', 0, 20, { flat: 15 }), ...session('b', 100_000, 30)];
+    expect(
+      deriveProfile(buildProfileState(short), DEFAULT_PLAYER_INPUTS, EMPTY_BASELINE).weaknesses,
+    ).toEqual([]);
+    const mild = [...session('a', 0, 40, { flat: 10 }), ...session('b', 100_000, 10)];
+    expect(
+      deriveProfile(buildProfileState(mild), DEFAULT_PLAYER_INPUTS, EMPTY_BASELINE).weaknesses,
+    ).toEqual([]);
+    // Two faulty sessions: an established weakness.
+    const two = [...session('a', 0, 30, { flat: 9 }), ...session('b', 100_000, 30, { flat: 9 })];
+    expect(
+      deriveProfile(buildProfileState(two), DEFAULT_PLAYER_INPUTS, EMPTY_BASELINE).weaknesses[0],
+    ).toMatchObject({ correctionId: 'path-flat', isNew: false, sessions: 2 });
+  });
+
+  // M4 regression: before, sessions were counted inside the 200-stroke window,
+  // so one long session pushed the earlier ones out and the weakness vanished.
+  it('keeps a weakness through a long session (100 / 100 / 250 strokes)', () => {
+    // Every third forehand flat (33 %), spread through each session.
+    const spread = (id: string, start: number, count: number): StrokeRecord[] =>
+      Array.from({ length: count }, (_, i) =>
+        coachedRecord(i % 3 === 0 ? path(0) : GOOD_FOREHAND_V3, id, start + i * 1000),
+      );
+    const records = [
+      ...spread('s1', 1_000_000, 100),
+      ...spread('s2', 2_000_000, 100),
+      ...spread('s3', 3_000_000, 250),
+    ];
+    const state = buildProfileState(records);
+    expect(state.window.every((d) => d.sessionId === 's3')).toBe(true);
+    const flat = deriveProfile(state, DEFAULT_PLAYER_INPUTS, EMPTY_BASELINE).weaknesses.find(
+      (w) => w.correctionId === 'path-flat',
+    );
+    expect(flat).toMatchObject({ sessions: 3, isNew: false });
   });
 
   it('uses only the last 200 rated strokes', () => {

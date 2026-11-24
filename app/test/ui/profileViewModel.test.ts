@@ -44,6 +44,7 @@ const weakness = (patch: Partial<Weakness> = {}): Weakness => ({
   faults: 32,
   assessed: 100,
   sessions: 3,
+  isNew: false,
   trend: 'improving',
   sessionRates: [0.5, 0.4, 0.32],
   ...patch,
@@ -185,7 +186,8 @@ describe('profile sections', () => {
 describe('plan formatting', () => {
   it('shows title, drill, 3 × 15 balls, best cue and target', () => {
     const p = profile({
-      weaknesses: [weakness({ faultRate: 0.3 })],
+      // The target starts from the latest session's rate (30 %).
+      weaknesses: [weakness({ faultRate: 0.3, sessionRates: [0.5, 0.4, 0.3] })],
       ratedStrokes: 100,
     });
     const [item] = planViews(buildPlan(p, 'et'), 'et');

@@ -111,6 +111,8 @@ export interface WeaknessView {
   readonly trend: Trend;
   readonly trendLabel: string;
   readonly arrow: string;
+  /** "new" for a weakness seen in one session only; else null. */
+  readonly newBadge: string | null;
 }
 
 export function weaknessViews(weaknesses: readonly Weakness[], language: Language): WeaknessView[] {
@@ -123,6 +125,7 @@ export function weaknessViews(weaknesses: readonly Weakness[], language: Languag
     trend: w.trend,
     trendLabel: t.trend[w.trend],
     arrow: TREND_ARROW[w.trend],
+    newBadge: w.isNew ? t.newWeakness : null,
   }));
 }
 

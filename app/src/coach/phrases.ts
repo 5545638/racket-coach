@@ -34,13 +34,50 @@ const FALLBACK_FEEDBACK = {
   stuck: 'Try the drill',
 } as const;
 
-export type FeedbackPhrase = 'better' | 'keepIt' | keyof typeof FALLBACK_FEEDBACK;
+/** Specific overcorrection phrases, by the fault that is there now (see FEEDBACK_PHRASES). */
+const OVERCORRECTED_KEY = {
+  'face-open': 'nowTooOpen',
+  'face-closed': 'nowTooClosed',
+  'path-flat': 'nowTooFlat',
+  'path-steep': 'nowTooSteep',
+} as const satisfies Partial<Record<CorrectionId, keyof typeof FEEDBACK_PHRASES>>;
+
+export type FeedbackPhrase =
+  | 'better'
+  | 'keepIt'
+  | keyof typeof FALLBACK_FEEDBACK
+  | (typeof OVERCORRECTED_KEY)[keyof typeof OVERCORRECTED_KEY];
 
 /** The spoken feedback phrase `key` (FEEDBACK_PHRASES, else the fallback). */
 export function feedbackPhrase(key: FeedbackPhrase): string {
-  if (key === 'better') return FEEDBACK_PHRASES.better;
-  if (key === 'keepIt') return FEEDBACK_PHRASES.keepIt;
-  return text(FEEDBACK_PHRASES, key) ?? FALLBACK_FEEDBACK[key];
+  if (key in FALLBACK_FEEDBACK) {
+    const k = key as keyof typeof FALLBACK_FEEDBACK;
+    return text(FEEDBACK_PHRASES, k) ?? FALLBACK_FEEDBACK[k];
+  }
+  return FEEDBACK_PHRASES[key as Exclude<FeedbackPhrase, keyof typeof FALLBACK_FEEDBACK>];
+}
+
+/**
+ * Overcorrection phrase naming the fault that is there now ("Now too
+ * closed" after "Face too open"); the generic "A little less" for a
+ * correction without a specific phrase.
+ */
+export function overcorrectedPhrase(faultNow: CorrectionId): string {
+  const key = (OVERCORRECTED_KEY as Partial<Record<CorrectionId, FeedbackPhrase>>)[faultNow];
+  return key === undefined ? feedbackPhrase('overcorrected') : feedbackPhrase(key);
+}
+
+/** Longest "Try the … drill" phrase, in words. */
+const MAX_STUCK_WORDS = 6;
+
+/** "Try the brush-up drill" when the correction has a short drill name, else "Try the drill". */
+export function stuckPhrase(id: CorrectionId): string {
+  const short = text(entry(id), 'drillShort');
+  if (short !== null) {
+    const phrase = `Try the ${short.trim()} drill`;
+    if (phrase.split(/\s+/).length <= MAX_STUCK_WORDS) return phrase;
+  }
+  return feedbackPhrase('stuck');
 }
 
 /** The three spoken cue variants [v0, v1, v2] (v0 = `spoken`); without variants, [spoken × 3]. */

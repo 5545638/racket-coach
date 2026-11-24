@@ -98,6 +98,8 @@ export interface Strings {
     readonly baselineProgress: (n: number, needed: number) => string;
     readonly limit: string;
     readonly fatigueBadge: string;
+    /** The serve roll mostly points the wrong way for the configured hand. */
+    readonly checkHand: string;
     /** Label of the spoken explanation shown in learning mode. */
     readonly learning: string;
     /** Match mode: label of the persistent fault spoken in a break. */
@@ -114,6 +116,8 @@ export interface Strings {
     readonly weaknesses: string;
     readonly noWeaknesses: string;
     readonly sessionsN: (n: number) => string;
+    /** Badge of a weakness seen in one session only. */
+    readonly newWeakness: string;
     readonly faultRate: string;
     readonly trend: Record<'improving' | 'stable' | 'worsening', string>;
     readonly progress: string;
@@ -303,6 +307,7 @@ const en: Strings = {
       'ladder-sparse': 'Cue said less often now: try the drill below.',
       oscillation: 'Faults swing between opposites: aim for the same swing.',
       'fatigue-hold': 'You seem tired: no new corrections for now.',
+      'soft-conflict': 'Held back: it could pull against the last cue.',
       contradiction: 'Too far the other way after the last cue.',
       'no-contact': 'No ball contact detected.',
       'not-assessable': 'Not enough data to judge this stroke yet.',
@@ -326,6 +331,7 @@ const en: Strings = {
     baselineProgress: (n, needed) => `Personal baseline: ${n}/${needed} strokes`,
     limit: 'Limit',
     fatigueBadge: 'Tired',
+    checkHand: 'Check the playing hand in Setup: most serves roll the wrong way for this hand.',
     learning: 'Explanation',
     matchSpoken: 'Said in the break',
     matchStrokes: 'Strokes',
@@ -340,6 +346,7 @@ const en: Strings = {
     weaknesses: 'Weaknesses',
     noWeaknesses: 'No lasting weaknesses so far.',
     sessionsN: (n) => `${n} sessions`,
+    newWeakness: 'new',
     faultRate: 'faults',
     trend: { improving: 'improving', stable: 'steady', worsening: 'getting worse' },
     progress: 'Progress',
@@ -532,6 +539,7 @@ const et: Strings = {
       'ladder-sparse': 'Märkust öeldakse nüüd harvem: proovi allolevat harjutust.',
       oscillation: 'Vead kõiguvad vastassuundade vahel: püüa lüüa iga kord ühtemoodi.',
       'fatigue-hold': 'Tundub, et oled väsinud: uusi parandusi praegu ei tule.',
+      'soft-conflict': 'Ootel: see võiks eelmise märkusega vastuollu minna.',
       contradiction: 'Eelmise märkuse järel liiga palju teisele poole.',
       'no-contact': 'Palli tabamust ei tuvastatud.',
       'not-assessable': 'Selle löögi hindamiseks on andmeid veel liiga vähe.',
@@ -555,6 +563,8 @@ const et: Strings = {
     baselineProgress: (n, needed) => `Isiklik baas: ${n}/${needed} lööki`,
     limit: 'Piir',
     fatigueBadge: 'Väsinud',
+    checkHand:
+      'Kontrolli mängivat kätt seadetes: enamik serve pöörleb selle käe jaoks vales suunas.',
     learning: 'Selgitus',
     matchSpoken: 'Pausi ajal öeldud',
     matchStrokes: 'Lööke',
@@ -569,6 +579,7 @@ const et: Strings = {
     weaknesses: 'Nõrkused',
     noWeaknesses: 'Püsivaid nõrkusi pole siiani.',
     sessionsN: (n) => `${n} trenni`,
+    newWeakness: 'uus',
     faultRate: 'vigu',
     trend: { improving: 'paraneb', stable: 'stabiilne', worsening: 'halveneb' },
     progress: 'Areng',
