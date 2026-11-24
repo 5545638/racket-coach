@@ -1,4 +1,5 @@
 import type { CoachController } from '../app/controller';
+import { HistoryCharts } from './HistoryCharts';
 import { type ProgressView, profileViewModel } from './profileViewModel';
 import { strings } from './strings';
 
@@ -143,6 +144,8 @@ export function ProfileView({
         ))
       )}
       {view.ratedStrokes > 0 && <p class="note">{p.basedOn(view.ratedStrokes)}</p>}
+
+      <HistoryCharts controller={controller} />
     </section>
   );
 }

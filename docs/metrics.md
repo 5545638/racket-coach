@@ -1315,3 +1315,44 @@ head speed within 1 % of the truth, peak timing within 5 ms.
   recorded data).
 - Body kinematics (footwork, trunk rotation, contact point relative to the
   body) are invisible to a racket sensor.
+
+## Session report and history (`coaching/strokeFacts.ts`, `consistency.ts`, `trainingReport.ts`, `ui/historyModel.ts`)
+
+Everything is derived from stored stroke records, so any past session can be reported.
+
+### Overall reading per stroke
+
+Every stroke gets exactly one reading (the counts add up to the number of strokes, not of elements):
+`correction` (the coach spoke a correction) > `fatigue` (no correction, faults exist and all were fatigue-related) >
+`fault-silent` (a fault that was not spoken) > `uncertain` > `style` (all judged elements inside the band) >
+`not-assessable`. Records without categories use their cue (fix → correction, good → style, none → not assessable).
+
+### Consistency score (0–100)
+
+Per stroke type, per metric (face tilt and swing path on drive strokes only; speed on strokes with contact, no signal
+gap and no clipped gyro), needing ≥ 5 values:
+
+- s = 1.4826 · MAD (robust standard deviation);
+- floor f = noise floor: face 3° and path 3.5° (`S_MIN`, elements/catalog.ts), speed 1.5 m/s (engineering choice, about
+  10 % of a typical speed estimate);
+- score = 100 · exp(−max(0, s/f − 1) / 4): 100 within the floor, ≈ 78 at 2 f, ≈ 37 at 5 f, ≈ 5 at 13 f.
+
+A stroke type's score is the mean of its available metric scores; "based on N strokes" is the number of strokes that gave
+at least one value. The session score weights the type scores by N. Inside a session, "improvement" compares the score of
+the first and second half (arrow at a change of ≥ 5 points).
+
+### Other report numbers
+
+- Speed: mean estimated head speed (contact detected, no gap) per stroke type; a "≥" lower-bound marker when any stroke's
+  gyro clipped.
+- Strengths: corrections judged on ≥ 10 strokes and inside the band on ≥ 70 % of them, best three.
+- Errors: corrections at fault on ≥ 2 strokes, top three by count; share = faults / strokes judged on it.
+- Improvement: only with ≥ 20 strokes; fault rate of the top errors in the first vs second half (judged on ≥ 3 strokes
+  each); an arrow at a change of ≥ 5 percentage points.
+- Main focus: the first weakness item of the training plan (`coach/plan.ts`) with its drill.
+
+### History
+
+`sessionHistory(sessions, strokes)` takes the newest ≤ 20 sessions with strokes and gives per session: strokes per
+type, mean speed per type, consistency, and the fault rate (judged on ≥ 5 strokes) of the three corrections with the most
+faults over those sessions. The Profile tab loads them on opening (`CoachController.loadHistory`).

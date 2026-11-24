@@ -409,6 +409,29 @@ export class CoachController {
   }
 
   /**
+   * The newest `limit` sessions that have strokes, with those strokes, for the
+   * history charts. Reads storage on demand; never throws.
+   */
+  async loadHistory(limit = 20): Promise<{
+    readonly sessions: SessionInfo[];
+    readonly strokes: StrokeRecord[];
+  }> {
+    const sessions: SessionInfo[] = [];
+    const strokes: StrokeRecord[] = [];
+    await this.safely('Loading history', async () => {
+      const all = await this.deps.repository.listSessions();
+      for (const session of all.slice(0, limit * 3)) {
+        if (sessions.length >= limit) break;
+        const own = await this.deps.repository.strokesForSession(session.id);
+        if (own.length === 0) continue;
+        sessions.push(session);
+        strokes.push(...own);
+      }
+    });
+    return { sessions, strokes };
+  }
+
+  /**
    * Builds the personal baseline from the most recent stored strokes. Strokes
    * that arrive while it loads are already in `strokes` and are merged in
    * (each stroke once, by id).

@@ -1,11 +1,11 @@
 import type { CoachController } from '../app/controller';
 import { toCsv, toJson } from '../app/export';
-import { buildSessionReport } from '../coaching/sessionReport';
 import { type Statistic, summarize } from '../coaching/summary';
 import { minus } from './format';
-import { sessionAdaptive } from './profileViewModel';
+import { SessionReport } from './SessionReport';
+import { reportStrings } from './reportStrings';
 import { strings } from './strings';
-import { guidanceBlocks, sessionCoachSummary, titleFor } from './viewModel';
+import { sessionCoachSummary, titleFor } from './viewModel';
 
 /**
  * Hands a file to the user. Uses the share sheet where available (iOS web
@@ -31,13 +31,6 @@ async function saveFile(filename: string, content: string, type: string): Promis
   }, 60_000);
 }
 
-/** Session start in the UI language's own date format. */
-const sessionDate = (startedAt: number, language: 'et' | 'en'): string =>
-  new Date(startedAt).toLocaleString(language === 'et' ? 'et-EE' : 'en-GB', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-
 const stat = (s: Statistic | null, unit: string, factor = 1): string =>
   s ? `${minus((s.mean * factor).toFixed(0))} ± ${(s.sd * factor).toFixed(0)}${unit}` : '—';
 
@@ -49,119 +42,74 @@ export function SessionView({ controller }: { readonly controller: CoachControll
   const session = controller.session.value;
   const strokes = controller.strokes.value;
   const summaries = summarize(strokes);
-  const report = buildSessionReport(strokes);
   const coach = sessionCoachSummary(strokes);
-  const adaptive = sessionAdaptive(strokes, language);
-  const focused = coach.filter((c) => c.focus !== null);
   const stamp = session ? new Date(session.startedAt).toISOString().slice(0, 16) : 'session';
 
   return (
     <section class="session">
-      <h2>
-        {t.session.title}
-        {session ? ` · ${sessionDate(session.startedAt, language)}` : ''}
-      </h2>
-      <p class="hint">{t.session.strokes(report.totalStrokes, report.unrated)}</p>
+      <SessionReport controller={controller} />
 
-      <article class="card coach">
-        <h3>{t.session.focusTitle}</h3>
-        {focused.length > 0 ? (
-          focused.map((c) => {
-            const blocks = c.focus ? guidanceBlocks(c.focus, language) : null;
+      {summaries.length > 0 && (
+        <details class="details">
+          <summary>{reportStrings(language).detailsTitle}</summary>
+          {summaries.map((s) => {
+            const own = coach.find((c) => c.strokeType === s.strokeType);
             return (
-              <div key={c.strokeType}>
-                <h4>{t.stroke[c.strokeType]}</h4>
-                <p class="cue fix small">{c.focus ? titleFor(c.focus, language) : ''}</p>
-                {blocks && (
-                  <dl class="guidance">
-                    <dt>{t.live.change}</dt>
-                    <dd>{blocks.change}</dd>
-                    <dt>{t.live.drill}</dt>
-                    <dd>{blocks.drill}</dd>
-                  </dl>
+              <article key={s.strokeType} class="card">
+                <h3>
+                  {t.stroke[s.strokeType]} <span class="count">{s.count}</span>
+                </h3>
+                <dl class="metrics">
+                  <div class="metric">
+                    <dt>{t.session.good}</dt>
+                    <dd>{percent(s.goodShare)}</dd>
+                  </div>
+                  <div class="metric">
+                    <dt>{t.metric.face}</dt>
+                    <dd>{stat(s.faceTiltDeg, '°')}</dd>
+                  </div>
+                  <div class="metric">
+                    <dt>{t.metric.path}</dt>
+                    <dd>{stat(s.swingPathDeg, '°')}</dd>
+                  </div>
+                  <div class="metric">
+                    <dt>{t.metric.speed}</dt>
+                    <dd>{stat(s.headSpeedMps, ' km/h', 3.6)}</dd>
+                  </div>
+                </dl>
+                {own && (
+                  <>
+                    <p class="pill-row">
+                      <span>{t.session.counted(own.counted)}</span>
+                      <span>{t.session.betterTimes(own.better)}</span>
+                      <span>{t.session.thatsItTimes(own.keepIt)}</span>
+                    </p>
+                    <h4>{t.session.corrections}</h4>
+                    {own.corrections.length > 0 ? (
+                      <ul class="faults corrections">
+                        {own.corrections.slice(0, 3).map((c) => (
+                          <li key={c.correctionId}>
+                            {titleFor(c.correctionId, language)}{' '}
+                            <span class="count">{c.count}×</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p class="hint">{t.session.noCorrections}</p>
+                    )}
+                    {own.focus && (
+                      <p class="note">
+                        {t.session.focusNow}: {titleFor(own.focus, language)}
+                      </p>
+                    )}
+                  </>
                 )}
-              </div>
+              </article>
             );
-          })
-        ) : (
-          <p class="hint">{t.session.noFocus}</p>
-        )}
-      </article>
-
-      <article class="card">
-        <h3>{t.session.categoriesTitle}</h3>
-        <ul class="tally">
-          {adaptive.categories.map((c) => (
-            <li key={c.id}>
-              {c.label} <span class="count">{c.count}</span>
-            </li>
-          ))}
-        </ul>
-        <h3>{t.session.feedbackTitle}</h3>
-        <ul class="tally stacked">
-          {adaptive.feedback.map((f) => (
-            <li key={f.kind}>
-              {f.label} <span class="count">{f.count}×</span>
-            </li>
-          ))}
-        </ul>
-      </article>
-
-      {summaries.map((s) => {
-        const own = coach.find((c) => c.strokeType === s.strokeType);
-        return (
-          <article key={s.strokeType} class="card">
-            <h3>
-              {t.stroke[s.strokeType]} <span class="count">{s.count}</span>
-            </h3>
-            <dl class="metrics">
-              <div class="metric">
-                <dt>{t.session.good}</dt>
-                <dd>{percent(s.goodShare)}</dd>
-              </div>
-              <div class="metric">
-                <dt>{t.metric.face}</dt>
-                <dd>{stat(s.faceTiltDeg, '°')}</dd>
-              </div>
-              <div class="metric">
-                <dt>{t.metric.path}</dt>
-                <dd>{stat(s.swingPathDeg, '°')}</dd>
-              </div>
-              <div class="metric">
-                <dt>{t.metric.speed}</dt>
-                <dd>{stat(s.headSpeedMps, ' km/h', 3.6)}</dd>
-              </div>
-            </dl>
-            {own && (
-              <>
-                <p class="pill-row">
-                  <span>{t.session.counted(own.counted)}</span>
-                  <span>{t.session.betterTimes(own.better)}</span>
-                  <span>{t.session.thatsItTimes(own.keepIt)}</span>
-                </p>
-                <h4>{t.session.corrections}</h4>
-                {own.corrections.length > 0 ? (
-                  <ul class="faults corrections">
-                    {own.corrections.slice(0, 3).map((c) => (
-                      <li key={c.correctionId}>
-                        {titleFor(c.correctionId, language)} <span class="count">{c.count}×</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p class="hint">{t.session.noCorrections}</p>
-                )}
-                {own.focus && (
-                  <p class="note">
-                    {t.session.focusNow}: {titleFor(own.focus, language)}
-                  </p>
-                )}
-              </>
-            )}
-          </article>
-        );
-      })}
-      <p class="hint">{t.session.spread}</p>
+          })}
+          <p class="hint">{t.session.spread}</p>
+        </details>
+      )}
 
       <div class="actions">
         <button
