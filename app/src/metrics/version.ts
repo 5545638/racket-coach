@@ -6,5 +6,6 @@
  *
  * 1: implicit, strokes saved before versioning existed.
  * 2: first version recorded together with calibration and parameters.
+ * 3: adds `StrokeMetrics.features` (phase timeline, coaching features, σ).
  */
-export const ANALYSIS_VERSION = 2;
+export const ANALYSIS_VERSION = 3;

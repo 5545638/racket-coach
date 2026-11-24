@@ -6,35 +6,11 @@ import type {
   SwingSize,
   SwingStyle,
 } from '../domain/types';
-import { mulVec } from '../math/mat3';
-import { type Quat, IDENTITY_QUAT, rotate } from '../math/quat';
-import {
-  type Vec3,
-  RAD_TO_DEG,
-  UNIT_X,
-  UNIT_Z,
-  cross,
-  dot,
-  norm,
-  normalize,
-  sub,
-} from '../math/vec3';
-import {
-  type AnchorCriteria,
-  attitudeFromGravity,
-  attitudeSeries,
-  findAttitudeAnchor,
-} from '../processing/attitude';
-import {
-  activeRange,
-  type ContactReference,
-  argMax,
-  contactReference,
-  detectImpact,
-  findPreparationStart,
-  longestQuietRun,
-  rotationPath,
-} from '../processing/segmentation';
+import { type Quat, rotate } from '../math/quat';
+import { type Vec3, RAD_TO_DEG, UNIT_X } from '../math/vec3';
+import { longestQuietRun, rotationPath } from '../processing/segmentation';
+import { computeFeatures } from './features';
+import { computeSwingKinematics, elevationDeg } from './kinematics';
 
 export interface AnalysisParams {
   /**
@@ -131,102 +107,6 @@ export const DEFAULT_ANALYSIS_PARAMS: AnalysisParams = {
   readyMinS: 0.3,
 };
 
-const elevationDeg = (unit: Vec3): number =>
-  Math.asin(Math.max(-1, Math.min(1, dot(unit, UNIT_Z)))) * RAD_TO_DEG;
-
-const countTrue = (flags: readonly boolean[], from: number, to: number): number =>
-  flags.slice(Math.max(0, from), to + 1).filter(Boolean).length;
-
-function anchorCriteria(params: AnalysisParams, sampleRateHz: number): AnchorCriteria {
-  return {
-    windowSamples: Math.round(params.anchorWindowS * sampleRateHz),
-    maxRateRadPerS: params.quietRateRadPerS,
-    maxAccelStdG: params.anchorMaxAccelStdG,
-    maxAccelDriftG: params.anchorMaxAccelDriftG,
-    maxGravityErrorG: params.maxAnchorErrorG,
-  };
-}
-
-interface ContactAngles {
-  readonly faceTiltDeg: number;
-  readonly swingPathDeg: number;
-  readonly tipElevationDeg: number;
-  readonly faceClosingRateDps: number | null;
-}
-
-/**
- * Gravity-referenced angles at one sample from its attitude `q` and body rate
- * `omega`. The sweet-spot velocity of the rigid lever is ω × (L x̂), so its
- * direction is ω × x̂ whatever L is.
- */
-function anglesAtSample(q: Quat, omega: Vec3, hittingNormal: Vec3): ContactAngles {
-  const normalWorld = rotate(q, hittingNormal);
-  const faceTiltDeg = elevationDeg(normalWorld);
-  // d(elevation)/dt of the hitting normal n is (ω × n)·up / cos(elevation).
-  const normalRate = dot(cross(rotate(q, omega), normalWorld), UNIT_Z);
-  const cosTilt = Math.cos(faceTiltDeg / RAD_TO_DEG);
-  return {
-    faceTiltDeg,
-    swingPathDeg: elevationDeg(normalize(rotate(q, cross(omega, UNIT_X)))),
-    tipElevationDeg: elevationDeg(rotate(q, UNIT_X)),
-    faceClosingRateDps: cosTilt > 0.1 ? (-normalRate / cosTilt) * RAD_TO_DEG : null,
-  };
-}
-
-/** Linear extrapolation from `prev` through `last` by `fraction` of their spacing. */
-const extrapolate = (prev: number, last: number, fraction: number): number =>
-  last + (last - prev) * fraction;
-
-/**
- * Angles at the contact time, extrapolated linearly from the last two
- * pre-impact samples by `fraction` of a sample (½ with an impact, 0 without).
- *
- * Extrapolating the angles, rather than carrying the attitude forward at the
- * last measured body rate, keeps forearm roll from leaking into the swing
- * path: with roll the body rate is not constant over the step, and the
- * constant-rate assumption tilted the path by ≈ 4° at 15 rad/s of roll in
- * simulation. The closing rate is extrapolated too: it changes by tens of
- * deg/s within half a sample near contact.
- */
-function extrapolateAngles(
-  prev: ContactAngles,
-  last: ContactAngles,
-  fraction: number,
-): ContactAngles {
-  const closing =
-    prev.faceClosingRateDps === null || last.faceClosingRateDps === null
-      ? last.faceClosingRateDps
-      : extrapolate(prev.faceClosingRateDps, last.faceClosingRateDps, fraction);
-  return {
-    faceTiltDeg: extrapolate(prev.faceTiltDeg, last.faceTiltDeg, fraction),
-    swingPathDeg: extrapolate(prev.swingPathDeg, last.swingPathDeg, fraction),
-    tipElevationDeg: extrapolate(prev.tipElevationDeg, last.tipElevationDeg, fraction),
-    faceClosingRateDps: closing,
-  };
-}
-
-/**
- * Contact angles from an attitude series: read at the last pre-impact sample
- * `contact.sampleIndex` and extrapolated to `contact.time`.
- */
-function anglesAtContact(
-  attitude: readonly Quat[],
-  gyro: readonly Vec3[],
-  contact: ContactReference,
-  hittingNormal: Vec3,
-): ContactAngles {
-  const at = (i: number): ContactAngles =>
-    anglesAtSample(attitude[i] ?? IDENTITY_QUAT, gyro[i] ?? [0, 0, 0], hittingNormal);
-  const last = at(contact.sampleIndex);
-  const fraction = contact.time - contact.sampleIndex;
-  const prevIndex = contact.sampleIndex - 1;
-  const prevOmega = gyro[prevIndex];
-  if (fraction === 0 || prevIndex < 0 || !prevOmega || norm(cross(prevOmega, UNIT_X)) < 1e-6) {
-    return last;
-  }
-  return extrapolateAngles(at(prevIndex), last, fraction);
-}
-
 /** Lowest tip elevation in `[from, to]` and the hitting-face tilt at that moment. */
 function racketDrop(
   attitude: readonly Quat[],
@@ -279,70 +159,18 @@ export function analyzeSwing(
     throw new RangeError('Swing capture too short to analyse');
   }
   const fs = series.sampleRateHz;
-  const R = calibration.racketFromSensor;
   const msFromSamples = (samples: number): number => (samples / fs) * 1000;
 
-  // 1. Express everything in the racket frame, gyro bias removed.
-  const gyro = series.gyro.map((w) => mulVec(R, sub(w, calibration.gyroBias)));
-  const accel = series.accel.map((a) => mulVec(R, a));
-
-  // 2. Rotation perpendicular to the long axis moves the head; roll about the
-  //    long axis does not.
-  const perpRate = gyro.map((w) => Math.hypot(w[1], w[2]));
-  const peakIndex = argMax(perpRate);
-  const peakRate = perpRate[peakIndex] ?? 0;
-  const active = activeRange(perpRate, peakIndex, params.activeFraction * peakRate);
-
-  // 3. Contact: kinematics from the last pre-impact sample, timing from the
-  //    estimated contact time (see contactReference).
-  const impactIndex = detectImpact(accel, gyro, peakIndex, Math.round(params.impactSearchS * fs), {
-    accelG: params.impactJumpThresholdG,
-    gyroRadPerS: params.impactGyroJumpRadPerS,
-  });
-  const contact = contactReference(impactIndex, peakIndex);
+  // Steps 1–5: racket frame, rates, contact, attitude (see kinematics.ts).
+  const kin = computeSwingKinematics(series, calibration, params);
+  const { gyro, perpRate, peakIndex, active, impactIndex, contact, forwardStart } = kin;
+  const { hittingNormal, tipSpeedPerMetre, anchor, attitude, attitudeReliable, rawAngles } = kin;
   const ref = contact.sampleIndex;
-  const forwardStart = Math.min(active.start, ref);
   const followEnd = Math.max(active.end, ref);
-
-  // 4. Kinematics at contact, racket frame, from the last pre-impact sample.
-  //    Near contact the rate is close to its peak and changes little within
-  //    half a sample, so speed is not extrapolated.
-  const tipVelocityDir = cross(gyro[ref] ?? [0, 0, 0], UNIT_X); // direction of ω × r, r ∥ +x
-  const tipSpeedPerMetre = norm(tipVelocityDir);
-  const hitsWithForehandFace = dot(tipVelocityDir, UNIT_Z) >= 0;
-  const hittingNormal: Vec3 = hitsWithForehandFace ? UNIT_Z : [0, 0, -1];
-
-  // 5. Absolute attitude from a quiet window before the forward swing.
-  const anchor = findAttitudeAnchor(
-    {
-      accel,
-      gyro,
-      accelSaturated: series.accelSaturated,
-      gyroSaturated: series.gyroSaturated,
-      sampleRateHz: fs,
-    },
-    0,
-    forwardStart,
-    anchorCriteria(params, fs),
-  );
-  const saturatedSamples = anchor ? countTrue(series.gyroSaturated, anchor.index, ref) : 0;
-  const attitudeReliable = anchor !== null && saturatedSamples <= params.maxSaturatedSamples;
-  const attitude = anchor
-    ? attitudeSeries(attitudeFromGravity(anchor.gravity), gyro, anchor.index, fs)
-    : null;
-  // Computed whenever the anchor is valid; displayed only when reliable.
-  const rawAngles =
-    attitude && tipSpeedPerMetre > 1e-6
-      ? anglesAtContact(attitude, gyro, contact, hittingNormal)
-      : null;
+  const hitsWithForehandFace = hittingNormal[2] > 0;
 
   // 6. Preparation: from the last still moment to the start of the forward swing.
-  const prepStart = findPreparationStart(
-    gyro,
-    forwardStart,
-    params.quietRateRadPerS,
-    Math.round(params.readyMinS * fs),
-  );
+  const prepStart = kin.readyEnd;
   const preparationFrom = prepStart ?? 0;
   const pauseSamples = longestQuietRun(
     gyro,
@@ -360,7 +188,7 @@ export function analyzeSwing(
   // 7. Timing. A clipped gyro plateau moves the argmax of ω⊥ (and of its rise)
   //    early by up to the plateau's length, so timing is withheld when the
   //    gyro clipped anywhere in the forward swing.
-  const gyroClippedInSwing = countTrue(series.gyroSaturated, forwardStart, ref) > 0;
+  const gyroClippedInSwing = kin.gyroClippedInSwing;
   const peakAccelIndex = steepestRise(perpRate, forwardStart, ref - 1);
 
   const headSpeedMps = tipSpeedPerMetre * params.leverRadiusM;
@@ -416,7 +244,8 @@ export function analyzeSwing(
       attitudeReliable,
       anchorErrorG: anchor?.errorG ?? null,
       gyroSaturated: gyroClippedInSwing,
-      saturatedSamples,
+      saturatedSamples: kin.saturatedSamples,
     },
+    features: computeFeatures(kin, params, strokeType, headSpeedMps),
   };
 }

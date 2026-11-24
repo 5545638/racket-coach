@@ -131,6 +131,120 @@ export interface StrokeMetrics {
   /** Rotation of the racket from contact to end of follow-through, degrees. */
   readonly followThroughArcDeg: number;
   readonly quality: MetricQuality;
+  /**
+   * Coaching features (phase timeline, per-element features and their 1-σ
+   * uncertainty), analysis version 3 and later. Optional because records
+   * analysed by earlier versions lack it. See docs/metrics.md, "Coaching features".
+   */
+  readonly features?: StrokeFeatures;
+}
+
+/**
+ * Phase timeline of one stroke. Times are ms from the first sample of the
+ * capture (sample index / sample rate); null when the event lies outside the
+ * capture or the capture never shows it.
+ */
+export interface StrokePhases {
+  /** End of the ready position: first sample after the last ≥ 0.3 s standstill before the forward swing. */
+  readonly readyEndMs: number | null;
+  /** Start of the forward swing (start of the active phase). */
+  readonly forwardStartMs: number;
+  /** Estimated contact time (impact sample − ½ sample; the peak sample without an impact). */
+  readonly contactMs: number;
+  /** Last pre-impact sample, from which contact kinematics are read. */
+  readonly contactSample: number;
+  /** First sample after contact at which ω⊥ has fallen below 30 % of its pre-impact value. */
+  readonly followEndMs: number | null;
+  /** Start of the first ≥ 0.2 s standstill (‖ω‖ < 0.5 rad/s) after the follow-through. */
+  readonly recoveryEndMs: number | null;
+}
+
+/** Serve / overhead features; present only when `strokeType === 'overhead'`. */
+export interface ServeFeatures {
+  /** Tip elevation at the slowest moment (min ‖ω‖) in the 0.8 s before the racket drop, deg. */
+  readonly trophyTipDeg: number | null;
+  /** Lowest tip elevation between the ready position and contact (back-scratch), deg. */
+  readonly dropTipDeg: number | null;
+  /** Time from that lowest point to contact, ms. */
+  readonly dropToContactMs: number | null;
+  /** Roll rate ωx of largest magnitude within contact ± 50 ms, signed, deg/s. A lower bound when `rollSaturated`. */
+  readonly rollPeakDps: number;
+  /** Time of that roll peak relative to contact, ms (positive = after). */
+  readonly rollPeakOffsetMs: number;
+  /** ∫ωx dt over the 100 ms after contact, deg; null when the capture ends sooner. */
+  readonly rollAngleDeg: number | null;
+  /** Gyro clipped within contact − 50 ms … contact + 100 ms: the roll values are lower bounds. */
+  readonly rollSaturated: boolean;
+  /**
+   * Tip elevation at contact from the classification attitude, deg. Given even
+   * when the displayed angles are withheld; then `contactTipReliable` is false
+   * and its σ is null (not assessable).
+   */
+  readonly contactTipDeg: number | null;
+  readonly contactTipReliable: boolean;
+}
+
+/** Features that carry a 1-σ uncertainty in `StrokeFeatures.sigma`. */
+export type FeatureSigmaKey =
+  | 'faceTiltDeg'
+  | 'swingPathDeg'
+  | 'tipElevationDeg'
+  | 'brushAngleDeg'
+  | 'racketDropDeg'
+  | 'takebackTurnDeg'
+  | 'takebackTipDeg'
+  | 'takebackFaceDeg'
+  | 'finishTipDeg'
+  | 'trophyTipDeg'
+  | 'dropTipDeg'
+  | 'contactTipDeg'
+  | 'headSpeedMps'
+  | 'peakSpeedOffsetMs'
+  | 'takebackTimeMs'
+  | 'forwardSwingMs'
+  | 'brakingTimeMs'
+  | 'recoveryMs'
+  | 'dropToContactMs'
+  | 'rollPeakOffsetMs';
+
+/**
+ * Per-element coaching features. Angles in degrees, times in ms. A null
+ * value means "not measurable for this capture" (see each definition in
+ * docs/metrics.md).
+ */
+export interface StrokeFeatures {
+  readonly phases: StrokePhases;
+  /** |rotation about world vertical| from the end of the ready position to forward-swing start, deg. */
+  readonly takebackTurnDeg: number | null;
+  /** Contact time minus end of the ready position, ms. */
+  readonly takebackTimeMs: number | null;
+  /** Tip elevation at forward-swing start, deg. */
+  readonly takebackTipDeg: number | null;
+  /** Hitting-face normal elevation at forward-swing start, deg. */
+  readonly takebackFaceDeg: number | null;
+  /** G50 = 1 − ω⊥(contact − 50 ms) / ω⊥(pre-impact): share of racket rate gained in the last 50 ms. */
+  readonly lateGainFraction: number | null;
+  /** Contact time minus forward-swing start, ms. */
+  readonly forwardSwingMs: number;
+  /** Dips of ω⊥ in the forward swing deeper than 15 % of the running maximum. */
+  readonly hitchCount: number;
+  /** Mean of |dφ/dt| + |ωx| over the three pre-impact samples, deg/s (lower = steadier face). */
+  readonly contactStabilityDps: number | null;
+  /** Swing path minus face tilt at contact, deg. */
+  readonly brushAngleDeg: number | null;
+  /** Follow-through end minus contact, ms. */
+  readonly brakingTimeMs: number | null;
+  /** Tip elevation at the follow-through end, deg. */
+  readonly finishTipDeg: number | null;
+  /** Recovery end minus contact, ms. */
+  readonly recoveryMs: number | null;
+  readonly serve: ServeFeatures | null;
+  /**
+   * 1-σ uncertainty per feature: degrees for angles, ms for times, m/s for
+   * head speed. Null = not assessable (the feature is unavailable, or the
+   * gyro clipped too often between the attitude anchor and the event).
+   */
+  readonly sigma: Readonly<Record<FeatureSigmaKey, number | null>>;
 }
 
 /** `none`: the metrics a rule needs were unavailable, so the stroke is not rated. */
