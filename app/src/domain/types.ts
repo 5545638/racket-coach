@@ -485,8 +485,54 @@ export interface SensorDiagnostics {
   readonly errors: number;
 }
 
-/** What the live coach did after a stroke (see coach/coachEngine.ts). */
-export type UtteranceKind = 'correction' | 'better' | 'keep-it' | 'good' | 'silent';
+/**
+ * What the live coach did after a stroke (see coach/coachEngine.ts).
+ * `keep-it` is the reinforcement of a fixed focus ("That's it" or the
+ * correction's own reinforce phrase); `overcorrected`, `consistency`,
+ * `fatigue` and `stuck` are the adaptive feedback phrases.
+ */
+export type UtteranceKind =
+  | 'correction'
+  | 'better'
+  | 'keep-it'
+  | 'good'
+  | 'silent'
+  | 'overcorrected'
+  | 'consistency'
+  | 'fatigue'
+  | 'stuck';
+
+/**
+ * How one assessed element of a stroke is read (coach/classify.ts):
+ * - `technical-error`: a fault (p ≥ pMin);
+ * - `uncertain`: outside the band with p < pMin, or σ too large to tell;
+ * - `variation`: inside the band (personal, or population without a baseline);
+ * - `not-assessable`: could not be judged on this stroke;
+ * - `fatigue-related`: a fault while the fatigue detector is active;
+ * - `improvement`: the focus improved significantly ("Better"), or is back
+ *   inside its band after being the focus.
+ */
+export type DeviationCategory =
+  | 'technical-error'
+  | 'uncertain'
+  | 'variation'
+  | 'not-assessable'
+  | 'fatigue-related'
+  | 'improvement';
+
+/** Elements per category. */
+export type CategoryCounts = Readonly<Record<DeviationCategory, number>>;
+
+/** Per-stroke category summary, for the UI and the stroke record. */
+export interface StrokeCategories {
+  /** Elements per category (elements that do not apply to the stroke are left out). */
+  readonly counts: CategoryCounts;
+  /** Category per catalogue element key. */
+  readonly byElement: Readonly<Record<string, DeviationCategory>>;
+}
+
+/** Cue variant of the phrase ladder: 0 = the plain spoken cue. */
+export type PhraseLevel = 0 | 1 | 2;
 
 /** The coaching outcome kept with a stroke for history. */
 export interface StrokeCoaching {
@@ -495,6 +541,18 @@ export interface StrokeCoaching {
   readonly correctionId: CorrectionId | null;
   /** Focus of this stroke type after the stroke. */
   readonly focus: CorrectionId | null;
+  /* Adaptive coach (absent on older records). */
+  /** Coaching mode the stroke was played in. */
+  readonly mode?: CoachMode;
+  /** Category of every assessed element. */
+  readonly categories?: StrokeCategories;
+  /**
+   * Cue variant: of the spoken correction, or for 'better' the variant that
+   * worked (the last one spoken before the improvement). Null otherwise.
+   */
+  readonly phraseLevel?: PhraseLevel | null;
+  /** The fatigue detector was active for this stroke type. */
+  readonly fatigueActive?: boolean;
 }
 
 /**
@@ -533,16 +591,33 @@ export interface SessionInfo {
 }
 
 /**
- * `drill`: spoken cue after every stroke (feeding, ball machine).
- * `rally`: silent during play; review the session afterwards.
+ * `learning`: cue plus a one-sentence explanation, detail on screen (slow feeding).
+ * `training`: one short cue per stroke (feeding, ball machine, drills).
+ * `match`: silent per stroke; only a persistent major fault, between points.
+ * Settings before version 4 used `drill` (→ training) and `rally` (→ match).
  */
-export type FeedbackMode = 'drill' | 'rally';
+export type CoachMode = 'learning' | 'training' | 'match';
+/** Former name of {@link CoachMode}. */
+export type FeedbackMode = CoachMode;
+
+export type DominantHand = 'right' | 'left';
+export type BackhandGrip = 'two-handed' | 'one-handed';
+export type ForehandStyle = 'topspin' | 'flat' | 'mixed';
+export type PlayerLevel = 'beginner' | 'intermediate' | 'advanced';
+
+/** What the player tells the app about themselves (coach/profile.ts). */
+export interface PlayerInputs {
+  readonly dominantHand: DominantHand;
+  readonly backhand: BackhandGrip;
+  readonly forehandStyle: ForehandStyle;
+  readonly level: PlayerLevel;
+}
 
 /** User-adjustable settings. Defaults and validation live in `app/settings.ts`. */
-export interface Settings {
+export interface Settings extends PlayerInputs {
   /** Schema version of the stored settings (see app/settings.ts SETTINGS_VERSION). */
   readonly version: number;
-  readonly mode: FeedbackMode;
+  readonly mode: CoachMode;
   /** Language of the on-screen explanations. Spoken cues are always English. */
   readonly language: Language;
   /** Also say "Good" when no rule fires. */

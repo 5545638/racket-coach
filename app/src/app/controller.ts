@@ -15,10 +15,24 @@ import {
   coachStep,
   cueForStroke,
   focusByStroke,
+  matchIdle,
+  phraseLevelOf,
 } from '../coach/coachEngine';
+import { type FatigueState, initialFatigue, isFatigued, updateFatigue } from '../coach/fatigue';
+import { buildPlan } from '../coach/plan';
+import {
+  EMPTY_PROFILE_STATE,
+  type ProfileState,
+  addStrokeToProfile,
+  buildProfileState,
+  coachingPolicy,
+  deriveProfile,
+  withSessions,
+} from '../coach/profile';
 import { DEFAULT_RULES } from '../coaching/defaultRules';
 import type { RuleSet } from '../coaching/rules';
 import type {
+  CategoryCounts,
   MountCalibration,
   RawCapture,
   SensorDiagnostics,
@@ -41,7 +55,7 @@ import type { BenchResultMessage } from '../protocol/messagesV2';
 import type { Repository } from '../storage/repository';
 import type { ConnectionState, SensorTransport, Unsubscribe } from '../transport/transport';
 import { analyzeCapture } from './pipeline';
-import { DEFAULT_SETTINGS, type Settings, resolveSettings } from './settings';
+import { DEFAULT_SETTINGS, type Settings, playerInputs, resolveSettings } from './settings';
 
 export type CalibrationStep =
   | { readonly step: 'idle' }
@@ -65,6 +79,8 @@ export interface ControllerDeps {
   readonly now?: () => number;
   readonly newId?: () => string;
   readonly sleep?: (ms: number) => Promise<void>;
+  /** Starts a timer and returns its cancel function (match mode: speaking between points). */
+  readonly setTimer?: (fn: () => void, ms: number) => () => void;
   readonly staticCaptureTimeoutMs?: number;
   readonly reconnectAttempts?: number;
   readonly reconnectDelayMs?: number;
@@ -105,8 +121,33 @@ export class CoachController {
   readonly coachState = signal<CoachState>(INITIAL_COACH_STATE);
   /** Element assessment of the latest stroke. */
   readonly assessment = signal<StrokeAssessment | null>(null);
-  /** What the coach decided after the latest stroke (also in rally mode, where nothing is spoken). */
+  /** What the coach decided after the latest stroke (also in match mode, where nothing is spoken). */
   readonly utterance = signal<Utterance | null>(null);
+  /** Category counts of the latest stroke's elements. */
+  readonly categories = signal<CategoryCounts | null>(null);
+  /** The latest phrase actually spoken by the coach (any kind), or null. */
+  readonly lastSpeech = signal<string | null>(null);
+  /** Fatigue detector of the current session (coach/fatigue.ts). */
+  readonly fatigue = signal<FatigueState>(initialFatigue());
+  /** The fatigue detector is active for any stroke type. */
+  readonly fatigueActive = computed(() => isFatigued(this.fatigue.value));
+  /** How strokes are assessed for this player (level, style, hand). */
+  readonly policy = computed(() => coachingPolicy(playerInputs(this.settings.value)));
+  /** Stroke history behind the profile; built at session start, grown per stroke. */
+  readonly profileState = signal<ProfileState>(EMPTY_PROFILE_STATE);
+  /** Player profile: inputs plus typical swing, weaknesses and progress. */
+  readonly profile = computed(() =>
+    deriveProfile(
+      this.profileState.value,
+      this.policy.value.inputs,
+      this.baseline.value,
+      this.policy.value.baselineCatalog,
+    ),
+  );
+  readonly weaknesses = computed(() => this.profile.value.weaknesses);
+  readonly progress = computed(() => this.profile.value.progress);
+  /** Next-session training plan (deterministic, from the profile). */
+  readonly plan = computed(() => buildPlan(this.profile.value, this.settings.value.language));
   /** Current focus per stroke type. */
   readonly focus = computed(() => focusByStroke(this.coachState.value));
   /** Strokes with contact in the baseline, per stroke type. */
@@ -143,6 +184,8 @@ export class CoachController {
   private readonly now: () => number;
   private readonly newId: () => string;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly setTimer: (fn: () => void, ms: number) => () => void;
+  private cancelMatchTimer: (() => void) | null = null;
   private readonly staticTimeoutMs: number;
   private readonly reconnectAttempts: number;
   private readonly reconnectDelayMs: number;
@@ -154,6 +197,14 @@ export class CoachController {
     this.now = deps.now ?? Date.now;
     this.newId = deps.newId ?? (() => crypto.randomUUID());
     this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.setTimer =
+      deps.setTimer ??
+      ((fn, ms) => {
+        const id = setTimeout(fn, ms);
+        return () => {
+          clearTimeout(id);
+        };
+      });
     this.staticTimeoutMs = deps.staticCaptureTimeoutMs ?? 5000;
     this.reconnectAttempts = deps.reconnectAttempts ?? 5;
     this.reconnectDelayMs = deps.reconnectDelayMs ?? 2000;
@@ -306,6 +357,10 @@ export class CoachController {
     this.coachState.value = INITIAL_COACH_STATE;
     this.assessment.value = null;
     this.utterance.value = null;
+    this.categories.value = null;
+    this.lastSpeech.value = null;
+    this.fatigue.value = initialFatigue(startedAt);
+    this.stopMatchTimer();
     await this.safely('Saving session', () => this.deps.repository.saveSession(session));
     await this.loadBaseline();
   }
@@ -321,15 +376,18 @@ export class CoachController {
     try {
       await this.safely('Loading baseline', async () => {
         const recent = await this.deps.repository.recentStrokes(BASELINE_LOAD_LIMIT);
+        const sessions = await this.deps.repository.listSessions();
         if (generation !== this.baselineGeneration) return;
         // Strokes from before "reset personal baseline" no longer count.
         const since = this.settings.value.baselineResetAt;
         const counts = (r: StrokeRecord): boolean => r.capture.receivedAt >= since;
         const current = this.strokes.value;
         const ids = new Set(current.map((r) => r.id));
-        this.baseline.value = buildBaseline(
-          [...recent.filter((r) => !ids.has(r.id)), ...current].filter(counts),
-        );
+        const all = [...recent.filter((r) => !ids.has(r.id)), ...current];
+        const catalog = this.policy.value.baselineCatalog;
+        this.baseline.value = buildBaseline(all.filter(counts), undefined, undefined, catalog);
+        // The profile keeps the whole history: a baseline reset does not erase progress.
+        this.profileState.value = buildProfileState(all, sessions, catalog);
       });
     } finally {
       if (generation === this.baselineGeneration) this.baselineLoading.value = false;
@@ -349,11 +407,17 @@ export class CoachController {
   }
 
   async updateSettings(patch: Partial<Settings>): Promise<void> {
-    const next = resolveSettings({ ...this.settings.value, ...patch });
-    const modeChanged = next.experimentalM416 !== this.settings.value.experimentalM416;
+    const before = this.settings.value;
+    const next = resolveSettings({ ...before, ...patch });
+    const modeChanged = next.experimentalM416 !== before.experimentalM416;
+    // Hand and style change what the baseline holds (serve roll, path limits).
+    const catalogChanged =
+      next.dominantHand !== before.dominantHand || next.forehandStyle !== before.forehandStyle;
     this.settings.value = next;
     if (modeChanged) this.transport?.setSensorMode?.(this.sensorMode());
+    if (next.mode !== 'match') this.stopMatchTimer();
     await this.safely('Saving settings', () => this.deps.repository.saveSettings(next));
+    if (catalogChanged && this.session.value) await this.loadBaseline();
   }
 
   /* --------------------------------------------------------- calibration */
@@ -500,6 +564,7 @@ export class CoachController {
       ...DEFAULT_ANALYSIS_PARAMS,
       leverRadiusM: settings.leverRadiusM,
     };
+    const policy = this.policy.value;
     let analysis;
     try {
       analysis = analyzeCapture(
@@ -508,6 +573,8 @@ export class CoachController {
         analysisParams,
         this.rules,
         this.baseline.value,
+        policy.assess,
+        policy.catalog,
       );
     } catch (error) {
       this.appendLog(`Analysis failed: ${errorMessage(error)}`);
@@ -515,17 +582,27 @@ export class CoachController {
     }
 
     const { assessment } = analysis;
-    const step = coachStep(
-      this.coachState.value,
+    const fatigue = updateFatigue(
+      this.fatigue.value,
+      analysis.metrics,
       assessment,
-      { ...this.coachConfig, speakGood: settings.speakGood },
-      settings.mode === 'drill',
+      capture.receivedAt,
     );
+    const fatigueActive = isFatigued(fatigue, assessment.strokeType);
+    const step = coachStep(this.coachState.value, assessment, this.fullCoachConfig(), true, {
+      mode: settings.mode,
+      receivedAt: capture.receivedAt,
+      fatigueActive,
+    });
     const { utterance } = step;
     const coach: StrokeCoaching = {
       utterance: utterance.kind,
       correctionId: utterance.correctionId ?? null,
       focus: step.state.byStroke[assessment.strokeType].focus?.correctionId ?? null,
+      mode: settings.mode,
+      categories: step.categories,
+      phraseLevel: phraseLevelOf(utterance),
+      fatigueActive,
     };
     const record: StrokeRecord = {
       id: this.newId(),
@@ -539,18 +616,60 @@ export class CoachController {
       coach,
     };
     this.coachState.value = step.state;
+    this.fatigue.value = fatigue;
     this.assessment.value = assessment;
     this.utterance.value = utterance;
+    this.categories.value = step.categories.counts;
     // The stroke was judged against the baseline before it; now it joins it.
-    this.baseline.value = addStrokeToBaseline(this.baseline.value, record);
+    const catalog = policy.baselineCatalog;
+    this.baseline.value = addStrokeToBaseline(this.baseline.value, record, undefined, catalog);
+    this.profileState.value = withSessions(
+      addStrokeToProfile(this.profileState.value, record, catalog),
+      this.profileState.value.sessionInfo[session.id] ? [] : [session],
+    );
     this.strokes.value = [...this.strokes.value, record];
 
-    // Rally mode: everything is computed and stored, nothing is said.
-    if (settings.mode === 'drill' && utterance.spoken !== '') {
-      this.deps.speaker.say(utterance.spoken, settings.speechRate);
-    }
+    // Match mode: everything is computed and stored; speech only between points.
+    if (step.speech !== null) this.speak(step.speech);
+    if (settings.mode === 'match') this.scheduleMatchCheck();
 
     void this.safely('Saving stroke', () => this.deps.repository.saveStroke(record));
+  }
+
+  /* ---------------------------------------------------------- match mode */
+
+  private fullCoachConfig(): CoachConfig {
+    return { ...this.coachConfig, speakGood: this.settings.value.speakGood };
+  }
+
+  private speak(text: string): void {
+    this.lastSpeech.value = text;
+    this.deps.speaker.say(text, this.settings.value.speechRate);
+  }
+
+  /** Checks for a persistent major fault once play has paused (no stroke for the quiet time). */
+  private scheduleMatchCheck(): void {
+    this.stopMatchTimer();
+    const config = this.fullCoachConfig();
+    this.cancelMatchTimer = this.setTimer(() => {
+      this.cancelMatchTimer = null;
+      this.checkMatchBreak();
+    }, config.match.quietMs);
+  }
+
+  /** Speaks a pending persistent major fault if play has paused (match mode). */
+  checkMatchBreak(): void {
+    if (this.settings.value.mode !== 'match') return;
+    const idle = matchIdle(this.coachState.value, this.now(), this.fullCoachConfig());
+    if (idle === null) return;
+    this.coachState.value = idle.state;
+    this.utterance.value = idle.utterance;
+    this.speak(idle.speech);
+  }
+
+  private stopMatchTimer(): void {
+    this.cancelMatchTimer?.();
+    this.cancelMatchTimer = null;
   }
 
   /* ------------------------------------------------------------- helpers */

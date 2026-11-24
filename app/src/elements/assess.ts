@@ -48,6 +48,8 @@ export interface ElementAssessment {
     readonly spread: number;
     readonly n: number;
   } | null;
+  /** Spread s the score is scaled by: the personal spread, else s_min (0 when not assessable). */
+  readonly spread: number;
   /** Distance d ≥ 0 outside the band (0 inside or when not assessable). */
   readonly distance: number;
   /** p = Φ(d/σ): probability that the true value lies outside the band (0 when not assessable). */
@@ -96,6 +98,7 @@ function notAssessable(
     band: null,
     bandSource: null,
     personal: null,
+    spread: 0,
     distance: 0,
     probability: 0,
     score: 0,
@@ -109,6 +112,7 @@ function notAssessable(
  * - Baseline, no P: m ∓ k·s.
  * - Baseline and P: the tighter of the two, unless the personal median itself
  *   is beyond P (a habitual clear fault), in which case P alone is used.
+ * - `populationOnly` elements (player-profile style relaxations): P alone.
  */
 function faultBound(
   spec: ElementSpec,
@@ -116,6 +120,9 @@ function faultBound(
   personal: { readonly median: number; readonly spread: number } | null,
   k: number,
 ): { readonly bound: number; readonly source: BandSource } | null {
+  if (spec.populationOnly === true && population !== null) {
+    return { bound: population, source: 'population' };
+  }
   if (personal === null) {
     return population === null ? null : { bound: population, source: 'population' };
   }
@@ -176,6 +183,7 @@ function assessElement(
     band,
     bandSource: limit.source,
     personal,
+    spread,
     distance,
     probability,
     score: fault ? spec.weight * Math.min(distance / spread, MAX_SPREADS) * probability : 0,

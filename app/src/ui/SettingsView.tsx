@@ -1,7 +1,41 @@
 import type { CoachController } from '../app/controller';
 import { DEFAULT_ASSESS_CONFIG } from '../elements/assess';
 import { DEFAULT_BASELINE_CONFIG } from '../coach/baseline';
+import type { Settings } from '../domain/types';
 import { strings } from './strings';
+
+/** One radio group bound to a settings field. */
+function Choice<K extends 'dominantHand' | 'backhand' | 'forehandStyle' | 'level'>({
+  controller,
+  field,
+  legend,
+  options,
+}: {
+  readonly controller: CoachController;
+  readonly field: K;
+  readonly legend: string;
+  readonly options: readonly (readonly [Settings[K], string])[];
+}) {
+  const current = controller.settings.value[field];
+  return (
+    <fieldset class="field">
+      <legend>{legend}</legend>
+      {options.map(([value, label]) => (
+        <label key={value}>
+          <input
+            type="radio"
+            name={field}
+            checked={current === value}
+            onChange={() => {
+              void controller.updateSettings({ [field]: value });
+            }}
+          />
+          {label}
+        </label>
+      ))}
+    </fieldset>
+  );
+}
 
 export function SettingsView({ controller }: { readonly controller: CoachController }) {
   const settings = controller.settings.value;
@@ -11,6 +45,11 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
   const calibration = controller.calibration.value;
   const status = controller.status.value;
   const diagnostics = controller.diagnostics.value;
+  const modeLabel = {
+    learning: t.setup.learningMode,
+    training: t.setup.trainingMode,
+    match: t.setup.matchMode,
+  } as const;
 
   return (
     <section class="settings">
@@ -61,7 +100,7 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
       <h2>{t.setup.feedback}</h2>
       <fieldset class="field">
         <legend>{t.setup.mode}</legend>
-        {(['drill', 'rally'] as const).map((mode) => (
+        {(['learning', 'training', 'match'] as const).map((mode) => (
           <label key={mode}>
             <input
               type="radio"
@@ -71,10 +110,49 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
                 void controller.updateSettings({ mode });
               }}
             />
-            {mode === 'drill' ? t.setup.drillMode : t.setup.rallyMode}
+            {modeLabel[mode]}
           </label>
         ))}
       </fieldset>
+      <h2>{t.setup.player}</h2>
+      <Choice
+        controller={controller}
+        field="dominantHand"
+        legend={t.setup.dominantHand}
+        options={[
+          ['right', t.setup.handRight],
+          ['left', t.setup.handLeft],
+        ]}
+      />
+      <Choice
+        controller={controller}
+        field="backhand"
+        legend={t.setup.backhand}
+        options={[
+          ['two-handed', t.setup.twoHanded],
+          ['one-handed', t.setup.oneHanded],
+        ]}
+      />
+      <Choice
+        controller={controller}
+        field="forehandStyle"
+        legend={t.setup.forehandStyle}
+        options={[
+          ['topspin', t.setup.styleTopspin],
+          ['flat', t.setup.styleFlat],
+          ['mixed', t.setup.styleMixed],
+        ]}
+      />
+      <Choice
+        controller={controller}
+        field="level"
+        legend={t.setup.level}
+        options={[
+          ['beginner', t.setup.levelBeginner],
+          ['intermediate', t.setup.levelIntermediate],
+          ['advanced', t.setup.levelAdvanced],
+        ]}
+      />
       <fieldset class="field">
         <legend>{t.setup.language}</legend>
         {(['et', 'en'] as const).map((language) => (

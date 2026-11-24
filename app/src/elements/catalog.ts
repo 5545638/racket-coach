@@ -86,6 +86,13 @@ export interface ElementSpec {
    * for forehands; only the face limits are applied to backhands.
    */
   readonly backhandPopulation: boolean;
+  /**
+   * Only the population limit decides: the personal band may not tighten it.
+   * Set by the player profile (coach/profile.ts) where a style legitimately
+   * swings beyond the usual band (flat hitters on path-flat, topspin hitters
+   * on path-steep). Default false.
+   */
+  readonly populationOnly?: boolean;
   /** Importance weight w of a fault (score = w · min(d/s, 3) · p). */
   readonly weight: number;
   /** Noise floor of the personal spread s, in the value's unit. */

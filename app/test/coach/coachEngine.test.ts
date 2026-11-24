@@ -9,7 +9,11 @@ import {
   coachStep,
   cueForStroke,
   focusByStroke,
+  ladderLevel,
+  oppositeOf,
+  phraseLevelOf,
 } from '../../src/coach/coachEngine';
+import { cueVariant, feedbackPhrase, reinforcePhrase } from '../../src/coach/phrases';
 import type { StrokeMetrics } from '../../src/domain/types';
 import { type StrokeAssessment, assessStroke } from '../../src/elements/assess';
 import { DEFAULT_ANALYSIS_PARAMS, analyzeSwing } from '../../src/metrics/analyzeSwing';
@@ -37,29 +41,46 @@ function session(
 const spoken = (us: readonly Utterance[]): string[] => us.map((u) => u.spoken);
 const path = (deg: number): StrokeMetrics => ({ ...GOOD_FOREHAND_V3, swingPathDeg: deg });
 const repeat = <T>(n: number, x: T): T[] => Array.from({ length: n }, () => x);
+const flatCue = (level: 0 | 1 | 2): string => cueVariant('path-flat', level);
 
 describe('coach engine', () => {
-  it('says "Swing low to high" at most three times in a row, then pauses for two strokes', () => {
-    const { said, state } = session(repeat(6, path(0)));
+  // Intent changed with the adaptive coach: a persistent fault now walks the
+  // phrase ladder (v0, v0, v1, v1, v2, "Try the drill", then every 3rd stroke)
+  // instead of "three times, then two silent strokes".
+  it('walks the phrase ladder on a persistent fault instead of repeating one cue', () => {
+    const { said, state } = session(repeat(9, path(0)));
     expect(spoken(said)).toEqual([
-      'Swing low to high',
-      'Swing low to high',
-      'Swing low to high',
+      flatCue(0),
+      flatCue(0),
+      flatCue(1),
+      flatCue(1),
+      flatCue(2),
+      feedbackPhrase('stuck'),
       '',
       '',
-      'Swing low to high',
+      flatCue(0),
     ]);
     expect(said.map((u) => u.kind)).toEqual([
       'correction',
       'correction',
       'correction',
+      'correction',
+      'correction',
+      'stuck',
       'silent',
       'silent',
       'correction',
     ]);
-    expect(said[3]?.reason).toBe('repeat-pause');
-    expect(said[3]?.correctionId).toBe('path-flat');
+    expect(said.map((u) => u.level)).toEqual([0, 0, 1, 1, 2, undefined, undefined, undefined, 0]);
+    expect(said[6]).toMatchObject({ reason: 'ladder-sparse', correctionId: 'path-flat' });
     expect(focusByStroke(state).forehand).toBe('path-flat');
+  });
+
+  it('still pauses a phrase said three times in a row ("Better")', () => {
+    // Each stroke improves by more than the noise: "Better" ×3, then 2 silent.
+    const { said } = session([path(-30), path(-24), path(-18), path(-12), path(-6)]);
+    expect(said.slice(1, 4).map((u) => u.kind)).toEqual(['better', 'better', 'better']);
+    expect(said[4]).toMatchObject({ kind: 'silent', reason: 'repeat-pause' });
   });
 
   it('says "Better" after a clear improvement of the focus fault', () => {
@@ -76,7 +97,7 @@ describe('coach engine', () => {
 
   it('says "That\'s it" when the fault is gone and clears the focus after three ok strokes', () => {
     const { said, state } = session([path(0), path(25), path(25)]);
-    expect(said[1]).toMatchObject({ kind: 'keep-it', spoken: "That's it" });
+    expect(said[1]).toMatchObject({ kind: 'keep-it', spoken: reinforcePhrase('path-flat') });
     expect(said[2]).toMatchObject({ kind: 'good', spoken: '' });
     expect(focusByStroke(state).forehand).toBe('path-flat');
     const after = session([path(25)], { state });
@@ -236,10 +257,10 @@ describe('coaching simulated strokes', () => {
     for (const m of [...flat, fixed]) expect(m.impactDetected).toBe(true);
     const { said } = session([...flat, fixed]);
     expect(spoken(said)).toEqual([
-      'Swing low to high',
-      'Swing low to high',
-      'Swing low to high',
-      "That's it",
+      flatCue(0),
+      flatCue(0),
+      flatCue(1),
+      reinforcePhrase('path-flat'),
     ]);
   });
 
@@ -321,7 +342,7 @@ describe('coach engine review fixes', () => {
       ...repeat(3, [assess(path(0)), false] as [StrokeAssessment, boolean]),
       ...repeat(3, [assess(path(0)), true] as [StrokeAssessment, boolean]),
     ]);
-    expect(spoken(rally.said.slice(3))).toEqual(repeat(3, 'Swing low to high'));
+    expect(spoken(rally.said.slice(3))).toEqual([flatCue(0), flatCue(0), flatCue(1)]);
     // An unheard "Better" is still said later.
     const better = runAll([
       [assess(path(0)), true],
@@ -335,7 +356,10 @@ describe('coach engine review fixes', () => {
       [assess(path(25)), false],
       [assess(path(25)), true],
     ]);
-    expect(thatsIt.said[2]).toMatchObject({ kind: 'keep-it', spoken: "That's it" });
+    expect(thatsIt.said[2]).toMatchObject({
+      kind: 'keep-it',
+      spoken: reinforcePhrase('path-flat'),
+    });
   });
 
   it('starts a returning cue fresh after the focus was cleared', () => {
@@ -346,5 +370,36 @@ describe('coach engine review fixes', () => {
       [assess(path(0)), true],
     ]);
     expect(said.at(-1)).toMatchObject({ kind: 'correction', spoken: 'Swing low to high' });
+  });
+});
+
+describe('adaptive coach building blocks', () => {
+  it('maps the n-th spoken correction to a variant from the base', () => {
+    expect([1, 2, 3, 4, 5].map((n) => ladderLevel(n, 0))).toEqual([0, 0, 1, 1, 2]);
+    expect([1, 2, 3, 4, 5].map((n) => ladderLevel(n, 2))).toEqual([2, 2, 0, 0, 1]);
+  });
+
+  it('pairs only corrections of the same metric as opposites', () => {
+    expect(oppositeOf('face-open')).toBe('face-closed');
+    expect(oppositeOf('path-steep')).toBe('path-flat');
+    expect(oppositeOf('slice-chop')).toBeNull();
+    expect(oppositeOf('slice-face-closed')).toBeNull();
+    expect(oppositeOf('high-takeback')).toBeNull();
+  });
+
+  it('classifies a shadow swing as not assessable and returns no speech', () => {
+    const step = coachStep(
+      INITIAL_COACH_STATE,
+      assessStroke({ ...path(0), impactDetected: false }, EMPTY_BASELINE),
+    );
+    expect(step.speech).toBeNull();
+    expect(step.categories.counts['technical-error']).toBe(0);
+    expect(step.categories.counts['not-assessable']).toBeGreaterThan(0);
+  });
+
+  it('records the cue variant of a correction and the one that worked for "Better"', () => {
+    const { said } = session([path(-30), path(-30), path(-30), path(-24)]);
+    expect(said.map(phraseLevelOf)).toEqual([0, 0, 1, 1]);
+    expect(said[3]?.kind).toBe('better');
   });
 });
