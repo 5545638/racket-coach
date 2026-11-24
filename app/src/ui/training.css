@@ -1,0 +1,532 @@
+/* Training (live) screen: status bar, stroke card, session strip, details. */
+
+/* ---------- top bar ---------- */
+.bar-live {
+  padding-top: calc(env(safe-area-inset-top) + 0.35rem);
+  padding-bottom: 0.35rem;
+  padding-left: calc(env(safe-area-inset-left) + 0.75rem);
+  padding-right: calc(env(safe-area-inset-right) + 0.5rem);
+  z-index: 5;
+}
+
+.bar-offline {
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.bar-state {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 100%;
+}
+
+.bar-state .bar-title {
+  flex: none;
+}
+
+.bar-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex: 1 1 100%;
+}
+
+button.big {
+  flex: 1;
+  min-height: 56px;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 48px;
+}
+
+.statusbar .dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+.sb-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.sb-spacer {
+  flex: 1;
+}
+
+.sb-battery {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.sb-battery-icon {
+  width: 26px;
+  height: 13px;
+}
+
+.sb-battery-body {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.sb-battery-cap,
+.sb-battery-fill {
+  fill: currentColor;
+}
+
+.sb-battery.low {
+  color: var(--fix);
+}
+
+.sb-battery.critical {
+  color: var(--error);
+}
+
+.sb-mode {
+  position: relative;
+  flex: none;
+}
+
+.sb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0 0.85rem;
+  font-weight: 600;
+  background: #22301f;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sb-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 11rem;
+  padding: 0.3rem;
+  background: var(--surface);
+  border: 1px solid #33403a;
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.55);
+}
+
+.sb-option {
+  min-height: 48px;
+  border-radius: 8px;
+  border: none;
+  text-align: left;
+  padding: 0 0.9rem;
+  font-size: 1.05rem;
+  background: none;
+}
+
+.sb-option.selected {
+  background: #22301f;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sb-icon-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: none;
+  border-color: transparent;
+}
+
+.sb-icon-btn.muted {
+  color: var(--error);
+}
+
+/* ---------- screen ---------- */
+.training {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.banners {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.banner {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  background: #3a2c10;
+  color: var(--fix);
+  border: 1px solid #6b5120;
+}
+
+/* ---------- stroke card ---------- */
+.stroke-card {
+  --band: #5d6963;
+  position: relative;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 1.5rem 1rem 1rem;
+}
+
+.stroke-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 8px;
+  background: var(--band);
+}
+
+.stroke-card.good {
+  --band: var(--good);
+}
+
+.stroke-card.correction {
+  --band: var(--fix);
+}
+
+.stroke-card.uncertain,
+.stroke-card.notRated,
+.stroke-card.empty {
+  --band: #6b7771;
+}
+
+.sc-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.sc-qualifier {
+  font-weight: 400;
+  text-transform: lowercase;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+.sc-verdict {
+  color: var(--band);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  flex: 1;
+}
+
+.sc-count {
+  color: var(--muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-title {
+  margin: 0.5rem 0 0.4rem;
+  font-size: clamp(2rem, 9.5vw, 2.8rem);
+  font-weight: 800;
+  line-height: 1.08;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.stroke-card.correction .sc-title {
+  color: var(--fix);
+}
+
+.sc-title.positive,
+.stroke-card.good .sc-title {
+  color: var(--good);
+}
+
+.sc-detail {
+  margin: 0 0 0.4rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--good);
+}
+
+.stroke-card:not(.good) .sc-detail {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.95rem;
+}
+
+.sc-spoken {
+  margin: 0.2rem 0 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.stroke-card.empty .sc-title {
+  margin-top: 0.2rem;
+  color: var(--text);
+}
+
+.sc-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.stroke-card .badges {
+  margin: 0.7rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.badge.fatigue {
+  background: #3a2c10;
+  color: var(--fix);
+  border: 1px solid var(--fix);
+}
+
+@keyframes sc-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.sc-anim,
+.sc-body {
+  animation: sc-in 160ms ease-out;
+}
+
+.sc-anim {
+  display: inline-block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-anim,
+  .sc-body {
+    animation: none;
+  }
+}
+
+/* ---------- guidance, focus ---------- */
+.disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 1rem;
+  border-radius: var(--radius);
+  font-weight: 600;
+  text-align: left;
+}
+
+.chevron {
+  transition: transform 150ms;
+}
+
+.chevron.open {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}
+
+.training .guidance {
+  margin: 0;
+  padding: 0.8rem 1rem 0.9rem;
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+
+.training .guidance dt {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.training .guidance dd {
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.training .focus-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.5rem;
+  margin: 0;
+  padding: 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.focus-label {
+  color: var(--muted);
+}
+
+.focus-title {
+  font-weight: 700;
+}
+
+.focus-conf {
+  color: var(--fix);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- session strip ---------- */
+.strip {
+  margin: 0;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.strip-counts,
+.strip-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.strip-stats {
+  border-top: 1px solid #26332c;
+  padding-top: 0.6rem;
+}
+
+.strip-cell {
+  text-align: center;
+  min-width: 0;
+}
+
+.strip-cell dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.strip-cell dd {
+  margin: 0.1rem 0 0;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.strip-cell.small dd {
+  font-size: 1.1rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---------- details ---------- */
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.details > .note {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+/* ---------- match mode ---------- */
+.match-card {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 1.5rem 1rem;
+  text-align: center;
+}
+
+.match-count {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.match-number {
+  font-size: 6rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.match-type {
+  margin: 0.8rem 0 0;
+  font-size: 1.8rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.match-fault {
+  margin: 1.2rem 0 0;
+  padding: 0.7rem;
+  border-radius: 10px;
+  background: #3a2c10;
+  color: var(--fix);
+  font-size: 1.5rem;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.match-fault .note {
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.match-count .note {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
