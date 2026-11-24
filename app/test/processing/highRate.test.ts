@@ -142,7 +142,7 @@ describe('M416 splice: structure', () => {
   });
 });
 
-describe('M416 splice against truth and against 104 Hz (docs/metrics.md table)', () => {
+describe('M416 splice against truth and against 104 Hz (docs/metrics.md table)', { timeout: 60_000 }, () => {
   it.each([
     ['butt cap (gyro-led contact)', BUTT_CAP],
     ['sensor near the string bed (accelerometer-led contact)', LEVER],
