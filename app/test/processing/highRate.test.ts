@@ -142,55 +142,67 @@ describe('M416 splice: structure', () => {
   });
 });
 
-describe('M416 splice against truth and against 104 Hz (docs/metrics.md table)', { timeout: 60_000 }, () => {
-  it.each([
-    ['butt cap (gyro-led contact)', BUTT_CAP],
-    ['sensor near the string bed (accelerometer-led contact)', LEVER],
-  ] as const)('%s', (_, base) => {
-    const rows: Record<'splice' | 'm104' | 'lOnly', Errors[]> = { splice: [], m104: [], lOnly: [] };
-    for (let sub = 0; sub < 4; sub++) {
-      for (const contactPhase of [0.2, 0.7]) {
-        for (const peakRateRadPerS of [20, 26]) {
-          const spec = { ...base, contactPhase, peakRateRadPerS };
-          const { truth, m416, m104 } = captures(spec, sub);
-          const p = { ...DEFAULT_ANALYSIS_PARAMS, leverRadiusM: spec.leverRadiusM };
-          const run = (c: RawCapture, highRate = true) =>
-            analyzeSwing(seriesFromCapture(c, { highRate }), SKEWED_MOUNT, p);
-          const spliced = run(m416);
-          expect(spliced.impactDetected).toBe(true);
-          expect(spliced.quality.highRate?.contactMeasured).toBe(true);
-          rows.splice.push(errors(spliced, truth));
-          rows.m104.push(errors(run(m104), truth));
-          rows.lOnly.push(errors(run(m416, false), truth));
+describe(
+  'M416 splice against truth and against 104 Hz (docs/metrics.md table)',
+  { timeout: 60_000 },
+  () => {
+    it.each([
+      ['butt cap (gyro-led contact)', BUTT_CAP],
+      ['sensor near the string bed (accelerometer-led contact)', LEVER],
+    ] as const)('%s', (_, base) => {
+      const rows: Record<'splice' | 'm104' | 'lOnly', Errors[]> = {
+        splice: [],
+        m104: [],
+        lOnly: [],
+      };
+      for (let sub = 0; sub < 4; sub++) {
+        for (const contactPhase of [0.2, 0.7]) {
+          for (const peakRateRadPerS of [20, 26]) {
+            const spec = { ...base, contactPhase, peakRateRadPerS };
+            const { truth, m416, m104 } = captures(spec, sub);
+            const p = { ...DEFAULT_ANALYSIS_PARAMS, leverRadiusM: spec.leverRadiusM };
+            const run = (c: RawCapture, highRate = true) =>
+              analyzeSwing(seriesFromCapture(c, { highRate }), SKEWED_MOUNT, p);
+            const spliced = run(m416);
+            expect(spliced.impactDetected).toBe(true);
+            expect(spliced.quality.highRate?.contactMeasured).toBe(true);
+            rows.splice.push(errors(spliced, truth));
+            rows.m104.push(errors(run(m104), truth));
+            rows.lOnly.push(errors(run(m416, false), truth));
+          }
         }
       }
-    }
-    const s = rows.splice;
-    // Against truth: contact within ±½ sub-sample + noise, speed and angles tight.
-    expect(maxAbs(s, 'contactMs')).toBeLessThan(1.5);
-    expect(maxAbs(s, 'peakOffsetMs')).toBeLessThan(2.5);
-    expect(maxAbs(s, 'speedPct')).toBeLessThan(0.5);
-    for (const k of ['faceDeg', 'pathDeg', 'tipDeg'] as const) expect(maxAbs(s, k)).toBeLessThan(1);
-    // Against 104 Hz: timing and tip clearly better, nothing worse beyond noise.
-    expect(maxAbs(s, 'contactMs')).toBeLessThan(0.5 * maxAbs(rows.m104, 'contactMs'));
-    expect(maxAbs(s, 'peakOffsetMs')).toBeLessThan(0.5 * maxAbs(rows.m104, 'peakOffsetMs'));
-    expect(rms(s, 'tipDeg')).toBeLessThan(0.5 * rms(rows.m104, 'tipDeg'));
-    for (const k of METRICS) expect(rms(s, k)).toBeLessThanOrEqual(rms(rows.m104, k) + 0.05);
-    // The 104 Hz frame means alone (no splice) smear the impact into the last pre-impact frame.
-    expect(maxAbs(rows.lOnly, 'speedPct')).toBeGreaterThan(10);
-  });
+      const s = rows.splice;
+      // Against truth: contact within ±½ sub-sample + noise, speed and angles tight.
+      expect(maxAbs(s, 'contactMs')).toBeLessThan(1.5);
+      expect(maxAbs(s, 'peakOffsetMs')).toBeLessThan(2.5);
+      expect(maxAbs(s, 'speedPct')).toBeLessThan(0.5);
+      for (const k of ['faceDeg', 'pathDeg', 'tipDeg'] as const)
+        expect(maxAbs(s, k)).toBeLessThan(1);
+      // Against 104 Hz: timing and tip clearly better, nothing worse beyond noise.
+      expect(maxAbs(s, 'contactMs')).toBeLessThan(0.5 * maxAbs(rows.m104, 'contactMs'));
+      expect(maxAbs(s, 'peakOffsetMs')).toBeLessThan(0.5 * maxAbs(rows.m104, 'peakOffsetMs'));
+      expect(rms(s, 'tipDeg')).toBeLessThan(0.5 * rms(rows.m104, 'tipDeg'));
+      for (const k of METRICS) expect(rms(s, k)).toBeLessThanOrEqual(rms(rows.m104, k) + 0.05);
+      // The 104 Hz frame means alone (no splice) smear the impact into the last pre-impact frame.
+      expect(maxAbs(rows.lOnly, 'speedPct')).toBeGreaterThan(10);
+    });
 
-  it('σ reflects the measured resolution at contact', () => {
-    const { m416, m104 } = captures(BUTT_CAP, 1);
-    const p = { ...DEFAULT_ANALYSIS_PARAMS, leverRadiusM: BUTT_CAP.leverRadiusM };
-    const spliced = analyzeSwing(seriesFromCapture(m416), SKEWED_MOUNT, p);
-    const slow = analyzeSwing(seriesFromCapture(m104), SKEWED_MOUNT, p);
-    // Peak timing at the measured 416 Hz; segmentation events keep the 104 Hz resolution.
-    expect(spliced.features?.sigma.peakSpeedOffsetMs).toBeCloseTo(1000 / FS / Math.sqrt(12), 6);
-    expect(spliced.features?.sigma.forwardSwingMs).toBeCloseTo(1000 / (FS / 4) / Math.sqrt(12), 6);
-    expect(slow.features?.sigma.forwardSwingMs).toBeCloseTo(1000 / 104 / Math.sqrt(12), 6);
-  });
-});
+    it('σ reflects the measured resolution at contact', () => {
+      const { m416, m104 } = captures(BUTT_CAP, 1);
+      const p = { ...DEFAULT_ANALYSIS_PARAMS, leverRadiusM: BUTT_CAP.leverRadiusM };
+      const spliced = analyzeSwing(seriesFromCapture(m416), SKEWED_MOUNT, p);
+      const slow = analyzeSwing(seriesFromCapture(m104), SKEWED_MOUNT, p);
+      // Peak timing at the measured 416 Hz; segmentation events keep the 104 Hz resolution.
+      expect(spliced.features?.sigma.peakSpeedOffsetMs).toBeCloseTo(1000 / FS / Math.sqrt(12), 6);
+      expect(spliced.features?.sigma.forwardSwingMs).toBeCloseTo(
+        1000 / (FS / 4) / Math.sqrt(12),
+        6,
+      );
+      expect(slow.features?.sigma.forwardSwingMs).toBeCloseTo(1000 / 104 / Math.sqrt(12), 6);
+    });
+  },
+);
 
 describe('M416 clip flags', () => {
   it('a clipped sub-sample hidden by the frame mean outside H makes the gyro there unrecovered', () => {
