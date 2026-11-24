@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RULES } from '../../src/coaching/defaultRules';
+import { DEFAULT_RULES, TARGET_BANDS } from '../../src/coaching/defaultRules';
 import { GUIDANCE, guidanceFor } from '../../src/coaching/guidance';
 import { buildSessionReport } from '../../src/coaching/sessionReport';
 import { NOT_RATED_CUE, NO_READING_CUE, evaluateRules, selectCue } from '../../src/coaching/rules';
 import { statistic, summarize } from '../../src/coaching/summary';
 import { wristHint } from '../../src/coaching/wrist';
 import type { StrokeMetrics, StrokeRecord } from '../../src/domain/types';
+import { TARGETS } from '../../src/ui/format';
 import { GOOD_FOREHAND } from '../fixtures';
 
 describe('rule engine', () => {
@@ -217,5 +218,45 @@ describe('wrist hint', () => {
   it('agrees with the "Loosen the wrist" rule', () => {
     const stiff = { ...GOOD_FOREHAND, peakAccelerationOffsetMs: -220 };
     expect(selectCue(stiff, DEFAULT_RULES).ruleId).toBe('stiff-arm');
+  });
+});
+
+describe('displayed target bands', () => {
+  it('equal the limits at which the rules fire', () => {
+    const limit = (id: string) => DEFAULT_RULES.rules.find((r) => r.id === id);
+    expect(limit('face-open')?.above).toBe(TARGET_BANDS.face.max);
+    expect(limit('face-closed')?.below).toBe(TARGET_BANDS.face.min);
+    expect(limit('path-flat')?.below).toBe(TARGET_BANDS.path.min);
+    expect(limit('path-steep')?.above).toBe(TARGET_BANDS.path.max);
+    expect(limit('accelerated-early')?.below).toBe(TARGET_BANDS.peakSpeedOffsetMs.min);
+  });
+
+  it('never show "off target" for a value that hears "Good"', () => {
+    for (const faceTiltDeg of [TARGET_BANDS.face.min, TARGET_BANDS.face.max, -15]) {
+      expect(selectCue({ ...GOOD_FOREHAND, faceTiltDeg }, DEFAULT_RULES).ruleId).toBe('good');
+    }
+    for (const swingPathDeg of [TARGET_BANDS.path.min, TARGET_BANDS.path.max, 30]) {
+      expect(selectCue({ ...GOOD_FOREHAND, swingPathDeg }, DEFAULT_RULES).ruleId).toBe('good');
+    }
+  });
+
+  it('are rendered from those limits', () => {
+    expect(TARGETS.face).toBe('−30…0°');
+    expect(TARGETS.path).toBe('12…55°');
+  });
+});
+
+describe('guidance wording', () => {
+  it('has no known Estonian misspellings or straight closing quotes', () => {
+    const all = JSON.stringify(GUIDANCE.et);
+    expect(all).not.toMatch(/hooväljavõt|varilöö/);
+    expect(all).not.toMatch(/„[^“”]*"/);
+  });
+
+  it('keeps the wrist guidance relaxed-then-firm and free of grip drills', () => {
+    for (const language of ['en', 'et'] as const) {
+      const g = GUIDANCE[language]['stiff-arm'];
+      expect(`${g?.fix}${g?.drill}`).not.toMatch(/4\/10|4 out of 10|three fingers|kolm sõrme/);
+    }
   });
 });

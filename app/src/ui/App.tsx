@@ -1,4 +1,5 @@
 import { useSignal } from '@preact/signals';
+import { useEffect } from 'preact/hooks';
 import type { CoachController } from '../app/controller';
 import { ConnectionBar } from './ConnectionBar';
 import { LiveView } from './LiveView';
@@ -12,7 +13,11 @@ const TABS: readonly Tab[] = ['live', 'session', 'settings'];
 
 export function App({ controller }: { readonly controller: CoachController }) {
   const tab = useSignal<Tab>('live');
-  const t = strings(controller.settings.value.language);
+  const language = controller.settings.value.language;
+  const t = strings(language);
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
   const labels: Record<Tab, string> = {
     live: t.tabs.live,
     session: t.tabs.session,
@@ -27,7 +32,7 @@ export function App({ controller }: { readonly controller: CoachController }) {
         {tab.value === 'session' && <SessionView controller={controller} />}
         {tab.value === 'settings' && <SettingsView controller={controller} />}
       </main>
-      <nav class="tabs" aria-label="Sections">
+      <nav class="tabs" aria-label={t.sections}>
         {TABS.map((id) => (
           <button
             key={id}

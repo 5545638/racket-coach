@@ -3,6 +3,12 @@ import type { StrokeType } from '../domain/types';
 
 /** All on-screen text. Spoken cues stay English (see ADR 0004). */
 export interface Strings {
+  /** aria-label of the bottom tab bar. */
+  readonly sections: string;
+  /** Shown when the app cannot start (e.g. IndexedDB unavailable). */
+  readonly startupError: string;
+  /** Localised short cue title per rule id; falls back to the (English) spoken cue. */
+  readonly cueTitle: Readonly<Record<string, string>>;
   readonly tabs: { readonly live: string; readonly session: string; readonly setup: string };
   readonly stroke: Record<StrokeType, string>;
   readonly compact: string;
@@ -86,10 +92,30 @@ export interface Strings {
     readonly lever: string;
     readonly leverHint: string;
     readonly firmware: string;
+    readonly protocol: string;
   };
 }
 
 const en: Strings = {
+  sections: 'Sections',
+  startupError: 'Racket Coach failed to start. Is private browsing enabled?',
+  cueTitle: {
+    'slice-face-closed': 'Open the face for the slice',
+    'slice-chop': 'Slice through the ball, not down',
+    'face-open': 'Face too open',
+    'face-closed': 'Face too closed',
+    'path-flat': 'Swing low to high',
+    'path-steep': 'Drive through the ball',
+    'accelerated-early': 'Accelerate through contact',
+    'no-racket-drop': 'Drop the racket head',
+    'open-takeback': 'Face down on the take-back',
+    hitch: 'Keep the swing flowing',
+    'stiff-arm': 'Loosen the wrist',
+    'short-finish': 'Finish your swing',
+    good: 'Good',
+    'not-rated': 'Counted',
+    'no-reading': 'No reading',
+  },
   tabs: { live: 'Live', session: 'Session', setup: 'Setup' },
   stroke: { forehand: 'Forehand', backhand: 'Backhand', overhead: 'Overhead' },
   compact: 'compact',
@@ -180,10 +206,30 @@ const en: Strings = {
     lever: 'Swing lever (shoulder to sweet spot)',
     leverHint: 'Scales racket speed only. Angles do not depend on it.',
     firmware: 'Firmware',
+    protocol: 'protocol',
   },
 };
 
 const et: Strings = {
+  sections: 'Jaotised',
+  startupError: 'Racket Coach ei käivitunud. Kas privaatne sirvimine on sisse lülitatud?',
+  cueTitle: {
+    'slice-face-closed': 'Ava pinda slice’i jaoks',
+    'slice-chop': 'Slice’i löö läbi palli, mitte alla',
+    'face-open': 'Pind liiga avatud',
+    'face-closed': 'Pind liiga suletud',
+    'path-flat': 'Löö alt üles',
+    'path-steep': 'Löö palli läbi',
+    'accelerated-early': 'Kiirenda läbi tabamuse',
+    'no-racket-drop': 'Lase reketi pea langeda',
+    'open-takeback': 'Pind alla tagahoos',
+    hitch: 'Hoia hoog voolavana',
+    'stiff-arm': 'Lõdvesta ranne',
+    'short-finish': 'Vii löök lõpuni',
+    good: 'Korras',
+    'not-rated': 'Loetud',
+    'no-reading': 'Näit puudub',
+  },
   tabs: { live: 'Löök', session: 'Trenn', setup: 'Seaded' },
   stroke: { forehand: 'Forehand', backhand: 'Backhand', overhead: 'Ülaltlöök' },
   compact: 'lühike',
@@ -196,7 +242,7 @@ const et: Strings = {
   sensor: 'Andur',
   calibrateFirst: 'Enne löömist kalibreeri andur seadetes.',
   waiting: 'Ootan esimest lööki…',
-  connectHint: 'Ühenda andur või proovi demo.',
+  connectHint: 'Ühenda andur või proovi demot.',
   meaning: 'Mida see tähendab',
   fix: 'Mida teha',
   drill: 'Harjutus',
@@ -206,7 +252,8 @@ const et: Strings = {
     loose: 'Lõtv: reket jääb käest maha ja tuleb piitsana läbi',
     stiff: 'Pinges: reket liigub käega koos',
     unknown: 'Selle löögi puhul ei hinnata',
-    disclaimer: 'Hinnatud reketi mahajäämise järgi. Andur ei näe randme nurka ega haarde tugevust.',
+    disclaimer:
+      'Hinnang põhineb reketi mahajäämisel. Andur ei näe randme nurka ega haarde tugevust ning see on vaid kaudne näitaja.',
     looseShare: 'Lõtv ranne',
   },
   group: {
@@ -236,10 +283,10 @@ const et: Strings = {
     title: 'Trenn',
     strokes: (n, unrated) => `${n} lööki${unrated ? `, neist ${unrated} ilma mõõtmiseta` : ''}.`,
     spread:
-      '„±" on hajuvus: mida väiksem, seda ühtlasemad löögid. Slice\'id on keskmistest väljas.',
+      '„±“ on hajuvus: mida väiksem, seda ühtlasemad löögid. Slice’id on keskmistest välja jäetud.',
     focusTitle: 'Järgmise trenni fookus',
     focusLine: (stroke, count, rated) => `${stroke}: ${count} löögil ${rated}-st`,
-    noFocus: 'Ükski viga ei eristu veel. Hinnangu jaoks löö iga löögiga vähemalt 20 palli.',
+    noFocus: 'Ükski viga ei eristu veel. Hinnangu jaoks löö iga löögiliigiga vähemalt 20 palli.',
     good: 'Korras',
     corrections: 'Parandused',
     exportCsv: 'Ekspordi CSV',
@@ -249,9 +296,9 @@ const et: Strings = {
   },
   setup: {
     calibration: 'Kalibreerimine',
-    calibrated: (date) => `Kalibreeritud ${date}. Korda, kui andurit liigutad.`,
-    calibrationNeeded: 'Vaja teha üks kord anduri asendi kohta. Võtab 10 sekundit.',
-    stepFaceUp: 'Pane reket pikali nii, et pind, millega lööd forehandi, on üleval. Hoia paigal.',
+    calibrated: (date) => `Kalibreeritud ${date}. Korda pärast anduri liigutamist.`,
+    calibrationNeeded: 'Tuleb teha üks kord iga anduri asendi kohta. Võtab 10 sekundit.',
+    stepFaceUp: 'Pane reket pikali nii, et forehandi löömise pool oleks üleval. Hoia paigal.',
     stepTipUp: 'Pane reket otsakorgile püsti, tipp üleval. Hoia paigal.',
     capture: 'Mõõda',
     holdStill: 'Hoia paigal…',
@@ -259,18 +306,23 @@ const et: Strings = {
     saved: 'Kalibreerimine salvestatud.',
     feedback: 'Tagasiside',
     mode: 'Režiim',
-    drillMode: 'Drill: hääl pärast iga lööki',
+    drillMode: 'Harjutus: hääl pärast iga lööki',
     rallyMode: 'Rally: vaikne, vaata hiljem üle',
-    speakGood: 'Ütle „Good", kui parandada pole midagi',
+    speakGood: 'Ütle „Good“, kui parandada pole midagi',
     speechRate: 'Kõne kiirus',
     language: 'Selgituste keel (hääl on inglise keeles)',
     model: 'Mudel',
-    lever: 'Löögi õlg (õlast reketi keskpunktini)',
+    lever: 'Hoova pikkus (õlast reketi tabamispunktini)',
     leverHint: 'Mõjutab ainult reketi kiirust. Nurgad sellest ei sõltu.',
     firmware: 'Püsivara',
+    protocol: 'protokoll',
   },
 };
 
 const STRINGS: Record<Language, Strings> = { en, et };
 
 export const strings = (language: Language): Strings => STRINGS[language];
+
+/** Localised cue title for a rule id, falling back to the English spoken cue text. */
+export const cueLabel = (t: Strings, ruleId: string, fallback: string): string =>
+  t.cueTitle[ruleId] ?? fallback;

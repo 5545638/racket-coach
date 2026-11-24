@@ -8,6 +8,23 @@ const SLICE = ['slice'] as const;
 const ANY_STYLE = ['drive', 'slice'] as const;
 
 /**
+ * Rule limits, exported as the single source of truth: the rules below fire
+ * outside these bounds and the UI derives its displayed target bands from them.
+ */
+export const FACE_TILT_MAX_DEG = 0;
+export const FACE_TILT_MIN_DEG = -30;
+export const SWING_PATH_MIN_DEG = 12;
+export const SWING_PATH_MAX_DEG = 55;
+export const PEAK_SPEED_MIN_OFFSET_MS = -40;
+
+/** Target bands for topspin/flat drives, derived from the rule limits. */
+export const TARGET_BANDS = {
+  face: { min: FACE_TILT_MIN_DEG, max: FACE_TILT_MAX_DEG },
+  path: { min: SWING_PATH_MIN_DEG, max: SWING_PATH_MAX_DEG },
+  peakSpeedOffsetMs: { min: PEAK_SPEED_MIN_OFFSET_MS, max: null },
+} as const;
+
+/**
  * Default thresholds. Only full-swing forehands and backhands are judged:
  * serves, smashes and volleys have no usable published racket-level reference
  * values (docs/research), so they are counted but not rated. Preparation time
@@ -50,7 +67,7 @@ export const DEFAULT_RULES: RuleSet = {
     {
       id: 'face-open',
       metric: 'faceTiltDeg',
-      above: 0,
+      above: FACE_TILT_MAX_DEG,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
       styles: DRIVE,
@@ -63,7 +80,7 @@ export const DEFAULT_RULES: RuleSet = {
     {
       id: 'face-closed',
       metric: 'faceTiltDeg',
-      below: -30,
+      below: FACE_TILT_MIN_DEG,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
       styles: DRIVE,
@@ -74,7 +91,7 @@ export const DEFAULT_RULES: RuleSet = {
     {
       id: 'path-flat',
       metric: 'swingPathDeg',
-      below: 12,
+      below: SWING_PATH_MIN_DEG,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
       styles: DRIVE,
@@ -86,7 +103,7 @@ export const DEFAULT_RULES: RuleSet = {
     {
       id: 'path-steep',
       metric: 'swingPathDeg',
-      above: 55,
+      above: SWING_PATH_MAX_DEG,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
       styles: DRIVE,
@@ -97,7 +114,7 @@ export const DEFAULT_RULES: RuleSet = {
     {
       id: 'accelerated-early',
       metric: 'peakSpeedOffsetMs',
-      below: -40,
+      below: PEAK_SPEED_MIN_OFFSET_MS,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
       styles: DRIVE,
