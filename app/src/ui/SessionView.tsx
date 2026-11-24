@@ -3,6 +3,7 @@ import { toCsv, toJson } from '../app/export';
 import { buildSessionReport } from '../coaching/sessionReport';
 import { type Statistic, summarize } from '../coaching/summary';
 import { minus } from './format';
+import { sessionAdaptive } from './profileViewModel';
 import { strings } from './strings';
 import { guidanceBlocks, sessionCoachSummary, titleFor } from './viewModel';
 
@@ -50,6 +51,7 @@ export function SessionView({ controller }: { readonly controller: CoachControll
   const summaries = summarize(strokes);
   const report = buildSessionReport(strokes);
   const coach = sessionCoachSummary(strokes);
+  const adaptive = sessionAdaptive(strokes, language);
   const focused = coach.filter((c) => c.focus !== null);
   const stamp = session ? new Date(session.startedAt).toISOString().slice(0, 16) : 'session';
 
@@ -84,6 +86,25 @@ export function SessionView({ controller }: { readonly controller: CoachControll
         ) : (
           <p class="hint">{t.session.noFocus}</p>
         )}
+      </article>
+
+      <article class="card">
+        <h3>{t.session.categoriesTitle}</h3>
+        <ul class="tally">
+          {adaptive.categories.map((c) => (
+            <li key={c.id}>
+              {c.label} <span class="count">{c.count}</span>
+            </li>
+          ))}
+        </ul>
+        <h3>{t.session.feedbackTitle}</h3>
+        <ul class="tally stacked">
+          {adaptive.feedback.map((f) => (
+            <li key={f.kind}>
+              {f.label} <span class="count">{f.count}×</span>
+            </li>
+          ))}
+        </ul>
       </article>
 
       {summaries.map((s) => {

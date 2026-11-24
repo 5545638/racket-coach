@@ -1,7 +1,7 @@
 import type { UtteranceReason } from '../coach/coachEngine';
 import { CORRECTIONS } from '../coaching/corrections';
 import type { Language } from '../coaching/guidance';
-import type { SensorDiagnostics, StrokeType } from '../domain/types';
+import type { DeviationCategory, SensorDiagnostics, StrokeType } from '../domain/types';
 import type { NotAssessableReason } from '../elements/catalog';
 
 /** All on-screen text. Spoken cues stay English (see ADR 0004). */
@@ -12,7 +12,14 @@ export interface Strings {
   readonly startupError: string;
   /** Localised short title per correction id (from CORRECTIONS) and legacy cue id; falls back to the spoken cue. */
   readonly cueTitle: Readonly<Record<string, string>>;
-  readonly tabs: { readonly live: string; readonly session: string; readonly setup: string };
+  readonly tabs: {
+    readonly live: string;
+    readonly session: string;
+    readonly profile: string;
+    readonly setup: string;
+  };
+  /** Short names of the deviation categories (per-stroke summary). */
+  readonly category: Record<DeviationCategory, string>;
   readonly stroke: Record<StrokeType, string>;
   readonly compact: string;
   readonly slice: string;
@@ -90,6 +97,40 @@ export interface Strings {
     readonly baselineLoading: string;
     readonly baselineProgress: (n: number, needed: number) => string;
     readonly limit: string;
+    readonly fatigueBadge: string;
+    /** Label of the spoken explanation shown in learning mode. */
+    readonly learning: string;
+    /** Match mode: label of the persistent fault spoken in a break. */
+    readonly matchSpoken: string;
+    readonly matchStrokes: string;
+  };
+  readonly profile: {
+    readonly title: string;
+    readonly inputs: string;
+    readonly change: string;
+    readonly typical: string;
+    readonly typicalStrokes: (n: number) => string;
+    readonly noTypical: string;
+    readonly weaknesses: string;
+    readonly noWeaknesses: string;
+    readonly sessionsN: (n: number) => string;
+    readonly faultRate: string;
+    readonly trend: Record<'improving' | 'stable' | 'worsening', string>;
+    readonly progress: string;
+    readonly noProgress: string;
+    readonly sparkAria: (name: string, values: string) => string;
+    readonly sparkHint: string;
+    readonly plan: string;
+    readonly noPlan: string;
+    readonly volume: (sets: number, balls: number) => string;
+    readonly bestCue: string;
+    readonly target: (percent: number) => string;
+    readonly targetKeep: (percent: number) => string;
+    readonly focusItem: string;
+    readonly maintenance: string;
+    readonly drill: string;
+    readonly empty: string;
+    readonly basedOn: (n: number) => string;
   };
   readonly faceGauge: { readonly open: string; readonly closed: string; readonly label: string };
   readonly session: {
@@ -109,6 +150,8 @@ export interface Strings {
     readonly exportRaw: string;
     readonly newSession: string;
     readonly diagnostics: string;
+    readonly categoriesTitle: string;
+    readonly feedbackTitle: string;
   };
   readonly setup: {
     readonly calibration: string;
@@ -180,7 +223,15 @@ const en: Strings = {
   sections: 'Sections',
   startupError: 'Racket Coach failed to start. Is private browsing enabled?',
   cueTitle: cueTitles('en', { good: 'Good', 'not-rated': 'Counted', 'no-reading': 'No reading' }),
-  tabs: { live: 'Live', session: 'Session', setup: 'Setup' },
+  tabs: { live: 'Live', session: 'Session', profile: 'Profile', setup: 'Setup' },
+  category: {
+    'technical-error': 'Fault',
+    variation: 'Your style',
+    uncertain: 'Unsure',
+    'not-assessable': 'Not judged',
+    'fatigue-related': 'Tired',
+    improvement: 'Improved',
+  },
   stroke: { forehand: 'Forehand', backhand: 'Backhand', overhead: 'Overhead' },
   compact: 'compact',
   slice: 'slice',
@@ -244,7 +295,7 @@ const en: Strings = {
     good: 'Good',
     counted: 'Counted',
     voice: 'Voice',
-    overcorrected: 'A little less',
+    overcorrected: 'Too much – a little less',
     consistency: 'Same swing every time',
     fatigue: 'Take a short break',
     stuck: 'Try the drill',
@@ -274,6 +325,38 @@ const en: Strings = {
     baselineLoading: 'Loading your personal baseline…',
     baselineProgress: (n, needed) => `Personal baseline: ${n}/${needed} strokes`,
     limit: 'Limit',
+    fatigueBadge: 'Tired',
+    learning: 'Explanation',
+    matchSpoken: 'Said in the break',
+    matchStrokes: 'Strokes',
+  },
+  profile: {
+    title: 'Profile',
+    inputs: 'About you',
+    change: 'Change in Setup',
+    typical: 'Typical stroke',
+    typicalStrokes: (n) => `${n} strokes`,
+    noTypical: 'Your typical stroke appears after a few strokes.',
+    weaknesses: 'Weaknesses',
+    noWeaknesses: 'No lasting weaknesses so far.',
+    sessionsN: (n) => `${n} sessions`,
+    faultRate: 'faults',
+    trend: { improving: 'improving', stable: 'steady', worsening: 'getting worse' },
+    progress: 'Progress',
+    noProgress: 'Progress appears once you have trained a few times.',
+    sparkAria: (name, values) => `${name}: fault rate per session, ${values}`,
+    sparkHint: 'Fault rate per session, oldest to newest. Lower is better.',
+    plan: 'Next session plan',
+    noPlan: 'The plan appears once a weakness shows up.',
+    volume: (sets, balls) => `${sets} × ${balls} balls`,
+    bestCue: 'Cue that worked best',
+    target: (percent) => `Goal: under ${percent}% faults`,
+    targetKeep: (percent) => `Goal: keep it under ${percent}% faults`,
+    focusItem: 'Work on',
+    maintenance: 'Keep it up',
+    drill: 'Drill',
+    empty: 'The profile fills in after a few sessions.',
+    basedOn: (n) => `Based on your last ${n} rated strokes.`,
   },
   faceGauge: {
     open: 'open',
@@ -298,6 +381,8 @@ const en: Strings = {
     exportRaw: 'Export raw data',
     newSession: 'New session',
     diagnostics: 'Diagnostics',
+    categoriesTitle: 'Strokes by reading',
+    feedbackTitle: 'Feedback given',
   },
   setup: {
     calibration: 'Calibration',
@@ -367,7 +452,15 @@ const et: Strings = {
   sections: 'Jaotised',
   startupError: 'Racket Coach ei käivitunud. Kas privaatne sirvimine on sisse lülitatud?',
   cueTitle: cueTitles('et', { good: 'Korras', 'not-rated': 'Loetud', 'no-reading': 'Näit puudub' }),
-  tabs: { live: 'Löök', session: 'Trenn', setup: 'Seaded' },
+  tabs: { live: 'Löök', session: 'Trenn', profile: 'Profiil', setup: 'Seaded' },
+  category: {
+    'technical-error': 'Viga',
+    variation: 'Sinu stiil',
+    uncertain: 'Ebakindel',
+    'not-assessable': 'Hindamata',
+    'fatigue-related': 'Väsinud',
+    improvement: 'Paranes',
+  },
   stroke: { forehand: 'Forehand', backhand: 'Backhand', overhead: 'Ülaltlöök' },
   compact: 'lühike',
   slice: 'slice',
@@ -431,7 +524,7 @@ const et: Strings = {
     good: 'Hea',
     counted: 'Löök loetud',
     voice: 'Hääl',
-    overcorrected: 'Natuke vähem',
+    overcorrected: 'Liiga palju – veidi vähem',
     consistency: 'Iga kord sama löök',
     fatigue: 'Tee väike paus',
     stuck: 'Proovi harjutust',
@@ -461,6 +554,38 @@ const et: Strings = {
     baselineLoading: 'Laen isiklikku baasi…',
     baselineProgress: (n, needed) => `Isiklik baas: ${n}/${needed} lööki`,
     limit: 'Piir',
+    fatigueBadge: 'Väsinud',
+    learning: 'Selgitus',
+    matchSpoken: 'Pausi ajal öeldud',
+    matchStrokes: 'Lööke',
+  },
+  profile: {
+    title: 'Profiil',
+    inputs: 'Sinust',
+    change: 'Muuda seadetes',
+    typical: 'Tavaline löök',
+    typicalStrokes: (n) => `${n} lööki`,
+    noTypical: 'Sinu tavaline löök ilmub pärast paari lööki.',
+    weaknesses: 'Nõrkused',
+    noWeaknesses: 'Püsivaid nõrkusi pole siiani.',
+    sessionsN: (n) => `${n} trenni`,
+    faultRate: 'vigu',
+    trend: { improving: 'paraneb', stable: 'stabiilne', worsening: 'halveneb' },
+    progress: 'Areng',
+    noProgress: 'Areng ilmub pärast paari trenni.',
+    sparkAria: (name, values) => `${name}: vigade osakaal trennis, ${values}`,
+    sparkHint: 'Vigade osakaal trennis, vanimast uusimani. Väiksem on parem.',
+    plan: 'Järgmise trenni plaan',
+    noPlan: 'Plaan ilmub, kui nõrkus ilmneb.',
+    volume: (sets, balls) => `${sets} × ${balls} palli`,
+    bestCue: 'Kõige paremini aidanud märkus',
+    target: (percent) => `Eesmärk: alla ${percent}% vigu`,
+    targetKeep: (percent) => `Eesmärk: hoia alla ${percent}% vigu`,
+    focusItem: 'Harjuta',
+    maintenance: 'Hoia samas vaimus',
+    drill: 'Harjutus',
+    empty: 'Profiil täitub pärast paari trenni.',
+    basedOn: (n) => `Põhineb sinu viimasel ${n} hinnatud löögil.`,
   },
   faceGauge: { open: 'avatud', closed: 'suletud', label: 'Reketipind tabamusel, küljelt vaadates' },
   session: {
@@ -481,6 +606,8 @@ const et: Strings = {
     exportRaw: 'Ekspordi toorandmed',
     newSession: 'Uus trenn',
     diagnostics: 'Diagnostika',
+    categoriesTitle: 'Löögid hinnangu järgi',
+    feedbackTitle: 'Antud tagasiside',
   },
   setup: {
     calibration: 'Kalibreerimine',

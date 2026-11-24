@@ -37,6 +37,22 @@ describe('UI strings', () => {
     expect(strings('et').setup.resetBaseline).toBe('Lähtesta isiklik baas');
   });
 
+  it('name the new tab, the profile texts and the adaptive live texts in Estonian', () => {
+    const t = strings('et');
+    expect([t.tabs.live, t.tabs.session, t.tabs.profile, t.tabs.setup]).toEqual([
+      'Löök',
+      'Trenn',
+      'Profiil',
+      'Seaded',
+    ]);
+    expect(t.live.overcorrected).toBe('Liiga palju – veidi vähem');
+    expect(t.profile.empty).toBe('Profiil täitub pärast paari trenni.');
+    expect(t.profile.target(15)).toBe('Eesmärk: alla 15% vigu');
+    expect(t.profile.volume(3, 15)).toBe('3 × 15 palli');
+    expect(t.category['technical-error']).toBe('Viga');
+    expect(strings('en').tabs.profile).toBe('Profile');
+  });
+
   it('use Estonian quotation marks „…“, never straight or English ones', () => {
     const count = (text: string, ch: string): number => text.split(ch).length - 1;
     for (const [key, text] of et) {

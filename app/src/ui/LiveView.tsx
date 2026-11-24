@@ -1,6 +1,7 @@
 import type { CoachController } from '../app/controller';
 import { FaceGauge } from './FaceGauge';
 import { strings } from './strings';
+import { liveExtras, matchLiveView } from './profileViewModel';
 import { type MetricRow, liveViewModel } from './viewModel';
 
 export function LiveView({ controller }: { readonly controller: CoachController }) {
@@ -18,6 +19,40 @@ export function LiveView({ controller }: { readonly controller: CoachController 
   }
 
   const m = stroke.metrics;
+  const mode = controller.settings.value.mode;
+
+  if (mode === 'match') {
+    const match = matchLiveView({
+      count,
+      strokeType: m.strokeType,
+      lastSpeech: controller.lastSpeech.value,
+      language,
+    });
+    return (
+      <section class="live match">
+        <p class="match-count" aria-live="polite" aria-atomic="true">
+          <span class="note">{t.live.matchStrokes}</span> {match.count}
+        </p>
+        <p class="stroke-type">
+          <span>{match.strokeType}</span>
+        </p>
+        {match.pendingFault && (
+          <p class="cue fix small">
+            <span class="note">{t.live.matchSpoken}: </span>
+            {match.pendingFault}
+          </p>
+        )}
+      </section>
+    );
+  }
+
+  const extras = liveExtras({
+    mode,
+    utterance: controller.utterance.value,
+    fatigueActive: controller.fatigueActive.value,
+    categories: controller.categories.value,
+    language,
+  });
   const view = liveViewModel({
     metrics: m,
     assessment: controller.assessment.value,
@@ -52,6 +87,17 @@ export function LiveView({ controller }: { readonly controller: CoachController 
         </p>
       )}
       {headline.detail && <p class="detail">{headline.detail}</p>}
+      {extras.learningLine && (
+        <p class="spoken">
+          {t.live.learning}: „{extras.learningLine}“
+        </p>
+      )}
+      {(extras.fatigueBadge || extras.categoryLine) && (
+        <p class="badges">
+          {extras.fatigueBadge && <span class="badge fatigue">{extras.fatigueBadge}</span>}
+          {extras.categoryLine && <span class="note">{extras.categoryLine}</span>}
+        </p>
+      )}
 
       {blocks && (
         <dl class="guidance">

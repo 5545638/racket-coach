@@ -422,3 +422,133 @@ h4 {
   gap: 0.4rem 1rem;
   margin: 0.4rem 0;
 }
+
+/* Profile tab, adaptive live and session bits */
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.8rem;
+  margin: 0.4rem 0;
+}
+
+.badge {
+  border: 1px solid var(--fix);
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--fix);
+}
+
+.live.match .match-count {
+  font-size: 4rem;
+  font-weight: 700;
+  margin: 1rem 0 0.2rem;
+}
+
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  margin: 0 0 0.8rem;
+  padding: 0;
+  list-style: none;
+}
+
+.tally.stacked {
+  flex-direction: column;
+}
+
+.profile h4 {
+  margin: 0 0 0.4rem;
+}
+
+.card.plain {
+  list-style: none;
+  padding: 0.4rem 0.8rem;
+}
+
+.weak-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.1rem 0.8rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #222c27;
+}
+
+.weak-list li:last-child {
+  border-bottom: none;
+}
+
+.weak-name {
+  font-weight: 600;
+}
+
+.weak-rate {
+  color: var(--fix);
+  text-align: right;
+}
+
+.trend {
+  text-align: right;
+}
+
+.trend.improving {
+  color: var(--good);
+}
+
+.trend.worsening {
+  color: var(--error);
+}
+
+.trend.stable {
+  color: var(--muted);
+}
+
+.spark-row {
+  margin-bottom: 0.6rem;
+}
+
+.spark-name {
+  margin: 0 0 0.2rem;
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+}
+
+.spark-base {
+  stroke: #33403a;
+  stroke-width: 1;
+}
+
+.spark-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.spark-dot {
+  fill: var(--muted);
+}
+
+.spark-dot.last {
+  fill: var(--accent);
+}
+
+.plan-volume {
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin: 0.2rem 0;
+}
+
+.plan-target {
+  color: var(--accent);
+  font-weight: 600;
+  margin: 0.4rem 0 0;
+}

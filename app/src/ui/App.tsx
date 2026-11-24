@@ -3,13 +3,14 @@ import { useEffect } from 'preact/hooks';
 import type { CoachController } from '../app/controller';
 import { ConnectionBar } from './ConnectionBar';
 import { LiveView } from './LiveView';
+import { ProfileView } from './ProfileView';
 import { SessionView } from './SessionView';
 import { SettingsView } from './SettingsView';
 import { strings } from './strings';
 
-type Tab = 'live' | 'session' | 'settings';
+type Tab = 'live' | 'session' | 'profile' | 'settings';
 
-const TABS: readonly Tab[] = ['live', 'session', 'settings'];
+const TABS: readonly Tab[] = ['live', 'session', 'profile', 'settings'];
 
 export function App({ controller }: { readonly controller: CoachController }) {
   const tab = useSignal<Tab>('live');
@@ -21,6 +22,7 @@ export function App({ controller }: { readonly controller: CoachController }) {
   const labels: Record<Tab, string> = {
     live: t.tabs.live,
     session: t.tabs.session,
+    profile: t.tabs.profile,
     settings: t.tabs.setup,
   };
 
@@ -30,6 +32,14 @@ export function App({ controller }: { readonly controller: CoachController }) {
       <main class="content">
         {tab.value === 'live' && <LiveView controller={controller} />}
         {tab.value === 'session' && <SessionView controller={controller} />}
+        {tab.value === 'profile' && (
+          <ProfileView
+            controller={controller}
+            onOpenSettings={() => {
+              tab.value = 'settings';
+            }}
+          />
+        )}
         {tab.value === 'settings' && <SettingsView controller={controller} />}
       </main>
       <nav class="tabs" aria-label={t.sections}>
