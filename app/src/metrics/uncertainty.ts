@@ -2,7 +2,7 @@ import type { FeatureSigmaKey } from '../domain/types';
 import { RAD_TO_DEG } from '../math/vec3';
 import type { AttitudeAnchor } from '../processing/attitude';
 import type { AnalysisParams } from './analyzeSwing';
-import { type SwingKinematics, countTrue } from './kinematics';
+import { type SwingKinematics, countTrue, gapIn, maxSaturatedAt } from './kinematics';
 
 /**
  * Inputs of the uncertainty model. Every value is an engineering assumption
@@ -35,6 +35,13 @@ export interface UncertaintyParams {
    * angles by half a sample. Engineering choice (spec: ½).
    */
   readonly contactTimingShare: number;
+  /**
+   * 1-σ error of a reconstructed (de-clipped) rate as a fraction of the part
+   * added above the clipped value. Engineering choice, checked in simulation
+   * (app/test/processing/declip.test.ts: errors stayed below a fifth of the
+   * excess for Gaussian-like peaks of 2200–2800 dps).
+   */
+  readonly declipExcessFraction: number;
 }
 
 export const DEFAULT_UNCERTAINTY_PARAMS: UncertaintyParams = {
@@ -43,6 +50,7 @@ export const DEFAULT_UNCERTAINTY_PARAMS: UncertaintyParams = {
   swingPathModelDeg: 3,
   headSpeedModelFraction: 0.15,
   contactTimingShare: 0.5,
+  declipExcessFraction: 0.3,
 };
 
 /** Root-sum-square of independent 1-σ terms. */
@@ -72,11 +80,21 @@ export function anchorSigmaRad(
   return Math.max(noise, bias);
 }
 
-/** Attitude drift from the residual gyro bias over `elapsedS`, deg. */
+/**
+ * Attitude drift from the residual gyro bias over `elapsedS`, deg. The bias
+ * is the model value, or the residual measured on the stillest window before
+ * the swing (`measuredBiasDps`) when that is larger: a wrong calibration bias
+ * then widens σ instead of leaving it confidently small.
+ */
 export const driftSigmaDeg = (
   elapsedS: number,
   up: UncertaintyParams = DEFAULT_UNCERTAINTY_PARAMS,
-): number => up.gyroBiasResidualDps * Math.abs(elapsedS);
+  measuredBiasDps: number | null = null,
+): number => Math.max(up.gyroBiasResidualDps, measuredBiasDps ?? 0) * Math.abs(elapsedS);
+
+/** Measured residual bias of a stroke, deg/s (see `SwingKinematics.residualBiasRadPerS`). */
+const measuredBiasDps = (kin: SwingKinematics): number | null =>
+  kin.residualBiasRadPerS === null ? null : kin.residualBiasRadPerS * RAD_TO_DEG;
 
 /** 1-σ of a time read from sample indices, ms: T_s / √12 (≈ 2.8 ms at 104 Hz). */
 export const timingSigmaMs = (sampleRateHz: number): number => quantisationS(sampleRateHz) * 1000;
@@ -94,8 +112,9 @@ export const contactTimingSigmaDeg = (
 
 /**
  * True when the attitude can be assessed between the anchor and `event`
- * (fractional sample): an anchor exists and at most `maxSaturatedSamples`
- * gyro samples clipped in between.
+ * (fractional sample): an anchor exists, at most `maxSaturatedSamples`
+ * reference samples' worth of gyro samples clipped without reconstruction
+ * in between, and no data is missing from the anchor window to the event.
  */
 export function attitudeAssessable(
   kin: SwingKinematics,
@@ -106,7 +125,8 @@ export function attitudeAssessable(
   if (!anchor || !kin.attitude) return false;
   const from = Math.min(anchor.index, Math.floor(event));
   const to = Math.max(anchor.index, Math.ceil(event));
-  return countTrue(kin.gyroSaturated, from, to) <= params.maxSaturatedSamples;
+  if (gapIn(kin.gap, Math.min(from, anchor.start), to)) return false;
+  return countTrue(kin.gyroUnrecovered, from, to) <= maxSaturatedAt(params, kin.sampleRateHz);
 }
 
 /**
@@ -124,7 +144,28 @@ export function angleSigmaDeg(
   const anchor = kin.anchor;
   if (!anchor || !attitudeAssessable(kin, params, event)) return null;
   const elapsedS = (event - anchor.index) / kin.sampleRateHz;
-  return rss(anchorSigmaRad(anchor, up) * RAD_TO_DEG, driftSigmaDeg(elapsedS, up), ...extraDeg);
+  return rss(
+    anchorSigmaRad(anchor, up) * RAD_TO_DEG,
+    driftSigmaDeg(elapsedS, up, measuredBiasDps(kin)),
+    reconstructionSigmaDeg(kin, anchor.index, event, up),
+    ...extraDeg,
+  );
+}
+
+/**
+ * Attitude σ from reconstructed clipping between samples `a` and `b`, deg:
+ * `declipExcessFraction` of the rotation the reconstruction added there (the
+ * same model as for the reconstructed rate).
+ */
+export function reconstructionSigmaDeg(
+  kin: SwingKinematics,
+  a: number,
+  b: number,
+  up: UncertaintyParams = DEFAULT_UNCERTAINTY_PARAMS,
+): number {
+  const cum = kin.reconstructedRotationRad;
+  const at = (x: number): number => cum[Math.max(0, Math.min(cum.length - 1, Math.round(x)))] ?? 0;
+  return up.declipExcessFraction * Math.abs(at(b + 1) - at(Math.min(a, b))) * RAD_TO_DEG;
 }
 
 /** Event samples and values the σ record needs; null where a feature is unavailable. */
@@ -146,6 +187,8 @@ export interface SigmaInputs {
   readonly trophySample: number | null;
   readonly dropSample: number | null;
   readonly headSpeedMps: number | null;
+  /** Head speed from the gyro as clipped (equals `headSpeedMps` without reconstruction), m/s. */
+  readonly headSpeedFloorMps?: number;
   /** Timing features that are available. */
   readonly timing: Readonly<
     Record<
@@ -161,6 +204,29 @@ export interface SigmaInputs {
   >;
 }
 
+const SIGMA_KEYS: readonly FeatureSigmaKey[] = [
+  'faceTiltDeg',
+  'swingPathDeg',
+  'tipElevationDeg',
+  'brushAngleDeg',
+  'racketDropDeg',
+  'takebackTurnDeg',
+  'takebackTipDeg',
+  'takebackFaceDeg',
+  'finishTipDeg',
+  'trophyTipDeg',
+  'dropTipDeg',
+  'contactTipDeg',
+  'headSpeedMps',
+  'peakSpeedOffsetMs',
+  'takebackTimeMs',
+  'forwardSwingMs',
+  'brakingTimeMs',
+  'recoveryMs',
+  'dropToContactMs',
+  'rollPeakOffsetMs',
+];
+
 /** The σ record of `StrokeFeatures`. */
 export function featureSigmas(
   kin: SwingKinematics,
@@ -168,6 +234,9 @@ export function featureSigmas(
   input: SigmaInputs,
   up: UncertaintyParams = DEFAULT_UNCERTAINTY_PARAMS,
 ): Readonly<Record<FeatureSigmaKey, number | null>> {
+  // A gap inside the stroke: nothing is assessable.
+  if (kin.signalGap)
+    return Object.fromEntries(SIGMA_KEYS.map((k) => [k, null])) as Record<FeatureSigmaKey, null>;
   const fs = kin.sampleRateHz;
   const tc = kin.contact.time;
   const at = (sample: number | null, extra: readonly number[] = []): number | null =>
@@ -183,6 +252,19 @@ export function featureSigmas(
     : null;
   const t = timingSigmaMs(fs);
   const timed = (key: keyof SigmaInputs['timing']): number | null => (input.timing[key] ? t : null);
+  // Reconstructed clipping: the peak time is uniform over the reconstructed
+  // run (≤ maxRunS), and the rate carries a fraction of the added excess.
+  const peakTiming = input.timing.peakSpeedOffsetMs
+    ? rss(t, (kin.peakReconstructedS * 1000) / Math.sqrt(12))
+    : null;
+  const headSpeed =
+    input.headSpeedMps === null
+      ? null
+      : rss(
+          input.headSpeedMps * up.headSpeedModelFraction,
+          Math.max(0, input.headSpeedMps - (input.headSpeedFloorMps ?? input.headSpeedMps)) *
+            up.declipExcessFraction,
+        );
   return {
     faceTiltDeg: face,
     swingPathDeg: path,
@@ -197,9 +279,8 @@ export function featureSigmas(
     trophyTipDeg: at(input.trophySample),
     dropTipDeg: at(input.dropSample),
     contactTipDeg: tip,
-    headSpeedMps:
-      input.headSpeedMps === null ? null : input.headSpeedMps * up.headSpeedModelFraction,
-    peakSpeedOffsetMs: timed('peakSpeedOffsetMs'),
+    headSpeedMps: headSpeed,
+    peakSpeedOffsetMs: peakTiming,
     takebackTimeMs: timed('takebackTimeMs'),
     forwardSwingMs: timed('forwardSwingMs'),
     brakingTimeMs: timed('brakingTimeMs'),
@@ -226,6 +307,6 @@ function turnSigmaDeg(
   if (!attitudeAssessable(kin, params, turn.from) || !attitudeAssessable(kin, params, turn.to)) {
     return null;
   }
-  const drift = driftSigmaDeg((turn.to - turn.from) / kin.sampleRateHz, up);
+  const drift = driftSigmaDeg((turn.to - turn.from) / kin.sampleRateHz, up, measuredBiasDps(kin));
   return rss(drift, anchorSigmaRad(anchor, up) * turn.arcRad * RAD_TO_DEG);
 }

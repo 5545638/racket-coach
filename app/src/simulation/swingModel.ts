@@ -100,9 +100,27 @@ export interface SwingSpec {
   readonly contactPhase: number;
   /** Size of the impact transient in specific force, g (string bed ≈ 40, handle much less). */
   readonly impactAccelG: number;
+  /**
+   * Duration of the impact transient after contact, s. Default (when
+   * absent) 2/104 s: the two samples at 104 Hz that v1 simulations used.
+   */
+  readonly impactDurationS?: number;
   /** Jolt in roll rate at contact from an off-centre hit, rad/s. */
   readonly impactRollKickRadPerS: number;
+  /** Duration of the roll jolt after contact, s. Default 1/104 s (one sample at 104 Hz). */
+  readonly impactKickDurationS?: number;
+  /** White noise per sample (1 σ), independent of the sample rate. */
   readonly noiseStd: { readonly accelG: number; readonly gyroDps: number };
+  /**
+   * White noise given as a density (datasheet style), added to `noiseStd`:
+   * per-sample σ = density · √(f_s / 2), i.e. a noise bandwidth of half the
+   * sample rate (an approximation; the real bandwidth depends on the filter
+   * configuration). LSM6DS3TR-C typical: 130 µg/√Hz at ±16 g, 5 mdps/√Hz.
+   */
+  readonly noiseDensity?: {
+    readonly accelUgPerRtHz: number;
+    readonly gyroMdpsPerRtHz: number;
+  };
   readonly seed: number;
 }
 
@@ -203,6 +221,24 @@ export interface SimulationSetup {
    * limit); 28571 emulates a part that stops at its nominal ±2000 dps.
    */
   readonly gyroClipCounts?: number;
+  /**
+   * True acquisition time of sample i, s. Default i / sampleRateHz. Use it to
+   * simulate a clock error (true rate ≠ reported rate) or jitter.
+   */
+  readonly sampleTimeS?: (index: number) => number;
+  /** Rate written into the capture header, Hz. Default `sampleRateHz`. */
+  readonly reportedRateHz?: number;
+  /**
+   * Emit per-sample timestamps (protocol v2): (startUs + t rounded to `lsbUs`)
+   * modulo `wrapUs`, with t the true sample time.
+   */
+  readonly timestamps?: {
+    readonly startUs: number;
+    readonly lsbUs: number;
+    readonly wrapUs: number;
+  };
+  /** Gyro full scale written into the header (v2), ±dps. */
+  readonly gyroRangeDps?: number;
 }
 
 /** Geometry the simulator actually produced, for comparing against analysis. */
@@ -211,6 +247,11 @@ export interface SwingTruth {
   readonly contactIndex: number;
   /** Time of ball contact, s; kinematics below are just before it. */
   readonly contactTimeS: number;
+  /**
+   * Noise-free angular rate in the racket frame at any time t (s), without
+   * the impact jolt: for ground truth between samples (e.g. phase boundaries).
+   */
+  readonly omegaAt: (tS: number) => Vec3;
   readonly faceTiltDeg: number;
   readonly swingPathDeg: number;
   readonly tipElevationDeg: number;
@@ -272,8 +313,17 @@ export function simulateSwing(
 ): { capture: RawCapture; truth: SwingTruth } {
   const fs = setup.sampleRateHz;
   const n = Math.round(setup.durationS * fs);
-  const contactIndex = Math.round(setup.contactTimeS * fs);
-  const tContact = (contactIndex - 1 + spec.contactPhase) / fs;
+  const timeOf = setup.sampleTimeS ?? ((i: number): number => i / fs);
+  const nominalContact = Math.round(setup.contactTimeS * fs);
+  const tContact = (nominalContact - 1 + spec.contactPhase) / fs;
+  // First sample at or after contact (equals nominalContact for uniform sampling).
+  let contactIndex = 0;
+  while (contactIndex < n - 1 && timeOf(contactIndex) < tContact - 1e-9) contactIndex++;
+  const impactDuration = spec.impactDurationS ?? 2 / 104;
+  const kickDuration = spec.impactKickDurationS ?? 1 / 104;
+  /** True when t lies in [tContact, tContact + duration). */
+  const afterContact = (t: number, duration: number): boolean =>
+    t >= tContact - 1e-9 && t - tContact < duration - 1e-9;
   const tPeak = tContact + spec.peakOffsetS;
 
   // Racket attitude at contact.
@@ -328,14 +378,24 @@ export function simulateSwing(
     const out = new Float64Array(n);
     const steps = 20;
     for (let i = 1; i < n; i++) {
-      out[i] = (out[i - 1] ?? 0) + integrateFine(f, (i - 1) / fs, i / fs, steps);
+      out[i] = (out[i - 1] ?? 0) + integrateFine(f, timeOf(i - 1), timeOf(i), steps);
     }
     const before = contactIndex - 1;
-    const atContact = (out[before] ?? 0) + integrateFine(f, before / fs, tContact, steps);
+    const atContact = (out[before] ?? 0) + integrateFine(f, timeOf(before), tContact, steps);
     return out.map((v) => v - atContact);
   };
   const theta = integrate(rate);
   const roll = integrate(rollRate);
+  /** θ and φ at any time, from the nearest earlier sample plus a fine integral. */
+  const continuous =
+    (values: Float64Array, f: (t: number) => number) =>
+    (t: number): number => {
+      let i = 0;
+      while (i < n - 1 && timeOf(i + 1) <= t) i++;
+      return (values[i] ?? 0) + integrateFine(f, timeOf(i), t, 20);
+    };
+  const thetaAt = continuous(theta, rate);
+  const rollAt = continuous(roll, rollRate);
 
   const sensorFromRacket = transpose(setup.mount.racketFromSensor);
   // Positions relative to the centre of rotation at contact; both rotate rigidly about `axis`.
@@ -358,8 +418,20 @@ export function simulateSwing(
   const omegaSeries: Vec3[] = [];
   const omegaZSeries: number[] = [];
 
+  const noiseScale = Math.sqrt(fs / 2);
+  const accelNoiseG = Math.hypot(
+    spec.noiseStd.accelG,
+    (spec.noiseDensity?.accelUgPerRtHz ?? 0) * 1e-6 * noiseScale,
+  );
+  const gyroNoiseDps = Math.hypot(
+    spec.noiseStd.gyroDps,
+    (spec.noiseDensity?.gyroMdpsPerRtHz ?? 0) * 1e-3 * noiseScale,
+  );
+  const times: number[] = [];
+
   for (let i = 0; i < n; i++) {
-    const t = i / fs;
+    const t = timeOf(i);
+    times.push(t);
     // Attitude: swing rotation about `axis`, then roll about the racket's own long axis.
     const swingRot = fromAxisAngle(axis, theta[i] ?? 0);
     const rollRot = fromAxisAngle([1, 0, 0], roll[i] ?? 0);
@@ -418,23 +490,25 @@ export function simulateSwing(
       )[2],
     );
 
-    if (spec.withImpact && (i === contactIndex || i === contactIndex + 1)) {
+    if (spec.withImpact && afterContact(t, impactDuration)) {
       // Ball impact: a large, brief push along the hitting-face normal.
       const sign = spec.hittingFace === 'forehand' ? -1 : 1;
       specificForce = add(specificForce, [0, 0, sign * spec.impactAccelG * STANDARD_GRAVITY]);
     }
     const kick: Vec3 =
-      spec.withImpact && i === contactIndex ? [spec.impactRollKickRadPerS, 0, 0] : [0, 0, 0];
+      spec.withImpact && afterContact(t, kickDuration)
+        ? [spec.impactRollKickRadPerS, 0, 0]
+        : [0, 0, 0];
 
     const fS = mulVec(sensorFromRacket, specificForce);
     const wS = add(mulVec(sensorFromRacket, add(omega, kick)), setup.mount.gyroBias);
     if (triggerIndex < 0 && norm(wS) > setup.triggerRadPerS) triggerIndex = i;
 
     const noisyA = fS.map(
-      (v) => v + gaussian(random) * spec.noiseStd.accelG * STANDARD_GRAVITY,
+      (v) => v + gaussian(random) * accelNoiseG * STANDARD_GRAVITY,
     ) as unknown as Vec3;
     const noisyW = wS.map(
-      (v) => v + gaussian(random) * spec.noiseStd.gyroDps * DEG_TO_RAD,
+      (v) => v + gaussian(random) * gyroNoiseDps * DEG_TO_RAD,
     ) as unknown as Vec3;
     for (let k = 0; k < 3; k++) {
       samples[i * 6 + k] = toCounts((noisyA[k] ?? 0) / accelScale);
@@ -442,15 +516,28 @@ export function simulateSwing(
     }
   }
 
+  const stamps = setup.timestamps;
   const capture: RawCapture = {
     kind: 'swing',
     sequence: sequence & 0xff,
-    sampleRateHz: fs,
+    sampleRateHz: setup.reportedRateHz ?? fs,
     accelGPerLsb: SENSOR_ACCEL_G_PER_LSB,
     gyroDpsPerLsb: SENSOR_GYRO_DPS_PER_LSB,
     triggerIndex: Math.max(0, triggerIndex),
     samples,
     receivedAt: 0,
+    ...(stamps
+      ? {
+          sampleTimesUs: Uint32Array.from(
+            times,
+            (t) =>
+              (stamps.startUs + Math.round((t * 1e6) / stamps.lsbUs) * stamps.lsbUs) %
+              stamps.wrapUs,
+          ),
+          sampleTimesWrapUs: stamps.wrapUs,
+        }
+      : {}),
+    ...(setup.gyroRangeDps !== undefined ? { gyroRangeDps: setup.gyroRangeDps } : {}),
   };
 
   // Just before contact (rate(tContact) is the pre-impact rate).
@@ -467,6 +554,19 @@ export function simulateSwing(
     truth: {
       contactIndex,
       contactTimeS: tContact,
+      omegaAt: (t) => {
+        const swingRot = fromAxisAngle(axis, thetaAt(t));
+        const rollRot = fromAxisAngle([1, 0, 0], rollAt(t));
+        const toRacket = (vWorld: Vec3): Vec3 =>
+          rotate(
+            conjugate(rollRot),
+            mulVec(contactRacketFromWorld, rotate(conjugate(swingRot), vWorld)),
+          );
+        return add(
+          add(toRacket(scale(axis, rate(t))), [rollRate(t), 0, 0]),
+          toRacket(scale(UP, turn(t).rate)),
+        );
+      },
       faceTiltDeg: elevationDeg(hitNormal),
       swingPathDeg: elevationDeg(sweetSpotVelocity),
       tipElevationDeg: elevationDeg(xContact),

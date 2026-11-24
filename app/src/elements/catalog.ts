@@ -32,6 +32,8 @@ export type ElementDirection = 'below' | 'above';
 export type NotAssessableReason =
   /** No ball contact: the metrics describe peak racket speed, not a hit. */
   | 'no-contact'
+  /** Sensor data missing inside the stroke (lost samples): nothing is judged. */
+  | 'signal-gap'
   /** The value is unavailable on this stroke (or the drive/slice style is unknown). */
   | 'no-value'
   /** The value exists but its uncertainty is unknown (e.g. attitude not trusted there). */

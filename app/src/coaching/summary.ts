@@ -56,7 +56,9 @@ export function summarize(records: readonly StrokeRecord[]): StrokeTypeSummary[]
         faceTiltDeg: statistic(present(drives.map((r) => r.metrics.faceTiltDeg))),
         swingPathDeg: statistic(present(drives.map((r) => r.metrics.swingPathDeg))),
         headSpeedMps: statistic(
-          drives.filter((r) => !r.metrics.quality.gyroSaturated).map((r) => r.metrics.headSpeedMps),
+          drives
+            .filter((r) => !r.metrics.quality.gyroSaturated && r.metrics.quality.signalGap !== true)
+            .map((r) => r.metrics.headSpeedMps),
         ),
         looseWristShare: hints.length
           ? hints.filter((h) => h === 'loose').length / hints.length

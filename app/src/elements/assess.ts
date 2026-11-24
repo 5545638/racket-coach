@@ -136,6 +136,8 @@ function assessElement(
   baseline: PersonalBaseline,
   config: AssessConfig,
 ): ElementAssessment {
+  // Missing data first: it can also hide the contact itself.
+  if (m.quality.signalGap === true) return notAssessable(spec, 'signal-gap');
   if (!m.impactDetected) return notAssessable(spec, 'no-contact');
   const applies = applicability(spec, m);
   if (applies !== null) return notAssessable(spec, applies);

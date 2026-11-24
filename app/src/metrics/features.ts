@@ -1,7 +1,13 @@
-import type { ServeFeatures, StrokeFeatures, StrokePhases, StrokeType } from '../domain/types';
+import type {
+  ServeFeatures,
+  StrokeFeatures,
+  StrokePhase,
+  StrokePhases,
+  StrokeType,
+} from '../domain/types';
 import { type Quat, rotate } from '../math/quat';
 import { type Vec3, RAD_TO_DEG, UNIT_X, norm } from '../math/vec3';
-import { rotationPath } from '../processing/segmentation';
+import { rotationPath, samplesFor } from '../processing/segmentation';
 import type { AnalysisParams } from './analyzeSwing';
 import {
   type ContactAngles,
@@ -9,6 +15,7 @@ import {
   anglesAtSample,
   countTrue,
   elevationDeg,
+  gapIn,
   overheadContactTipDeg,
 } from './kinematics';
 import { attitudeAssessable, featureSigmas } from './uncertainty';
@@ -28,8 +35,11 @@ export interface FeatureParams {
   readonly lateGainLeadS: number;
   /** A dip of ω⊥ counts as a hitch when it falls this fraction below the running maximum. Engineering choice. */
   readonly hitchMinDropFraction: number;
-  /** Pre-impact samples averaged for contact stability. Engineering choice. */
-  readonly stabilitySamples: number;
+  /**
+   * Pre-impact time averaged for contact stability, s (rounded to samples,
+   * at least 1). Engineering choice: three samples at 104 Hz.
+   */
+  readonly stabilityWindowS: number;
   /** The serve trophy is searched this long before the racket drop, s. Engineering choice. */
   readonly trophySearchS: number;
   /** Roll peak is searched within contact ± this, s. Engineering choice. */
@@ -37,11 +47,12 @@ export interface FeatureParams {
   /** Roll angle is integrated up to this long after contact, s. Engineering choice. */
   readonly rollAngleWindowS: number;
   /**
-   * Samples from the impact sample on that roll peak and roll angle skip: the
-   * jolt of an off-centre hit shows at the impact sample and can ring into
-   * the next one. Engineering choice (2: the impact sample and the next).
+   * Time from the impact sample on that roll peak and roll angle skip, s
+   * (rounded to samples, at least 1): the jolt of an off-centre hit shows at
+   * the impact sample and can ring into the next one. Engineering choice:
+   * two samples at 104 Hz (the impact sample and the next).
    */
-  readonly rollJoltSamples: number;
+  readonly rollJoltS: number;
 }
 
 export const DEFAULT_FEATURE_PARAMS: FeatureParams = {
@@ -50,11 +61,11 @@ export const DEFAULT_FEATURE_PARAMS: FeatureParams = {
   recoveryRateRadPerS: 0.5,
   lateGainLeadS: 0.05,
   hitchMinDropFraction: 0.15,
-  stabilitySamples: 3,
+  stabilityWindowS: 3 / 104,
   trophySearchS: 0.8,
   rollPeakWindowS: 0.05,
   rollAngleWindowS: 0.1,
-  rollJoltSamples: 2,
+  rollJoltS: 2 / 104,
 };
 
 /** Tip (long-axis) elevation for attitude `q`, deg. */
@@ -215,7 +226,7 @@ function contactStabilityDps(
  * swing (the rates are lower bounds) or when the look-back leaves the capture.
  */
 function lateGainFraction(kin: SwingKinematics, leadS: number): number | null {
-  if (kin.impactIndex === null || kin.gyroClippedInSwing) return null;
+  if (kin.impactIndex === null || kin.gyroClippedInSwing || kin.signalGap) return null;
   const t = kin.contact.time - leadS * kin.sampleRateHz;
   const reference = kin.perpRate[kin.contact.sampleIndex] ?? 0;
   if (t < 0 || reference <= 0) return null;
@@ -278,7 +289,7 @@ function serveFeatures(
   // The impact sample and the one after it carry the jolt of an off-centre
   // hit, not the swing's own roll: both are skipped (see rollJoltSamples).
   const joltFrom = kin.impactIndex;
-  const joltTo = joltFrom === null ? null : joltFrom + fp.rollJoltSamples - 1;
+  const joltTo = joltFrom === null ? null : joltFrom + samplesFor(fp.rollJoltS, fs) - 1;
   const inJolt = (i: number): boolean =>
     joltFrom !== null && joltTo !== null && i >= joltFrom && i <= joltTo;
   let rollPeakSample: number | null = null;
@@ -311,6 +322,45 @@ function serveFeatures(
   };
 }
 
+/**
+ * Labelled phases tiling the stroke (see `StrokePhases.list`):
+ * preparation [ready end, backswing start], backswing [backswing start,
+ * forward start], forward acceleration [forward start, t_c − 1 sample],
+ * contact [t_c − 1 sample, t_c + 1 sample], follow-through [t_c + 1 sample,
+ * follow-through end]. A phase whose start lies before the capture starts at
+ * the first sample and is marked `truncatedStart`; a follow-through that runs
+ * past the capture ends at the last sample, `truncatedEnd`. Phases of zero
+ * length are left out (e.g. no preparation when the backswing starts right
+ * at the ready end, or none at all when the capture starts inside the backswing).
+ */
+export function phaseList(kin: SwingKinematics, followEnd: number | null): StrokePhase[] {
+  const toMs = (sample: number): number => (sample / kin.sampleRateHz) * 1000;
+  const last = kin.gyro.length - 1;
+  const clamp = (x: number): number => Math.max(0, Math.min(last, x));
+  const out: StrokePhase[] = [];
+  const add = (
+    name: StrokePhase['name'],
+    from: number,
+    to: number,
+    truncatedStart = false,
+    truncatedEnd = false,
+  ): void => {
+    const a = clamp(from);
+    const b = clamp(to);
+    if (b > a) {
+      out.push({ name, startMs: toMs(a), endMs: toMs(b), truncatedStart, truncatedEnd });
+    }
+  };
+  const tc = kin.contact.time;
+  const bs = kin.backswingStart;
+  if (bs !== null) add('preparation', kin.readyEnd ?? 0, bs, kin.readyEnd === null);
+  add('backswing', bs ?? 0, kin.forwardStart, bs === null);
+  add('forwardAcceleration', kin.forwardStart, Math.max(kin.forwardStart, tc - 1));
+  add('contact', Math.max(kin.forwardStart, tc - 1), tc + 1);
+  add('followThrough', tc + 1, followEnd ?? last, false, followEnd === null);
+  return out;
+}
+
 /** Phase timeline in ms from the capture start. */
 function phases(
   kin: SwingKinematics,
@@ -321,11 +371,13 @@ function phases(
     samples === null ? null : (samples / kin.sampleRateHz) * 1000;
   return {
     readyEndMs: ms(kin.readyEnd),
+    backswingStartMs: ms(kin.backswingStart),
     forwardStartMs: (kin.forwardStart / kin.sampleRateHz) * 1000,
     contactMs: (kin.contact.time / kin.sampleRateHz) * 1000,
     contactSample: kin.contact.sampleIndex,
     followEndMs: ms(followEnd),
     recoveryEndMs: ms(recoveryEnd),
+    list: phaseList(kin, followEnd),
   };
 }
 
@@ -347,15 +399,20 @@ export function computeFeatures(
   const tc = kin.contact.time;
   const ref = kin.contact.sampleIndex;
   const ms = (samples: number): number => (samples / fs) * 1000;
-  const followEnd = findFollowEnd(kin, fp.followEndFraction);
+  // Events found next to missing data are unknown.
+  const known = (i: number | null): number | null =>
+    i !== null && !gapIn(kin.gap, i - 1, i + 1) ? i : null;
+  const followEnd = known(findFollowEnd(kin, fp.followEndFraction));
   const recoveryEnd =
     followEnd === null
       ? null
-      : findRecoveryEnd(
-          kin.gyro,
-          followEnd + 1,
-          fp.recoveryRateRadPerS,
-          Math.round(fp.recoveryMinS * fs),
+      : known(
+          findRecoveryEnd(
+            kin.gyro,
+            followEnd + 1,
+            fp.recoveryRateRadPerS,
+            Math.round(fp.recoveryMinS * fs),
+          ),
         );
 
   // Contact angles are reported only with a reliable attitude, as in StrokeMetrics.
@@ -388,7 +445,9 @@ export function computeFeatures(
     forwardSwingMs: ms(tc - kin.forwardStart),
     hitchCount: countHitches(kin.perpRate, kin.forwardStart, ref, fp.hitchMinDropFraction),
     contactStabilityDps:
-      angles && kin.attitude ? contactStabilityDps(kin, kin.attitude, fp.stabilitySamples) : null,
+      angles && kin.attitude
+        ? contactStabilityDps(kin, kin.attitude, samplesFor(fp.stabilityWindowS, fs))
+        : null,
     brushAngleDeg: angles ? angles.swingPathDeg - angles.faceTiltDeg : null,
     brakingTimeMs,
     finishTipDeg: finishQ ? tipDeg(finishQ) : null,
@@ -416,6 +475,7 @@ export function computeFeatures(
       trophySample: serve && serve.serve.trophyTipDeg !== null ? serve.trophySample : null,
       dropSample: serve && serve.serve.dropTipDeg !== null ? serve.dropSample : null,
       headSpeedMps: kin.gyroClippedInSwing ? null : headSpeedMps,
+      headSpeedFloorMps: (kin.clippedTipSpeedPerMetre / kin.tipSpeedPerMetre || 1) * headSpeedMps,
       timing: {
         peakSpeedOffsetMs: !kin.gyroClippedInSwing,
         takebackTimeMs: takebackTimeMs !== null,

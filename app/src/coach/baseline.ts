@@ -87,7 +87,8 @@ export function lookupBaseline(
  */
 export function contribution(spec: ElementSpec, record: StrokeRecord): number | null {
   const m = record.metrics;
-  if (!m.impactDetected || applicability(spec, m) !== null) return null;
+  if (!m.impactDetected || m.quality.signalGap === true) return null;
+  if (applicability(spec, m) !== null) return null;
   if (spec.minAnalysisVersion !== undefined) {
     if ((record.analysisVersion ?? 1) < spec.minAnalysisVersion) return null;
   }
@@ -118,7 +119,7 @@ export function addStrokeToBaseline(
   catalog: readonly ElementSpec[] = ELEMENT_CATALOG,
 ): PersonalBaseline {
   const m = record.metrics;
-  if (!m.impactDetected) return baseline;
+  if (!m.impactDetected || m.quality.signalGap === true) return baseline;
   const entries: Record<string, BaselineEntry> = { ...baseline.entries };
   const done = new Set<string>();
   for (const spec of catalog) {

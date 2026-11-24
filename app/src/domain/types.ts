@@ -8,17 +8,29 @@ import type { Vec3 } from '../math/vec3';
 export type CaptureKind = 'swing' | 'static';
 
 /**
+ * Sensor filter configuration as reported by the firmware: a free-form label
+ * (e.g. "LPF1 ODR/4") or the register-level settings. Stored for provenance;
+ * the analysis does not interpret it.
+ */
+export type SensorFilterConfig = string | Readonly<Record<string, string | number | boolean>>;
+
+/**
  * A capture exactly as received from the sensor: integer counts plus the
  * scale factors needed to convert them. Kept verbatim so that every stored
  * stroke can be re-analysed when the algorithms improve.
+ *
+ * Protocol v1 fills only the required fields (uniform sampling assumed,
+ * ±16 g / ±2000 dps). Protocol v2 may add the optional capture-header fields
+ * below; every one of them is optional so that v1 records stay valid.
  */
 export interface RawCapture {
   readonly kind: CaptureKind;
   readonly sequence: number;
+  /** Nominal output data rate configured on the IMU, Hz. */
   readonly sampleRateHz: number;
-  /** Accelerometer sensitivity in g per LSB. */
+  /** Accelerometer sensitivity in g per LSB (used when `accelRangeG` is absent). */
   readonly accelGPerLsb: number;
-  /** Gyroscope sensitivity in degrees per second per LSB. */
+  /** Gyroscope sensitivity in degrees per second per LSB (used when `gyroRangeDps` is absent). */
   readonly gyroDpsPerLsb: number;
   /** Index of the sample at which the sensor's swing trigger fired. */
   readonly triggerIndex: number;
@@ -26,10 +38,34 @@ export interface RawCapture {
   readonly samples: Int16Array;
   /** Wall-clock time (ms since epoch) at which the capture was completed. */
   readonly receivedAt: number;
+  /**
+   * Per-sample sensor timestamps, µs (v2). Monotonic modulo
+   * `sampleTimesWrapUs`; one entry per sample. Absent: uniform sampling at
+   * `sampleRateHz` is assumed (v1 behaviour).
+   */
+  readonly sampleTimesUs?: Uint32Array | readonly number[];
+  /** Modulus at which `sampleTimesUs` wraps, µs. Default 2³² (a uint32 µs counter). */
+  readonly sampleTimesWrapUs?: number;
+  /** Configured gyroscope full scale, ±dps (125, 250, 500, 1000 or 2000). Default 2000. */
+  readonly gyroRangeDps?: number;
+  /** Configured accelerometer full scale, ±g (2, 4, 8 or 16). Default 16. */
+  readonly accelRangeG?: number;
+  /** IMU filter configuration (provenance only). */
+  readonly filter?: SensorFilterConfig;
+  /** IMU die temperature at capture start, °C. */
+  readonly temperatureC?: number;
+  readonly firmwareVersion?: string;
+  /**
+   * Samples the firmware knows were lost (e.g. FIFO overrun, packets not
+   * recovered by resend). With timestamps the gaps are located from them;
+   * without, a non-zero count makes every gap-sensitive metric unavailable.
+   */
+  readonly droppedSamples?: number;
 }
 
 /** A capture converted to SI units, still in the sensor frame. */
 export interface ImuSeries {
+  /** Nominal sample rate, Hz. */
   readonly sampleRateHz: number;
   /** Specific force in m/s² (what an accelerometer measures: a − g). */
   readonly accel: readonly Vec3[];
@@ -40,6 +76,38 @@ export interface ImuSeries {
   /** True where any gyroscope axis hit full scale. */
   readonly gyroSaturated: readonly boolean[];
   readonly triggerIndex: number;
+  /** Sensor timestamps as received (µs, may wrap); absent for uniform v1 captures. */
+  readonly sampleTimesUs?: readonly number[];
+  /** Wrap modulus of `sampleTimesUs`, µs (default 2³²). */
+  readonly sampleTimesWrapUs?: number;
+  /**
+   * Per-axis gyro clip threshold, rad/s (sensor frame): an axis at or beyond
+   * it is clipped. Enables clipping reconstruction; absent = not attempted.
+   */
+  readonly gyroClipRadPerS?: number;
+  /** Samples the firmware reported as lost (see RawCapture.droppedSamples). */
+  readonly droppedSamples?: number;
+}
+
+/**
+ * Timing quality of a capture (signal path v2, docs/metrics.md). Without
+ * timestamps the nominal rate is assumed and every field is trivial.
+ */
+export interface TimebaseQuality {
+  /** True when per-sample timestamps were available. */
+  readonly timestamped: boolean;
+  /** Sample rate estimated from the timestamps (median interval), Hz; the nominal rate without. */
+  readonly measuredRateHz: number;
+  /** Largest number of consecutive missing samples. */
+  readonly maxGapSamples: number;
+  /** RMS deviation of the regular (non-gap) intervals from the median interval, µs. */
+  readonly jitterUs: number;
+  /** Output samples synthesised by interpolation across short gaps. */
+  readonly interpolatedSamples: number;
+  /** Output samples inside long gaps (not interpolated: marked as missing). */
+  readonly gapSamples: number;
+  /** Samples the firmware reported lost (`RawCapture.droppedSamples`), 0 when absent. */
+  readonly droppedSamples: number;
 }
 
 /**
@@ -75,10 +143,30 @@ export interface MetricQuality {
   readonly attitudeReliable: boolean;
   /** |‖a‖ − g| at the attitude anchor in g (lower is better); null when no anchor exists. */
   readonly anchorErrorG: number | null;
-  /** Gyro clipped between forward-swing start and contact: speed is a lower bound. */
+  /**
+   * Gyro clipped between forward-swing start and contact and was NOT
+   * reconstructed: speed is a lower bound. (Before analysis version 5 any
+   * clipping set it.)
+   */
   readonly gyroSaturated: boolean;
-  /** Clipped gyro samples between the attitude anchor and contact. */
+  /** Clipped gyro samples between the attitude anchor and contact (reconstructed or not). */
   readonly saturatedSamples: number;
+  /**
+   * Clipped gyro samples between forward-swing start and contact were
+   * reconstructed (processing/declip.ts): speed and timing use the
+   * reconstruction and carry a larger σ. Analysis version 5 and later.
+   */
+  readonly gyroReconstructed?: boolean;
+  /** Reconstructed gyro samples between the attitude anchor and contact (version 5+). */
+  readonly reconstructedSamples?: number;
+  /** Timing quality of the capture (version 5+). */
+  readonly timebase?: TimebaseQuality;
+  /**
+   * A long gap (missing samples that could not be interpolated, or lost
+   * samples that cannot be located) lies inside the stroke: the stroke is not
+   * rated and its σ are not assessable (version 5+).
+   */
+  readonly signalGap?: boolean;
 }
 
 /**
@@ -140,6 +228,21 @@ export interface StrokeMetrics {
   readonly features?: StrokeFeatures;
 }
 
+/** Named stroke phases, in time order (signal path v2). */
+export type StrokePhaseName =
+  'preparation' | 'backswing' | 'forwardAcceleration' | 'contact' | 'followThrough';
+
+/** One labelled phase, ms from the first capture sample. */
+export interface StrokePhase {
+  readonly name: StrokePhaseName;
+  readonly startMs: number;
+  readonly endMs: number;
+  /** The phase began before the capture: `startMs` is the capture start, not the true start. */
+  readonly truncatedStart: boolean;
+  /** The phase ended after the capture: `endMs` is the capture end, not the true end. */
+  readonly truncatedEnd: boolean;
+}
+
 /**
  * Phase timeline of one stroke. Times are ms from the first sample of the
  * capture (sample index / sample rate); null when the event lies outside the
@@ -148,6 +251,13 @@ export interface StrokeMetrics {
 export interface StrokePhases {
   /** End of the ready position: first sample after the last ≥ 0.3 s standstill before the forward swing. */
   readonly readyEndMs: number | null;
+  /**
+   * Start of the backswing: first sample after the ready end (or the capture
+   * start) at which ‖ω‖ reaches `backswingStartFraction` of the largest ‖ω‖
+   * before the forward swing (version 5+; absent in older records). Null when
+   * the racket already turned that fast at the first sample.
+   */
+  readonly backswingStartMs?: number | null;
   /** Start of the forward swing (start of the active phase). */
   readonly forwardStartMs: number;
   /** Estimated contact time (impact sample − ½ sample; the peak sample without an impact). */
@@ -158,6 +268,12 @@ export interface StrokePhases {
   readonly followEndMs: number | null;
   /** Start of the first ≥ 0.2 s standstill (‖ω‖ < 0.5 rad/s) after the follow-through. */
   readonly recoveryEndMs: number | null;
+  /**
+   * Labelled phases tiling the stroke: preparation, backswing, forward
+   * acceleration, contact (±1 sample around the contact time) and follow-through
+   * (version 5+). A phase of zero length is omitted; see docs/metrics.md.
+   */
+  readonly list?: readonly StrokePhase[];
 }
 
 /** Serve / overhead features; present only when `strokeType === 'overhead'`. */

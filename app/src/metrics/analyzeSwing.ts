@@ -8,7 +8,12 @@ import type {
 } from '../domain/types';
 import { type Quat, rotate } from '../math/quat';
 import { type Vec3, RAD_TO_DEG, UNIT_X } from '../math/vec3';
-import { longestQuietRun, rotationPath } from '../processing/segmentation';
+import {
+  REFERENCE_INTERVAL_S,
+  longestQuietRun,
+  rotationPath,
+  samplesFor,
+} from '../processing/segmentation';
 import { computeFeatures } from './features';
 import { computeSwingKinematics, elevationDeg, overheadContactTipDeg } from './kinematics';
 
@@ -24,13 +29,37 @@ export interface AnalysisParams {
    * over time (a personal trend), not against published speeds.
    */
   readonly leverRadiusM: number;
-  /** Sample-to-sample jump in specific force that counts as ball contact, g. */
+  /**
+   * Jump in specific force over one reference interval (1/104 s, i.e. one
+   * sample at 104 Hz, round(f_s/104) samples at other rates) that counts as
+   * ball contact, g. Measuring over a fixed time keeps the smooth swing's
+   * contribution, and therefore the threshold's meaning, rate-independent.
+   */
   readonly impactJumpThresholdG: number;
   /**
-   * Sample-to-sample jump in angular rate that counts as ball contact, rad/s.
-   * A full swing changes by < 2 rad/s per sample at 104 Hz.
+   * Jump in angular rate over one reference interval that counts as ball
+   * contact, rad/s. A full swing changes by < 2 rad/s per 1/104 s.
    */
   readonly impactGyroJumpRadPerS: number;
+  /**
+   * Consistency: a candidate on one channel needs at least this fraction of
+   * the other channel's threshold, when that channel is usable (unclipped,
+   * no gap). Engineering choice: 0.25 (1.5 g, 1.75 rad/s) accepts the
+   * simulated butt-cap hit (4 g with a 20 % rate drop) and rejects
+   * accelerometer-only vibration and bounces that leave the rate unchanged.
+   */
+  readonly impactConfirmFraction: number;
+  /**
+   * Jumps within this time before the strongest one belong to the same
+   * impact; the onset is searched only there, s. Engineering choice.
+   */
+  readonly impactRefractoryS: number;
+  /**
+   * The backswing starts when ‖ω‖ first reaches this fraction of its largest
+   * value between the ready end and the forward swing (and at least the
+   * quiet rate). Engineering choice.
+   */
+  readonly backswingStartFraction: number;
   /** Swing path below this is a slice, deg (slices travel 15–25° downwards). */
   readonly sliceMaxPathDeg: number;
   /** Contact is searched within this time of peak racket rate, s. */
@@ -66,9 +95,14 @@ export interface AnalysisParams {
    */
   readonly maxAnchorErrorG: number;
   /**
-   * Max gyro samples clipped between the attitude anchor and contact for
-   * angles to be reported. Clipping loses rotation, so attitude error grows
-   * with every clipped sample (≈1° at 6 samples, ≈8° at 20, in simulation).
+   * Max gyro samples clipped WITHOUT reconstruction between the attitude
+   * anchor and contact (or another event) for angles to be reported, counted
+   * in reference samples of 1/104 s (at 416 Hz four times as many samples are
+   * allowed: the same clipped time). An unreconstructed clipped sample loses
+   * an unknown amount of rotation: in simulation 6 samples cost ≈ 1° on a
+   * swing just above full scale but ≈ 8° on the butt-cap swing at 42 rad/s
+   * (robustness.test.ts), so analysis version 5 allows only 1. Reconstructed
+   * samples do not count; they widen σ instead (uncertainty.ts).
    */
   readonly maxSaturatedSamples: number;
   /** Tip elevation at contact above which a stroke is classified as overhead, deg. */
@@ -92,6 +126,9 @@ export const DEFAULT_ANALYSIS_PARAMS: AnalysisParams = {
   leverRadiusM: 0.72,
   impactJumpThresholdG: 6,
   impactGyroJumpRadPerS: 7,
+  impactConfirmFraction: 0.25,
+  impactRefractoryS: 0.03,
+  backswingStartFraction: 0.3,
   sliceMaxPathDeg: -8,
   impactSearchS: 0.08,
   activeFraction: 0.15,
@@ -99,7 +136,7 @@ export const DEFAULT_ANALYSIS_PARAMS: AnalysisParams = {
   anchorMaxAccelStdG: 0.03,
   anchorMaxAccelDriftG: 0.01,
   maxAnchorErrorG: 0.05,
-  maxSaturatedSamples: 6,
+  maxSaturatedSamples: 1,
   overheadTipElevationDeg: 35,
   compactMaxSpeedMps: 14,
   compactMaxArcDeg: 80,
@@ -129,14 +166,16 @@ function racketDrop(
 }
 
 /**
- * Sample of steepest rise in ω⊥ in `[from, to]`, by central difference. The
- * caller keeps `to + 1` before the impact so the post-impact drop never counts.
+ * Sample of steepest rise in ω⊥ in `[from, to]`, by central difference over
+ * ±`half` samples (one reference interval each way, so the difference spans
+ * the same time at every rate). The caller keeps `to + half` before the
+ * impact so the post-impact drop never counts.
  */
-function steepestRise(perpRate: readonly number[], from: number, to: number): number {
+function steepestRise(perpRate: readonly number[], from: number, to: number, half: number): number {
   let best = from;
   let bestRise = Number.NEGATIVE_INFINITY;
-  for (let i = Math.max(1, from); i <= to && i < perpRate.length - 1; i++) {
-    const rise = (perpRate[i + 1] ?? 0) - (perpRate[i - 1] ?? 0);
+  for (let i = Math.max(half, from); i <= to && i < perpRate.length - half; i++) {
+    const rise = (perpRate[i + half] ?? 0) - (perpRate[i - half] ?? 0);
     if (rise > bestRise) {
       bestRise = rise;
       best = i;
@@ -188,8 +227,11 @@ export function analyzeSwing(
   // 7. Timing. A clipped gyro plateau moves the argmax of ω⊥ (and of its rise)
   //    early by up to the plateau's length, so timing is withheld when the
   //    gyro clipped anywhere in the forward swing.
-  const gyroClippedInSwing = kin.gyroClippedInSwing;
-  const peakAccelIndex = steepestRise(perpRate, forwardStart, ref - 1);
+  //    Reconstructed clipping (processing/declip.ts) does not withhold them;
+  //    a gap inside the stroke does.
+  const timingWithheld = kin.gyroClippedInSwing || kin.signalGap;
+  const half = samplesFor(REFERENCE_INTERVAL_S, fs);
+  const peakAccelIndex = steepestRise(perpRate, forwardStart, ref - half, half);
 
   const headSpeedMps = tipSpeedPerMetre * params.leverRadiusM;
   // Arcs split at the first sample after the contact time (the impact sample).
@@ -236,23 +278,26 @@ export function analyzeSwing(
     faceTiltDeg: angles?.faceTiltDeg ?? null,
     swingPathDeg,
     tipElevationDeg,
-    peakSpeedOffsetMs: gyroClippedInSwing ? null : msFromSamples(peakIndex - contact.time),
-    preparationTimeMs: prepStart === null ? null : msFromSamples(contact.time - prepStart),
+    peakSpeedOffsetMs: timingWithheld ? null : msFromSamples(peakIndex - contact.time),
+    preparationTimeMs:
+      prepStart === null || kin.signalGap ? null : msFromSamples(contact.time - prepStart),
     backswingArcDeg,
     backswingPauseMs: msFromSamples(pauseSamples),
     racketDropDeg: drop.racketDropDeg,
     faceAtDropDeg: drop.faceAtDropDeg,
-    peakAccelerationOffsetMs: gyroClippedInSwing
-      ? null
-      : msFromSamples(peakAccelIndex - contact.time),
+    peakAccelerationOffsetMs: timingWithheld ? null : msFromSamples(peakAccelIndex - contact.time),
     faceClosingRateDps: angles?.faceClosingRateDps ?? null,
     forwardSwingArcDeg,
     followThroughArcDeg,
     quality: {
       attitudeReliable,
       anchorErrorG: anchor?.errorG ?? null,
-      gyroSaturated: gyroClippedInSwing,
+      gyroSaturated: kin.gyroClippedInSwing,
       saturatedSamples: kin.saturatedSamples,
+      gyroReconstructed: kin.gyroReconstructedInSwing,
+      reconstructedSamples: kin.reconstructedSamples,
+      timebase: kin.timebase,
+      signalGap: kin.signalGap,
     },
     features: computeFeatures(kin, params, strokeType, headSpeedMps),
   };

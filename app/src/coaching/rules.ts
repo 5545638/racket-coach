@@ -62,9 +62,12 @@ export const NOT_RATED_CUE: Cue = { ruleId: 'not-rated', severity: 'none', text:
 /**
  * A stroke is only rated when ball contact was detected. Without contact the
  * metrics describe the moment of peak racket speed, not a hit, and the
- * thresholds (all taken from studies of real contacts) do not apply.
+ * thresholds (all taken from studies of real contacts) do not apply. A stroke
+ * with missing data inside it (`quality.signalGap`, analysis version 5) is
+ * not rated either: its contact, timing and angles may be off.
  */
-export const isRateable = (metrics: StrokeMetrics): boolean => metrics.impactDetected;
+export const isRateable = (metrics: StrokeMetrics): boolean =>
+  metrics.impactDetected && metrics.quality.signalGap !== true;
 
 /**
  * Checks every applicable rule. Unrateable strokes (see `isRateable`) yield no

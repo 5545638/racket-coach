@@ -1,5 +1,5 @@
 import { expect } from 'vitest';
-import type { ImuSeries, MountCalibration } from '../src/domain/types';
+import type { ImuSeries, MountCalibration, RawCapture } from '../src/domain/types';
 import { type Mat3, mulVec, transpose } from '../src/math/mat3';
 import { conjugate, fromAxisAngle, rotate } from '../src/math/quat';
 import { type Vec3, UNIT_Z, add, norm, scale, sub } from '../src/math/vec3';
@@ -87,5 +87,39 @@ export function jiggleAboutVertical(
       const turn = scale(up[i] ?? UNIT_Z, i % 2 === 0 ? rateRadPerS : -rateRadPerS);
       return add(w, mulVec(sensorFromRacket, turn));
     }),
+  };
+}
+
+/** Sensor axes aligned with the racket axes, no bias: a clipped axis is a racket axis. */
+export const ALIGNED_MOUNT: MountCalibration = {
+  version: 1,
+  racketFromSensor: [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ],
+  gyroBias: [0, 0, 0],
+  createdAt: '2026-01-01T00:00:00.000Z',
+};
+
+/** Protocol v2 style timestamps: 25 µs LSB, uint32 µs counter. */
+export const V2_TIMESTAMPS = { startUs: 1_000_000, lsbUs: 25, wrapUs: 2 ** 32 } as const;
+
+/** A copy of `capture` without the samples at `indices` (and their timestamps). */
+export function removeSamples(capture: RawCapture, indices: readonly number[]): RawCapture {
+  const drop = new Set(indices);
+  const n = capture.samples.length / 6;
+  const keep = Array.from({ length: n }, (_, i) => i).filter((i) => !drop.has(i));
+  const samples = new Int16Array(keep.length * 6);
+  keep.forEach((i, k) => {
+    samples.set(capture.samples.subarray(i * 6, i * 6 + 6), k * 6);
+  });
+  const times = capture.sampleTimesUs;
+  const below = (i: number): number => keep.filter((k) => k < i).length;
+  return {
+    ...capture,
+    samples,
+    triggerIndex: below(capture.triggerIndex),
+    ...(times ? { sampleTimesUs: keep.map((i) => times[i] ?? 0) } : {}),
   };
 }

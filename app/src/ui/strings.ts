@@ -203,6 +203,7 @@ const en: Strings = {
   },
   reason: {
     'no-contact': 'No ball contact',
+    'signal-gap': 'Sensor data missing in this stroke',
     'no-value': 'No reading',
     'no-sigma': 'Uncertainty unknown',
     saturated: 'Sensor clipped, value is only a bound',
@@ -357,6 +358,7 @@ const et: Strings = {
   },
   reason: {
     'no-contact': 'Palli tabamust ei olnud',
+    'signal-gap': 'Selle löögi andmetes on lünk',
     'no-value': 'Näit puudub',
     'no-sigma': 'Mõõtemääramatus teadmata',
     saturated: 'Andur küllastus, väärtus on vaid piir',
