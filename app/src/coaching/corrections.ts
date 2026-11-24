@@ -42,6 +42,18 @@ export type CorrectionId =
 export interface CorrectionText {
   /** English cue spoken through the earphones (max 4 words, imperative). */
   readonly spoken: string;
+  /**
+   * Escalating English cues (max 5 words each). Variant 0 equals `spoken`;
+   * variant 1 is a different angle for when 0 did not work after a few
+   * strokes; variant 2 is a third, preferably external-focus or image cue.
+   */
+  readonly spokenVariants: readonly [string, string, string];
+  /** English, max 6 words, spoken when the player fixed the problem. */
+  readonly reinforce: string;
+  /** One English sentence (max 14 words) for learning mode: the why/how. */
+  readonly learningSpoken: string;
+  /** On-screen name of the weakness in the player profile. */
+  readonly weaknessLabel: string;
   /** What the racket showed and why it matters (max 2 sentences). */
   readonly explanation: string;
   /** The concrete change for the next ball (1-2 sentences). */
@@ -53,9 +65,41 @@ export interface CorrectionText {
 }
 
 /** Spoken feedback after a corrected stroke. */
-export const FEEDBACK_PHRASES = { better: 'Better', keepIt: "That's it" } as const;
+export const FEEDBACK_PHRASES = {
+  better: 'Better',
+  keepIt: "That's it",
+  overcorrected: 'A little less',
+  consistency: 'Same swing every time',
+  fatigue: 'Take a short break',
+  stuck: 'Try the drill',
+} as const;
 
-const EN: Record<CorrectionId, CorrectionText> = {
+/** On-screen titles for the spoken feedback phrases. */
+export const FEEDBACK_LABELS: Record<Language, Record<keyof typeof FEEDBACK_PHRASES, string>> = {
+  et: {
+    better: 'Parem löök („Better“)',
+    keepIt: "Just nii, hoia seda („That's it“)",
+    overcorrected: 'Parandasid üle („A little less“)',
+    consistency: 'Iga kord sama löök („Same swing every time“)',
+    fatigue: 'Tee lühike paus („Take a short break“)',
+    stuck: 'Proovi harjutust („Try the drill“)',
+  },
+  en: {
+    better: 'Better stroke (“Better”)',
+    keepIt: "Keep it (“That's it”)",
+    overcorrected: 'Overcorrected (“A little less”)',
+    consistency: 'Consistency (“Same swing every time”)',
+    fatigue: 'Fatigue (“Take a short break”)',
+    stuck: 'Stuck (“Try the drill”)',
+  },
+};
+
+type BaseText = Omit<
+  CorrectionText,
+  'spokenVariants' | 'reinforce' | 'learningSpoken' | 'weaknessLabel'
+>;
+
+const EN_BASE: Record<CorrectionId, BaseText> = {
   'face-open': {
     spoken: 'Face too open',
     title: 'Racket face too open',
@@ -260,9 +304,9 @@ const EN: Record<CorrectionId, CorrectionText> = {
   },
 };
 
-const ET: Record<CorrectionId, CorrectionText> = {
+const ET_BASE: Record<CorrectionId, BaseText> = {
   'face-open': {
-    spoken: EN['face-open'].spoken,
+    spoken: EN_BASE['face-open'].spoken,
     title: 'Reketi pind liiga avatud',
     explanation:
       'Tabamuse hetkel olid keeled rohkem üles suunatud kui vaja, seepärast läheb pall kergesti pikaks või jääb hõljuma.',
@@ -271,7 +315,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
     drill: 'Sööda 20 kerget palli ja löö need täishooga teenindusjoone sisse.',
   },
   'face-closed': {
-    spoken: EN['face-closed'].spoken,
+    spoken: EN_BASE['face-closed'].spoken,
     title: 'Reketi pind liiga suletud',
     explanation:
       'Tabamuse hetkel olid keeled rohkem alla suunatud kui vaja, seepärast läheb pall kergesti võrku.',
@@ -280,7 +324,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
       'Löö sihtmärki, mis on meeter võrgulindist kõrgemal; loe 20 löögist kokku, mitu palli läks sellest sihtmärgist kõrgemalt üle.',
   },
   'slice-face-closed': {
-    spoken: EN['slice-face-closed'].spoken,
+    spoken: EN_BASE['slice-face-closed'].spoken,
     title: "Slice'i pind liiga suletud",
     explanation:
       "Slice'i puhul peavad keeled tabamusel olema veidi üles suunatud; siin olid need alla, seepärast pall sukeldub.",
@@ -288,7 +332,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
     drill: "Löö slice'i teenindusjoonelt nii, et pall hõljub tagasipöörlemisega sügavale.",
   },
   'slice-chop': {
-    spoken: EN['slice-chop'].spoken,
+    spoken: EN_BASE['slice-chop'].spoken,
     title: 'Slice liiga järsult alla',
     explanation:
       'Reket liikus palli kaudu järsult allapoole: palju tagasipöörlemist, aga pall jääb lühikeseks ja kõrgeks.',
@@ -297,7 +341,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
       "Löö slice'i nii, et pall libiseb madalalt üle teenindusjoone; järsk raiumine põrkab üles.",
   },
   'path-flat': {
-    spoken: EN['path-flat'].spoken,
+    spoken: EN_BASE['path-flat'].spoken,
     title: 'Löögitee liiga lame',
     explanation:
       'Reket liikus läbi palli peaaegu horisontaalselt, mis annab vähe topspinni ja väikese varu võrgu kohal.',
@@ -305,7 +349,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
     drill: 'Harja teenindusjoonelt palli tagakülge üles ja lase pallil kaarega üle võrgu minna.',
   },
   'path-steep': {
-    spoken: EN['path-steep'].spoken,
+    spoken: EN_BASE['path-steep'].spoken,
     title: 'Löögitee liiga järsk',
     explanation:
       'Reket liikus läbi palli peaaegu otse üles, mis annab palju spinni, aga vähe pikkust ja kiirust.',
@@ -314,7 +358,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
       'Pane kolm palli või koonust sihtmärgi suunas ritta ja lase reketil enne tõusu mööda seda joont edasi liikuda.',
   },
   'accelerated-early': {
-    spoken: EN['accelerated-early'].spoken,
+    spoken: EN_BASE['accelerated-early'].spoken,
     title: 'Reketi tippkiirus liiga vara',
     explanation:
       'Reket saavutas tippkiiruse selgelt enne tabamust ja oli palli kohtamisel juba aeglustumas, seega läks osa kiirusest kaotsi.',
@@ -323,7 +367,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
     drill: 'Löö 60% jõuga ja kuula, et „vihin“ kostaks keha ees, mitte küljel.',
   },
   'no-racket-drop': {
-    spoken: EN['no-racket-drop'].spoken,
+    spoken: EN_BASE['no-racket-drop'].spoken,
     title: 'Reketi pea ei lange',
     explanation:
       'Reketi tipp jäi enne ettelööki kõrgele, seega polnud kust üles lüüa ja löögitee kannatab.',
@@ -331,7 +375,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
     drill: 'Varjulöögid: peata reket nii, et tipp näitab selja taga maha, ja löö sealt.',
   },
   'open-takeback': {
-    spoken: EN['open-takeback'].spoken,
+    spoken: EN_BASE['open-takeback'].spoken,
     title: 'Pind avatud tagahoos',
     explanation:
       'Tagahoo madalaimas punktis olid keeled taeva poole, mistõttu tuleb pinda teel üles korrigeerida.',
@@ -339,14 +383,14 @@ const ET: Record<CorrectionId, CorrectionText> = {
     drill: 'Varjulöögid peegli ees: kontrolli pinda madalaimas punktis.',
   },
   hitch: {
-    spoken: EN.hitch.spoken,
+    spoken: EN_BASE.hitch.spoken,
     title: 'Paus löögis',
     explanation: 'Reket jäi tagahoo ja ettelöögi vahel seisma, mistõttu hoog läheb kaotsi.',
     adjustment: 'Tee üks katkematu silmus: taha, alla ja üles ilma peatuseta.',
     drill: 'Loe löögi ajal „üks-ja-kaks“; „ja“ peal ei tohi pausi olla.',
   },
   'stiff-arm': {
-    spoken: EN['stiff-arm'].spoken,
+    spoken: EN_BASE['stiff-arm'].spoken,
     title: 'Lõdvesta ranne',
     explanation:
       'See on kaudne näitaja, mitte randme mõõtmine: andur näeb ainult, kui suure osa reketi kiirusest sai see viimase 50 ms jooksul enne tabamust. Väike hiline kiirenemine tähendab, et reket liikus käega koos, selle asemel et maha jääda ja piitsana läbi tulla, mis võib käia pingulise randmega kaasas.',
@@ -355,14 +399,14 @@ const ET: Record<CorrectionId, CorrectionText> = {
       'Varjulöögid, kus vaheldumisi tahtlikult jäigalt ja tahtlikult lõdvalt, et vahet tunda; seejärel aeglased söödud pallid lõdva variandiga.',
   },
   'short-finish': {
-    spoken: EN['short-finish'].spoken,
+    spoken: EN_BASE['short-finish'].spoken,
     title: 'Lühike lõpetus',
     explanation: 'Reket peatus kohe pärast tabamust, selle asemel et lõpetuseni liikuda.',
     adjustment: 'Lase reketil lõpetada vastasõla kohal; ära pidurda.',
     drill: 'Püüa iga löögi lõpus reket teise käega kinni.',
   },
   'late-preparation': {
-    spoken: EN['late-preparation'].spoken,
+    spoken: EN_BASE['late-preparation'].spoken,
     title: 'Hiline ettevalmistus',
     explanation:
       'Reket alustas tagahoogu tabamuse suhtes hiljem kui sinu tavalisel löögil, seega jäi sujuvaks hooks vähem aega.',
@@ -371,7 +415,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
       'Varjulöögid, kus partner näitab vasakule või paremale: vii reket kohe taha, enne kui ta märguande lõpetab.',
   },
   'small-turn': {
-    spoken: EN['small-turn'].spoken,
+    spoken: EN_BASE['small-turn'].spoken,
     title: 'Väike pööre',
     explanation:
       'Tagahoo ajal pöördus reket vertikaaltelje ümber vähem kui sinu tavalisel löögil. Andur näeb ainult reketit, mitte seda, kui palju keha pöördus.',
@@ -379,7 +423,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
     drill: 'Varjulöögid: pööra, kuni tagumine õlg näitab võrgu poole, ja hoia hetk enne löömist.',
   },
   'high-takeback': {
-    spoken: EN['high-takeback'].spoken,
+    spoken: EN_BASE['high-takeback'].spoken,
     title: 'Tagahoog liiga kõrge',
     explanation:
       'Tagahoo lõpus oli reketi tipp kõrgemal kui sinu tavalisel löögil, mistõttu silmus läheb suuremaks ja ajastus raskemaks.',
@@ -388,7 +432,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
       'Varjulöögid, kui piire või sein on umbes meetri sinu taga; tee tagahoog seda puudutamata.',
   },
   'unstable-contact': {
-    spoken: EN['unstable-contact'].spoken,
+    spoken: EN_BASE['unstable-contact'].spoken,
     title: 'Reket rahutu tabamusel',
     explanation:
       'Reketi pind pöörles vahetult enne tabamust palju, mistõttu läheb pall tõenäoliselt ettearvamatus suunas.',
@@ -397,7 +441,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
       'Löö 20 aeglast palli pooleldi tempoga ja hoia keeled pärast tabamust nii kaua kui võimalik sihtmärgi poole.',
   },
   'slow-recovery': {
-    spoken: EN['slow-recovery'].spoken,
+    spoken: EN_BASE['slow-recovery'].spoken,
     title: 'Aeglane taastumine',
     explanation:
       'Pärast lõpetust jõudis reket valmisasendisse tagasi aeglasemalt kui sinu tavalisel löögil.',
@@ -405,7 +449,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
     drill: 'Vii reket pärast iga lööki valmisasendisse ja loe „üks“ enne järgmist palli.',
   },
   'serve-no-drop': {
-    spoken: EN['serve-no-drop'].spoken,
+    spoken: EN_BASE['serve-no-drop'].spoken,
     title: 'Reket ei lange servil',
     explanation:
       'Reket ei langenud enne ülespoole hoogu selja taha madalale, seega on kiirendamiseks vähem teed.',
@@ -414,7 +458,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
       'Aeglased serviliigutused ilma pallita: peatu selja taga madalaimas punktis ja löö siis üles.',
   },
   'serve-low-contact': {
-    spoken: EN['serve-low-contact'].spoken,
+    spoken: EN_BASE['serve-low-contact'].spoken,
     title: 'Tabamus liiga madalal',
     explanation:
       'Tabamuse hetkel oli reketi tipp madalamal kui sinu tavalisel servil, mis viitab, et pall löödi sinu parimast kõrgusest madalamalt.',
@@ -423,7 +467,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
       'Serveeri 10 palli eesmärgiga lüüa pall oma ulatuse tipus, seejärel kontrolli viskekõrgust.',
   },
   'serve-no-pronation': {
-    spoken: EN['serve-no-pronation'].spoken,
+    spoken: EN_BASE['serve-no-pronation'].spoken,
     title: 'Reket ei pöördu üle',
     explanation:
       'Tabamuse ümber pöördus reket oma pikitelje ümber vähem kui sinu tavalisel servil. Andur näeb ainult seda reketi pöörlemist ega erista küünarvarre pronatsiooni õla sisepöördest.',
@@ -433,7 +477,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
       'Serveeri teenindusjoonelt pooleldi tempoga ja lase reketil lõpetuses täielikult üle pöörduda.',
   },
   'serve-accelerated-early': {
-    spoken: EN['serve-accelerated-early'].spoken,
+    spoken: EN_BASE['serve-accelerated-early'].spoken,
     title: 'Serv saavutas tipu liiga vara',
     explanation:
       'Reket saavutas tippkiiruse selgelt enne tabamust ja oli palli kohtamisel juba aeglustumas.',
@@ -441,7 +485,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
     drill: 'Serveeri 60% jõuga ja kuula, et „vihin“ kostaks üleval, mitte taga.',
   },
   'serve-hitch': {
-    spoken: EN['serve-hitch'].spoken,
+    spoken: EN_BASE['serve-hitch'].spoken,
     title: 'Paus servis',
     explanation: 'Reket peatus tagahoo ja languse ajal, mis rikub rütmi ja kaotab hoo.',
     adjustment: 'Tee liikumine üks katkematu hoog algusest languseni ja üles pallini.',
@@ -449,13 +493,183 @@ const ET: Record<CorrectionId, CorrectionText> = {
       'Serviliigutused ilma pallita, öeldes aeglaselt „üks-kaks“, et rütm oleks sujuv ja ilma pausita.',
   },
   'serve-short-finish': {
-    spoken: EN['serve-short-finish'].spoken,
+    spoken: EN_BASE['serve-short-finish'].spoken,
     title: 'Lühike servi lõpetus',
     explanation: 'Reket peatus kohe pärast tabamust, selle asemel et lõpetuseni liikuda.',
     adjustment: 'Lase reketil pärast tabamust keha ees alla liikuda; ära pidurda.',
     drill: 'Serviliigutused ilma pallita, lõpetades iga kord reketiga vastaskoksa juures.',
   },
 };
+
+const EXTRA: Record<
+  CorrectionId,
+  {
+    variants: readonly [string, string];
+    reinforce: string;
+    learningSpoken: string;
+    weakness: { et: string; en: string };
+  }
+> = {
+  'face-open': {
+    variants: ['Tilt the face down', 'Send it just over tape'],
+    reinforce: 'Good. Ball is staying in.',
+    learningSpoken: 'Strings tilted up send the ball long, so aim lower.',
+    weakness: { et: 'Reketi pind liiga avatud', en: 'Racket face too open' },
+  },
+  'face-closed': {
+    variants: ['Tilt the face up', 'Lift it over the net'],
+    reinforce: 'Good. That clears the net.',
+    learningSpoken: 'Strings tilted down send the ball into the net, so aim higher.',
+    weakness: { et: 'Reketi pind liiga suletud', en: 'Racket face too closed' },
+  },
+  'slice-face-closed': {
+    variants: ['Strings slightly skyward', 'Let the ball ride'],
+    reinforce: 'Good. Slice is floating now.',
+    learningSpoken: 'A slightly open face lets the slice float instead of diving.',
+    weakness: { et: "Slice'i pind suletud", en: 'Slice face too closed' },
+  },
+  'slice-chop': {
+    variants: ['Swing forward, not down', 'Skid it low and long'],
+    reinforce: 'Good. Forward, not down.',
+    learningSpoken: 'Swinging forward keeps the slice low and deep instead of sitting up.',
+    weakness: { et: 'Slice liiga järsult alla', en: 'Slice chopped too steeply' },
+  },
+  'path-flat': {
+    variants: ['Start below the ball', 'Brush up the back'],
+    reinforce: 'Good. Nice low-to-high path.',
+    learningSpoken: 'Swinging low to high adds topspin and margin over the net.',
+    weakness: { et: 'Lame löögitee', en: 'Flat swing path' },
+  },
+  'path-steep': {
+    variants: ['Swing out before up', 'Send it toward the target'],
+    reinforce: 'Good. Driving through the ball.',
+    learningSpoken: 'Going out toward the target adds depth and pace to your spin.',
+    weakness: { et: 'Järsk löögitee', en: 'Steep swing path' },
+  },
+  'accelerated-early': {
+    variants: ['Keep the racket accelerating longer', 'Fastest after the ball'],
+    reinforce: 'Good. Keep that acceleration.',
+    learningSpoken: 'Your racket should be fastest at contact, not before it.',
+    weakness: { et: 'Kiirendab liiga vara', en: 'Accelerates too early' },
+  },
+  'no-racket-drop': {
+    variants: ['Let the tip fall', 'Tip toward the ground'],
+    reinforce: 'Good. Racket head dropped nicely.',
+    learningSpoken: 'Dropping the tip gives you room to swing up through the ball.',
+    weakness: { et: 'Reketi pea ei lange', en: 'No racket drop' },
+  },
+  'open-takeback': {
+    variants: ['Strings toward the ground', 'Pat the dog'],
+    reinforce: 'Good. Face stays down.',
+    learningSpoken: 'A face pointing down early needs no fixing on the way up.',
+    weakness: { et: 'Avatud pind tagahoos', en: 'Face open on the take-back' },
+  },
+  hitch: {
+    variants: ['One smooth loop', 'Swing like a pendulum'],
+    reinforce: 'Good. Smooth, continuous swing.',
+    learningSpoken: 'A pause wastes momentum, so one flowing loop gives more speed.',
+    weakness: { et: 'Paus löögis', en: 'Pause in the swing' },
+  },
+  'stiff-arm': {
+    variants: ['Loose arm, firm contact', 'Let the racket lag'],
+    reinforce: 'Good. That felt loose.',
+    learningSpoken: 'A loose arm lets the racket lag, then whip through the ball.',
+    weakness: { et: 'Jäik löök', en: 'Stiff swing' },
+  },
+  'short-finish': {
+    variants: ['Swing all the way through', 'Hold the finish'],
+    reinforce: 'Good. Full finish.',
+    learningSpoken: 'Finishing fully means you accelerate through the ball instead of braking.',
+    weakness: { et: 'Lühike lõpetus', en: 'Short finish' },
+  },
+  'late-preparation': {
+    variants: ['Racket back sooner', 'Ready before the bounce'],
+    reinforce: 'Good. Early preparation.',
+    learningSpoken: 'Early preparation gives you time for a smooth, unhurried swing.',
+    weakness: { et: 'Hiline ettevalmistus', en: 'Late preparation' },
+  },
+  'small-turn': {
+    variants: ['Turn sideways to the net', 'Show your back'],
+    reinforce: 'Good. Full turn.',
+    learningSpoken: 'A bigger turn stores more power and gives the swing more room.',
+    weakness: { et: 'Väike pööre', en: 'Small turn' },
+  },
+  'high-takeback': {
+    variants: ['Take it back shorter', 'Small, tidy loop'],
+    reinforce: 'Good. Compact take-back.',
+    learningSpoken: 'A smaller loop makes your timing simpler and more repeatable.',
+    weakness: { et: 'Liiga kõrge tagahoog', en: 'Take-back too high' },
+  },
+  'unstable-contact': {
+    variants: ["Swing, don't flick", 'Strings stay on target'],
+    reinforce: 'Good. Steady through contact.',
+    learningSpoken: 'A steady racket face sends the ball where you aim.',
+    weakness: { et: 'Rahutu tabamus', en: 'Unsteady contact' },
+  },
+  'slow-recovery': {
+    variants: ['Racket back in front', 'Split step, ready'],
+    reinforce: 'Good. Quick recovery.',
+    learningSpoken: 'Getting ready quickly prepares you for the next ball.',
+    weakness: { et: 'Aeglane taastumine', en: 'Slow recovery' },
+  },
+  'serve-no-drop': {
+    variants: ['Let it fall behind', 'Scratch your back'],
+    reinforce: 'Good. Deep racket drop.',
+    learningSpoken: 'A deeper drop gives the racket more distance to build speed.',
+    weakness: { et: 'Reket ei lange servil', en: 'No racket drop on the serve' },
+  },
+  'serve-low-contact': {
+    variants: ['Toss a bit higher', 'Hit at full height'],
+    reinforce: 'Good. Reaching high.',
+    learningSpoken: 'Hitting higher gives you a better angle and more margin over the net.',
+    weakness: { et: 'Madal tabamus servil', en: 'Low contact on the serve' },
+  },
+  'serve-no-pronation': {
+    variants: ['Strings face away after', 'Let it roll over'],
+    reinforce: 'Good. Racket turned over.',
+    learningSpoken: 'Turning the racket over adds speed and keeps the ball on target.',
+    weakness: { et: 'Reket ei pöördu üle', en: 'Racket not turned over' },
+  },
+  'serve-accelerated-early': {
+    variants: ['Speed up toward the ball', 'Fastest at the top'],
+    reinforce: 'Good. Speed built toward contact.',
+    learningSpoken: 'Building speed late puts the fastest racket moment at the ball.',
+    weakness: { et: 'Serv kiirendab liiga vara', en: 'Serve accelerates too early' },
+  },
+  'serve-hitch': {
+    variants: ['No pause, one motion', 'Say one, two'],
+    reinforce: 'Good. Smooth serve rhythm.',
+    learningSpoken: 'A smooth rhythm carries speed all the way up to the ball.',
+    weakness: { et: 'Paus servis', en: 'Pause in the serve' },
+  },
+  'serve-short-finish': {
+    variants: ['Follow through across you', 'Carry on past contact'],
+    reinforce: 'Good. Full serve finish.',
+    learningSpoken: 'Finishing across your body lets the racket keep speeding through contact.',
+    weakness: { et: 'Lühike servi lõpetus', en: 'Short serve finish' },
+  },
+};
+
+function build(
+  lang: Language,
+  base: Record<CorrectionId, BaseText>,
+): Record<CorrectionId, CorrectionText> {
+  const out = {} as Record<CorrectionId, CorrectionText>;
+  for (const id of Object.keys(base) as CorrectionId[]) {
+    const x = EXTRA[id];
+    out[id] = {
+      ...base[id],
+      spokenVariants: [EN_BASE[id].spoken, x.variants[0], x.variants[1]],
+      reinforce: x.reinforce,
+      learningSpoken: x.learningSpoken,
+      weaknessLabel: x.weakness[lang],
+    };
+  }
+  return out;
+}
+
+const EN = build('en', EN_BASE);
+const ET = build('et', ET_BASE);
 
 export const CORRECTIONS: Record<Language, Record<CorrectionId, CorrectionText>> = {
   en: EN,
