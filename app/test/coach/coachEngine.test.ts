@@ -11,7 +11,7 @@ import {
   focusByStroke,
 } from '../../src/coach/coachEngine';
 import type { StrokeMetrics } from '../../src/domain/types';
-import { assessStroke } from '../../src/elements/assess';
+import { type StrokeAssessment, assessStroke } from '../../src/elements/assess';
 import { DEFAULT_ANALYSIS_PARAMS, analyzeSwing } from '../../src/metrics/analyzeSwing';
 import { toImuSeries } from '../../src/processing/units';
 import { DEFAULT_SWING, type SwingSpec, simulateSwing } from '../../src/simulation/swingModel';
@@ -247,5 +247,104 @@ describe('coaching simulated strokes', () => {
     const shadow = simulate({ swingPathDeg: 0, withImpact: false }, 5);
     expect(shadow.impactDetected).toBe(false);
     expect(session([shadow]).said[0]?.kind).toBe('silent');
+  });
+});
+
+describe('coach engine review fixes', () => {
+  const assess = (m: StrokeMetrics): StrokeAssessment => assessStroke(m, EMPTY_BASELINE);
+  /** The same assessment with its path fault element patched. */
+  const patched = (
+    m: StrokeMetrics,
+    patch: Partial<StrokeAssessment['faults'][number]>,
+  ): StrokeAssessment => {
+    const a = assess(m);
+    const change = (e: StrokeAssessment['faults'][number]) =>
+      e.correctionId === 'path-flat' ? { ...e, ...patch } : e;
+    return { ...a, elements: a.elements.map(change), faults: a.faults.map(change) };
+  };
+  const runAll = (steps: readonly [StrokeAssessment, boolean][]) => {
+    let state = INITIAL_COACH_STATE;
+    const said: Utterance[] = [];
+    for (const [a, speaking] of steps) {
+      const step = coachStep(state, a, DEFAULT_COACH_CONFIG, speaking);
+      state = step.state;
+      said.push(step.utterance);
+    }
+    return { said, state };
+  };
+
+  it('does not say "Better" across elements of one correction with different units', () => {
+    // 12° → 3° would be "Better", but the second reading is another element (other unit).
+    const { said } = runAll([
+      [assess(path(0)), true],
+      [patched(path(9), { key: 'path-flat-other' }), true],
+    ]);
+    expect(said[1]).toMatchObject({ kind: 'correction', reason: 'focus-persists' });
+    // The new key is stored, so the next stroke of that element can be "Better".
+    const third = runAll([
+      [assess(path(0)), true],
+      [patched(path(3), { key: 'path-flat-other' }), true],
+      [patched(path(9), { key: 'path-flat-other' }), true],
+    ]);
+    expect(third.said[2]?.kind).toBe('better');
+  });
+
+  it('does not say "Better" when the band changed since the last stroke', () => {
+    const { said } = runAll([
+      [assess(path(0)), true],
+      [patched(path(9), { bandSource: 'personal' }), true],
+    ]);
+    expect(said[1]).toMatchObject({ kind: 'correction', reason: 'focus-persists' });
+    const moved = assess(path(9)).faults[0]?.band;
+    if (!moved) throw new Error('fixture');
+    const shifted = runAll([
+      [assess(path(0)), true],
+      [patched(path(9), { band: { ...moved, lo: (moved.lo ?? 0) + 1 } }), true],
+    ]);
+    expect(shifted.said[1]?.kind).toBe('correction');
+  });
+
+  it('records no fix for a focus that was not assessable on this stroke', () => {
+    const blind = { ...path(0), swingPathDeg: null };
+    const a = assess(blind);
+    const { said } = runAll([
+      [assess(path(0)), true],
+      [a, true],
+    ]);
+    expect(said[1]?.reason).toBe('focus-not-assessable');
+    expect(cueForStroke(said[1] as Utterance, a).severity).not.toBe('fix');
+  });
+
+  it('keeps the repeat count and the one-shot phrases for drill while nothing is heard', () => {
+    // Rally strokes do not use up the three repetitions.
+    const rally = runAll([
+      ...repeat(3, [assess(path(0)), false] as [StrokeAssessment, boolean]),
+      ...repeat(3, [assess(path(0)), true] as [StrokeAssessment, boolean]),
+    ]);
+    expect(spoken(rally.said.slice(3))).toEqual(repeat(3, 'Swing low to high'));
+    // An unheard "Better" is still said later.
+    const better = runAll([
+      [assess(path(0)), true],
+      [assess(path(9)), false],
+      [assess(path(9)), true],
+    ]);
+    expect(better.said[2]?.kind).toBe('better');
+    // So is an unheard "That's it".
+    const thatsIt = runAll([
+      [assess(path(0)), true],
+      [assess(path(25)), false],
+      [assess(path(25)), true],
+    ]);
+    expect(thatsIt.said[2]).toMatchObject({ kind: 'keep-it', spoken: "That's it" });
+  });
+
+  it('starts a returning cue fresh after the focus was cleared', () => {
+    const blind = { ...path(0), swingPathDeg: null };
+    const { said } = runAll([
+      ...repeat(3, [assess(path(0)), true] as [StrokeAssessment, boolean]),
+      ...repeat(5, [assess(blind), true] as [StrokeAssessment, boolean]),
+      [assess(path(0)), true],
+    ]);
+    expect(said.at(-1)).toMatchObject({ kind: 'correction', spoken: 'Swing low to high' });
   });
 });

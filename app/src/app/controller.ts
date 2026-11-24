@@ -421,10 +421,12 @@ export class CoachController {
     }
 
     const { assessment } = analysis;
-    const step = coachStep(this.coachState.value, assessment, {
-      ...this.coachConfig,
-      speakGood: settings.speakGood,
-    });
+    const step = coachStep(
+      this.coachState.value,
+      assessment,
+      { ...this.coachConfig, speakGood: settings.speakGood },
+      settings.mode === 'drill',
+    );
     const { utterance } = step;
     const coach: StrokeCoaching = {
       utterance: utterance.kind,
