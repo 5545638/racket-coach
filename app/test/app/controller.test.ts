@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CoachController } from '../../src/app/controller';
+import { ANALYSIS_VERSION } from '../../src/metrics/version';
+import { analyzeCapture } from '../../src/app/pipeline';
+import { DEFAULT_RULES } from '../../src/coaching/defaultRules';
 import { SilentSpeaker } from '../../src/feedback/speech';
 import { SimulatedTransport } from '../../src/transport/simulatedTransport';
 import { InMemoryRepository, immediateScheduler } from '../fakes';
@@ -55,6 +58,34 @@ describe('CoachController end-to-end with the simulated sensor', () => {
     }
     const fixes = controller.strokes.value.filter((s) => s.cue.severity === 'fix').length;
     expect(speaker.spoken).toHaveLength(fixes);
+  });
+
+  it('stores version, parameters and calibration so a stroke can be re-analysed exactly', async () => {
+    const { controller, repository, transport } = await setup();
+    await controller.capturePose('faceUp');
+    await controller.capturePose('tipUp');
+    await controller.updateSettings({ leverRadiusM: 1.3 });
+    transport.emitSwing();
+    const first = repository.strokes[0];
+    expect(first?.analysisVersion).toBe(ANALYSIS_VERSION);
+    expect(first?.analysisParams?.leverRadiusM).toBe(1.3);
+    const used = repository.calibrations.get('RacketCoach (demo)');
+    expect(first?.calibration).toEqual(used);
+
+    // Later changes to settings and calibration do not alter the stored stroke.
+    await controller.updateSettings({ leverRadiusM: 0.8 });
+    await controller.capturePose('faceUp');
+    await controller.capturePose('tipUp');
+    expect(first?.analysisParams?.leverRadiusM).toBe(1.3);
+
+    if (!first?.analysisParams || !first.calibration) throw new Error('provenance missing');
+    const again = analyzeCapture(
+      first.capture,
+      first.calibration,
+      first.analysisParams,
+      DEFAULT_RULES,
+    );
+    expect(again.metrics).toEqual(first.metrics);
   });
 
   it('stays silent in rally mode', async () => {

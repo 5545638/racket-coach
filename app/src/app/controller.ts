@@ -10,7 +10,8 @@ import type {
 } from '../domain/types';
 import type { Speaker } from '../feedback/speech';
 import { NO_SCREEN_LOCK, type ScreenLock } from '../feedback/wakeLock';
-import { DEFAULT_ANALYSIS_PARAMS } from '../metrics/analyzeSwing';
+import { type AnalysisParams, DEFAULT_ANALYSIS_PARAMS } from '../metrics/analyzeSwing';
+import { ANALYSIS_VERSION } from '../metrics/version';
 import { type StaticPose, calibrateMount, extractStaticPose } from '../processing/calibration';
 import { toImuSeries } from '../processing/units';
 import { type AssemblerEvent, CaptureAssembler } from '../protocol/assembler';
@@ -332,14 +333,13 @@ export class CoachController {
     if (!session) return;
 
     const settings = this.settings.value;
+    const analysisParams: AnalysisParams = {
+      ...DEFAULT_ANALYSIS_PARAMS,
+      leverRadiusM: settings.leverRadiusM,
+    };
     let analysis;
     try {
-      analysis = analyzeCapture(
-        capture,
-        calibration,
-        { ...DEFAULT_ANALYSIS_PARAMS, leverRadiusM: settings.leverRadiusM },
-        this.rules,
-      );
+      analysis = analyzeCapture(capture, calibration, analysisParams, this.rules);
     } catch (error) {
       this.appendLog(`Analysis failed: ${errorMessage(error)}`);
       return;
@@ -351,6 +351,9 @@ export class CoachController {
       capture,
       metrics: analysis.metrics,
       cue: analysis.cue,
+      analysisVersion: ANALYSIS_VERSION,
+      analysisParams,
+      calibration,
     };
     this.strokes.value = [...this.strokes.value, record];
 

@@ -48,7 +48,40 @@ has no knowledge of the browser.
 3. **`analyzeCapture`**: counts → SI → racket frame → contact detection →
    attitude anchored in the quiet pre-swing phase → metrics → one cue.
 4. **`CoachController`** voices the cue (drill mode), appends the stroke to the
-   session and persists the raw capture together with its metrics.
+   session and persists the raw capture together with its metrics and the
+   provenance needed to reproduce them (see [Persistence](#persistence)).
+
+## Persistence
+
+IndexedDB (`storage/repository.ts`), everything on the device. Stores:
+`sessions`, `strokes` (index `bySession`) and `kv` (per-device calibration,
+settings).
+
+**Reproducibility.** Raw data is kept so strokes can be re-analysed, which only
+works if the inputs are kept too. Every stroke record therefore stores, next to
+`capture` and `metrics`:
+
+- `analysisVersion`: `ANALYSIS_VERSION` in `metrics/version.ts`; bump it
+  whenever analysis output changes;
+- `analysisParams`: the exact `AnalysisParams` used (including the lever
+  radius taken from settings);
+- `calibration`: a snapshot of the `MountCalibration` in force.
+
+The calibration is embedded in each stroke rather than kept in a history store
+with ids: it is about a dozen numbers, so duplication is cheap, and it needs no
+schema change, no cross-store consistency and no cleanup. Recalibration still
+overwrites the per-device `kv` entry, which is only the *current* calibration.
+Records saved before this existed lack the three fields; they load as they are
+(a missing `analysisVersion` means "before versioning") and malformed values are
+dropped on read. The JSON export (format version 2) carries all three per
+stroke for offline re-analysis; the CSV has an `analysisVersion` column.
+
+**Schema migrations.** `MIGRATIONS` is an ordered list of steps, each run only
+if the stored version is older (`oldVersion < step.version`). Add a step for
+every schema change, never edit an old one. The database version is the last
+step's version (still 1: the fields above are optional properties, not schema).
+`blocked` (another tab holds an older version) is logged; `blocking` closes this
+tab's connection so the other tab's upgrade can proceed.
 
 ## Latency budget (target ≤ 1 s from contact to speech)
 

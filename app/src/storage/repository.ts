@@ -1,6 +1,12 @@
-import { type DBSchema, type IDBPDatabase, openDB } from 'idb';
-import type { MountCalibration, SessionInfo, StrokeRecord } from '../domain/types';
-import type { Settings } from '../app/settings';
+import {
+  type DBSchema,
+  type IDBPDatabase,
+  type IDBPTransaction,
+  type StoreNames,
+  openDB,
+} from 'idb';
+import type { MountCalibration, SessionInfo, Settings, StrokeRecord } from '../domain/types';
+import type { AnalysisParams } from '../metrics/analyzeSwing';
 
 interface RacketCoachDb extends DBSchema {
   sessions: { key: string; value: SessionInfo };
@@ -9,7 +15,6 @@ interface RacketCoachDb extends DBSchema {
 }
 
 const DB_NAME = 'racket-coach';
-const DB_VERSION = 1;
 const KEY_CALIBRATION = 'calibration';
 const KEY_SETTINGS = 'settings';
 
@@ -26,16 +31,80 @@ export interface Repository {
   saveSettings(settings: Settings): Promise<void>;
 }
 
+/** One schema step: brings a database from `version - 1` to `version`. */
+export interface Migration {
+  readonly version: number;
+  readonly apply: (
+    database: IDBPDatabase<RacketCoachDb>,
+    transaction: IDBPTransaction<RacketCoachDb, StoreNames<RacketCoachDb>[], 'versionchange'>,
+  ) => void;
+}
+
+/**
+ * Ordered schema history; the database version is the last entry's version.
+ *
+ * Append a new entry for every schema change and never edit old ones: a
+ * database at any earlier version walks through all later steps in order.
+ * Per-stroke provenance fields (analysisVersion, analysisParams, calibration)
+ * are optional properties of existing records and need no schema change, so
+ * the schema is still at version 1.
+ */
+export const MIGRATIONS: readonly Migration[] = [
+  {
+    version: 1,
+    apply(database) {
+      database.createObjectStore('sessions', { keyPath: 'id' });
+      const strokes = database.createObjectStore('strokes', { keyPath: 'id' });
+      strokes.createIndex('bySession', 'sessionId');
+      database.createObjectStore('kv');
+    },
+  },
+];
+
+/** Runs every migration newer than `oldVersion`, in ascending order. */
+export function applyMigrations(
+  database: IDBPDatabase<RacketCoachDb>,
+  transaction: IDBPTransaction<RacketCoachDb, StoreNames<RacketCoachDb>[], 'versionchange'>,
+  oldVersion: number,
+  migrations: readonly Migration[] = MIGRATIONS,
+): void {
+  const ordered = [...migrations].sort((a, b) => a.version - b.version);
+  for (const migration of ordered) {
+    if (oldVersion < migration.version) migration.apply(database, transaction);
+  }
+}
+
+/** Hooks for the two multi-tab upgrade situations; both default to logging. */
+export interface OpenOptions {
+  /** Test seam: schema history to apply. Defaults to {@link MIGRATIONS}. */
+  readonly migrations?: readonly Migration[];
+  /** Another tab holds an older version open and blocks our upgrade. */
+  readonly onBlocked?: () => void;
+  /** This connection blocks another tab's upgrade; it is closed automatically. */
+  readonly onBlocking?: () => void;
+}
+
 export class IndexedDbRepository implements Repository {
   private constructor(private readonly db: IDBPDatabase<RacketCoachDb>) {}
 
-  static async open(name: string = DB_NAME): Promise<IndexedDbRepository> {
-    const db = await openDB<RacketCoachDb>(name, DB_VERSION, {
-      upgrade(database) {
-        database.createObjectStore('sessions', { keyPath: 'id' });
-        const strokes = database.createObjectStore('strokes', { keyPath: 'id' });
-        strokes.createIndex('bySession', 'sessionId');
-        database.createObjectStore('kv');
+  static async open(
+    name: string = DB_NAME,
+    options: OpenOptions = {},
+  ): Promise<IndexedDbRepository> {
+    const migrations = options.migrations ?? MIGRATIONS;
+    const version = Math.max(...migrations.map((m) => m.version));
+    const db = await openDB<RacketCoachDb>(name, version, {
+      upgrade(database, oldVersion, _newVersion, transaction) {
+        applyMigrations(database, transaction, oldVersion, migrations);
+      },
+      blocked() {
+        if (options.onBlocked) options.onBlocked();
+        else console.warn('Database upgrade blocked by another tab');
+      },
+      blocking() {
+        // Release the connection so the other tab's upgrade can proceed.
+        db.close();
+        options.onBlocking?.();
       },
     });
     return new IndexedDbRepository(db);
@@ -56,7 +125,7 @@ export class IndexedDbRepository implements Repository {
 
   async strokesForSession(sessionId: string): Promise<StrokeRecord[]> {
     const strokes = await this.db.getAllFromIndex('strokes', 'bySession', sessionId);
-    return strokes.sort((a, b) => a.capture.receivedAt - b.capture.receivedAt);
+    return strokes.map(normaliseStroke).sort((a, b) => a.capture.receivedAt - b.capture.receivedAt);
   }
 
   async loadCalibration(deviceKey: string): Promise<MountCalibration | null> {
@@ -90,4 +159,31 @@ function isCalibration(value: unknown): value is MountCalibration {
     v.racketFromSensor.every(isTriple) &&
     isTriple(v.gyroBias)
   );
+}
+
+/**
+ * Upgrades a stored stroke on read. Records written before provenance was
+ * kept have no `analysisVersion`, `analysisParams` or `calibration`; they load
+ * unchanged. Provenance fields that are present but malformed are dropped
+ * rather than trusted, so callers can rely on a field being valid if it exists.
+ */
+export function normaliseStroke(stroke: StrokeRecord): StrokeRecord {
+  const { analysisVersion, analysisParams, calibration, ...rest } = stroke;
+  const base: StrokeRecord = rest;
+  return {
+    ...base,
+    ...(isPositiveInteger(analysisVersion) ? { analysisVersion } : {}),
+    ...(isAnalysisParams(analysisParams) ? { analysisParams } : {}),
+    ...(isCalibration(calibration) ? { calibration } : {}),
+  };
+}
+
+const isPositiveInteger = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0;
+
+/** A non-empty record of finite numbers; individual keys evolve with the analysis. */
+function isAnalysisParams(value: unknown): value is AnalysisParams {
+  if (typeof value !== 'object' || value === null) return false;
+  const entries = Object.values(value);
+  return entries.length > 0 && entries.every((x) => typeof x === 'number' && Number.isFinite(x));
 }

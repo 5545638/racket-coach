@@ -1,4 +1,6 @@
+import type { Language } from '../coaching/guidance';
 import type { Mat3 } from '../math/mat3';
+import type { AnalysisParams } from '../metrics/analyzeSwing';
 import type { Vec3 } from '../math/vec3';
 
 /** What the sensor was asked to record. */
@@ -144,16 +146,54 @@ export interface SensorStatus {
   readonly firmwareVersion: string;
 }
 
+/**
+ * A stored stroke: the raw capture plus everything needed to reproduce its
+ * metrics exactly (`capture` + `calibration` + `analysisParams`, analysed by
+ * `analysisVersion` of the algorithm).
+ *
+ * The three provenance fields are optional only because records written
+ * before they existed lack them; every newly saved stroke carries all three.
+ * A missing `analysisVersion` means "analysed before versioning was introduced".
+ */
 export interface StrokeRecord {
   readonly id: string;
   readonly sessionId: string;
   readonly capture: RawCapture;
   readonly metrics: StrokeMetrics;
   readonly cue: Cue;
+  /** `ANALYSIS_VERSION` of the algorithm that produced `metrics`. */
+  readonly analysisVersion?: number;
+  /** The parameters actually used (including the lever radius from settings). */
+  readonly analysisParams?: AnalysisParams;
+  /**
+   * Snapshot of the mount calibration in force when the stroke was recorded.
+   * Embedded (about a dozen numbers) so that later recalibration, which
+   * overwrites the per-device calibration, cannot orphan old strokes.
+   */
+  readonly calibration?: MountCalibration;
 }
 
 export interface SessionInfo {
   readonly id: string;
   readonly startedAt: number;
   readonly label: string;
+}
+
+/**
+ * `drill`: spoken cue after every stroke (feeding, ball machine).
+ * `rally`: silent during play; review the session afterwards.
+ */
+export type FeedbackMode = 'drill' | 'rally';
+
+/** User-adjustable settings. Defaults and validation live in `app/settings.ts`. */
+export interface Settings {
+  readonly mode: FeedbackMode;
+  /** Language of the on-screen explanations. Spoken cues are always English. */
+  readonly language: Language;
+  /** Also say "Good" when no rule fires. */
+  readonly speakGood: boolean;
+  /** Speech rate multiplier, 0.5–2. */
+  readonly speechRate: number;
+  /** See AnalysisParams.leverRadiusM. */
+  readonly leverRadiusM: number;
 }
