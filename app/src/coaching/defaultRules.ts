@@ -16,6 +16,18 @@ export const FACE_TILT_MIN_DEG = -30;
 export const SWING_PATH_MIN_DEG = 12;
 export const SWING_PATH_MAX_DEG = 55;
 export const PEAK_SPEED_MIN_OFFSET_MS = -40;
+/** Slice: face below this is closed (Elliott & Christmass 1993; the 0° bound is heuristic). */
+export const SLICE_FACE_MIN_DEG = 0;
+/** Slice: path below this is a chop (Elliott & Christmass 1993 + 10° tolerance). */
+export const SLICE_PATH_MIN_DEG = -35;
+/** Heuristic: the lowest tip elevation of the take-back must be below this. */
+export const RACKET_DROP_MAX_DEG = -15;
+/** Heuristic: face elevation at the racket drop above this is an open take-back. */
+export const FACE_AT_DROP_MAX_DEG = 20;
+/** Heuristic: a standstill longer than this in the take-back is a hitch, ms. */
+export const BACKSWING_PAUSE_MAX_MS = 200;
+/** Heuristic: rotation after contact below this is a short finish, deg. */
+export const FOLLOW_THROUGH_MIN_DEG = 120;
 
 /** Target bands for topspin/flat drives, derived from the rule limits. */
 export const TARGET_BANDS = {
@@ -42,7 +54,7 @@ export const DEFAULT_RULES: RuleSet = {
     {
       id: 'slice-face-closed',
       metric: 'faceTiltDeg',
-      below: 0,
+      below: SLICE_FACE_MIN_DEG,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
       styles: SLICE,
@@ -55,7 +67,7 @@ export const DEFAULT_RULES: RuleSet = {
     {
       id: 'slice-chop',
       metric: 'swingPathDeg',
-      below: -35,
+      below: SLICE_PATH_MIN_DEG,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
       styles: SLICE,
@@ -127,7 +139,7 @@ export const DEFAULT_RULES: RuleSet = {
     {
       id: 'no-racket-drop',
       metric: 'racketDropDeg',
-      above: -15,
+      above: RACKET_DROP_MAX_DEG,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
       styles: DRIVE,
@@ -138,7 +150,7 @@ export const DEFAULT_RULES: RuleSet = {
     {
       id: 'open-takeback',
       metric: 'faceAtDropDeg',
-      above: 20,
+      above: FACE_AT_DROP_MAX_DEG,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
       styles: DRIVE,
@@ -149,7 +161,7 @@ export const DEFAULT_RULES: RuleSet = {
     {
       id: 'hitch',
       metric: 'backswingPauseMs',
-      above: 200,
+      above: BACKSWING_PAUSE_MAX_MS,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
       styles: ANY_STYLE,
@@ -171,7 +183,7 @@ export const DEFAULT_RULES: RuleSet = {
     {
       id: 'short-finish',
       metric: 'followThroughArcDeg',
-      below: 120,
+      below: FOLLOW_THROUGH_MIN_DEG,
       strokes: GROUNDSTROKES,
       swingSizes: FULL,
       styles: ANY_STYLE,

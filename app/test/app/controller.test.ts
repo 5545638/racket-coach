@@ -5,7 +5,28 @@ import { analyzeCapture } from '../../src/app/pipeline';
 import { DEFAULT_RULES } from '../../src/coaching/defaultRules';
 import { SilentSpeaker } from '../../src/feedback/speech';
 import { SimulatedTransport } from '../../src/transport/simulatedTransport';
+import type { StrokeRecord } from '../../src/domain/types';
 import { InMemoryRepository, immediateScheduler } from '../fakes';
+import { GOOD_FOREHAND } from '../fixtures';
+
+/** A stroke from an earlier session (analysis version 2: metrics only). */
+const earlierStroke = (id: string, receivedAt: number): StrokeRecord => ({
+  id,
+  sessionId: 'earlier',
+  capture: {
+    kind: 'swing',
+    sequence: 1,
+    sampleRateHz: 104,
+    accelGPerLsb: 0.000488,
+    gyroDpsPerLsb: 0.07,
+    triggerIndex: 0,
+    samples: Int16Array.of(1, 2, 3, 4, 5, 6),
+    receivedAt,
+  },
+  metrics: GOOD_FOREHAND,
+  cue: { ruleId: 'good', severity: 'good', text: 'Good' },
+  analysisVersion: 2,
+});
 
 async function setup(repository = new InMemoryRepository()) {
   const speaker = new SilentSpeaker();
@@ -56,8 +77,39 @@ describe('CoachController end-to-end with the simulated sensor', () => {
       expect(s.metrics.impactDetected).toBe(true);
       expect(s.metrics.quality.attitudeReliable).toBe(true);
     }
-    const fixes = controller.strokes.value.filter((s) => s.cue.severity === 'fix').length;
-    expect(speaker.spoken).toHaveLength(fixes);
+    // The coaching engine decides what is said (speakGood is off by default).
+    const said = controller.strokes.value.filter((s) =>
+      ['correction', 'better', 'keep-it'].includes(s.coach?.utterance ?? 'silent'),
+    );
+    expect(speaker.spoken).toHaveLength(said.length);
+    for (const s of controller.strokes.value) expect(s.coach).toBeDefined();
+    expect(controller.assessment.value?.contact).toBe(true);
+    expect(controller.utterance.value).not.toBeNull();
+  });
+
+  it('builds the personal baseline from earlier sessions and grows it with every stroke', async () => {
+    const repository = new InMemoryRepository();
+    for (let i = 0; i < 20; i++) {
+      await repository.saveStroke(earlierStroke(`old-${String(i)}`, i));
+    }
+    const { controller, transport } = await setup(repository);
+    expect(controller.baselineLoading.value).toBe(false);
+    expect(controller.baselineCounts.value.forehand).toBe(20);
+    const faceKey = 'forehand|drive|full|faceTiltDeg';
+    expect(controller.baseline.value.entries[faceKey]?.active).toBe(true);
+    expect(controller.baseline.value.entries[faceKey]?.median).toBe(GOOD_FOREHAND.faceTiltDeg);
+
+    await controller.capturePose('faceUp');
+    await controller.capturePose('tipUp');
+    for (let i = 0; i < 3; i++) transport.emitSwing();
+    const counts = controller.baselineCounts.value;
+    expect(counts.forehand + counts.backhand + counts.overhead).toBe(23);
+    // The assessment used the baseline: personal bands are in play.
+    const sources = controller.assessment.value?.elements.map((e) => e.bandSource) ?? [];
+    expect(sources.some((src) => src === 'combined' || src === 'personal')).toBe(
+      controller.lastStroke.value?.metrics.strokeType === 'forehand' &&
+        controller.lastStroke.value.metrics.swingStyle === 'drive',
+    );
   });
 
   it('stores version, parameters and calibration so a stroke can be re-analysed exactly', async () => {
@@ -96,6 +148,9 @@ describe('CoachController end-to-end with the simulated sensor', () => {
     for (let i = 0; i < 4; i++) transport.emitSwing();
     expect(controller.strokes.value).toHaveLength(4);
     expect(speaker.spoken).toHaveLength(0);
+    // Coaching still runs, so the session can be reviewed afterwards.
+    expect(controller.utterance.value).not.toBeNull();
+    expect(controller.strokes.value.every((s) => s.coach !== undefined)).toBe(true);
   });
 
   it('refuses the second calibration pose before the first', async () => {

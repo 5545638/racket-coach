@@ -23,6 +23,12 @@ export class InMemoryRepository implements Repository {
   strokesForSession(sessionId: string) {
     return Promise.resolve(this.strokes.filter((s) => s.sessionId === sessionId));
   }
+  recentStrokes(limit: number) {
+    const newestFirst = [...this.strokes].sort(
+      (a, b) => b.capture.receivedAt - a.capture.receivedAt,
+    );
+    return Promise.resolve(newestFirst.slice(0, Math.max(0, limit)));
+  }
   loadCalibration(deviceKey: string) {
     return Promise.resolve(this.calibrations.get(deviceKey) ?? null);
   }

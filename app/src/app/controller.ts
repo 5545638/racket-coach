@@ -1,4 +1,21 @@
 import { computed, signal } from '@preact/signals';
+import {
+  BASELINE_LOAD_LIMIT,
+  EMPTY_BASELINE,
+  type PersonalBaseline,
+  addStrokeToBaseline,
+  buildBaseline,
+} from '../coach/baseline';
+import {
+  type CoachConfig,
+  type CoachState,
+  DEFAULT_COACH_CONFIG,
+  INITIAL_COACH_STATE,
+  type Utterance,
+  coachStep,
+  cueForStroke,
+  focusByStroke,
+} from '../coach/coachEngine';
 import { DEFAULT_RULES } from '../coaching/defaultRules';
 import type { RuleSet } from '../coaching/rules';
 import type {
@@ -6,8 +23,10 @@ import type {
   RawCapture,
   SensorStatus,
   SessionInfo,
+  StrokeCoaching,
   StrokeRecord,
 } from '../domain/types';
+import type { StrokeAssessment } from '../elements/assess';
 import type { Speaker } from '../feedback/speech';
 import { NO_SCREEN_LOCK, type ScreenLock } from '../feedback/wakeLock';
 import { type AnalysisParams, DEFAULT_ANALYSIS_PARAMS } from '../metrics/analyzeSwing';
@@ -38,6 +57,8 @@ export interface ControllerDeps {
   readonly speaker: Speaker;
   readonly screenLock?: ScreenLock;
   readonly rules?: RuleSet;
+  /** Coaching behaviour; `speakGood` is always taken from the settings. */
+  readonly coachConfig?: Omit<CoachConfig, 'speakGood'>;
   readonly now?: () => number;
   readonly newId?: () => string;
   readonly sleep?: (ms: number) => Promise<void>;
@@ -69,6 +90,21 @@ export class CoachController {
   readonly log = signal<readonly LogEntry[]>([]);
   readonly lastStroke = computed(() => this.strokes.value.at(-1) ?? null);
 
+  /* Live coaching (see coach/coachEngine.ts). */
+  /** Personal baseline: previous sessions' strokes plus this session's, updated after every stroke. */
+  readonly baseline = signal<PersonalBaseline>(EMPTY_BASELINE);
+  /** True while the baseline of previous sessions is being loaded. */
+  readonly baselineLoading = signal(false);
+  readonly coachState = signal<CoachState>(INITIAL_COACH_STATE);
+  /** Element assessment of the latest stroke. */
+  readonly assessment = signal<StrokeAssessment | null>(null);
+  /** What the coach decided after the latest stroke (also in rally mode, where nothing is spoken). */
+  readonly utterance = signal<Utterance | null>(null);
+  /** Current focus per stroke type. */
+  readonly focus = computed(() => focusByStroke(this.coachState.value));
+  /** Strokes with contact in the baseline, per stroke type. */
+  readonly baselineCounts = computed(() => this.baseline.value.strokeCounts);
+
   private transport: SensorTransport | null = null;
   private subscriptions: Unsubscribe[] = [];
   private assembler: CaptureAssembler;
@@ -79,6 +115,9 @@ export class CoachController {
   private logId = 0;
   private readonly screenLock: ScreenLock;
   private readonly rules: RuleSet;
+  private readonly coachConfig: Omit<CoachConfig, 'speakGood'>;
+  /** Bumped per session so a late baseline load cannot overwrite a newer session's. */
+  private baselineGeneration = 0;
   private readonly now: () => number;
   private readonly newId: () => string;
   private readonly sleep: (ms: number) => Promise<void>;
@@ -89,6 +128,7 @@ export class CoachController {
   constructor(private readonly deps: ControllerDeps) {
     this.screenLock = deps.screenLock ?? NO_SCREEN_LOCK;
     this.rules = deps.rules ?? DEFAULT_RULES;
+    this.coachConfig = deps.coachConfig ?? DEFAULT_COACH_CONFIG;
     this.now = deps.now ?? Date.now;
     this.newId = deps.newId ?? (() => crypto.randomUUID());
     this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
@@ -232,7 +272,32 @@ export class CoachController {
     };
     this.session.value = session;
     this.strokes.value = [];
+    this.coachState.value = INITIAL_COACH_STATE;
+    this.assessment.value = null;
+    this.utterance.value = null;
     await this.safely('Saving session', () => this.deps.repository.saveSession(session));
+    await this.loadBaseline();
+  }
+
+  /**
+   * Builds the personal baseline from the most recent stored strokes. Strokes
+   * that arrive while it loads are already in `strokes` and are merged in
+   * (each stroke once, by id).
+   */
+  private async loadBaseline(): Promise<void> {
+    const generation = ++this.baselineGeneration;
+    this.baselineLoading.value = true;
+    try {
+      await this.safely('Loading baseline', async () => {
+        const recent = await this.deps.repository.recentStrokes(BASELINE_LOAD_LIMIT);
+        if (generation !== this.baselineGeneration) return;
+        const current = this.strokes.value;
+        const ids = new Set(current.map((r) => r.id));
+        this.baseline.value = buildBaseline([...recent.filter((r) => !ids.has(r.id)), ...current]);
+      });
+    } finally {
+      if (generation === this.baselineGeneration) this.baselineLoading.value = false;
+    }
   }
 
   async updateSettings(patch: Partial<Settings>): Promise<void> {
@@ -322,7 +387,11 @@ export class CoachController {
     }
   }
 
-  /** Synchronous up to the spoken cue, so strokes keep their arrival order. */
+  /**
+   * Synchronous up to the spoken cue, so strokes keep their arrival order:
+   * analysis and assessment against the current baseline, one coaching step,
+   * then the stroke joins the baseline.
+   */
   private handleSwing(capture: RawCapture): void {
     const calibration = this.calibration.value;
     const session = this.session.value;
@@ -339,29 +408,51 @@ export class CoachController {
     };
     let analysis;
     try {
-      analysis = analyzeCapture(capture, calibration, analysisParams, this.rules);
+      analysis = analyzeCapture(
+        capture,
+        calibration,
+        analysisParams,
+        this.rules,
+        this.baseline.value,
+      );
     } catch (error) {
       this.appendLog(`Analysis failed: ${errorMessage(error)}`);
       return;
     }
 
+    const { assessment } = analysis;
+    const step = coachStep(this.coachState.value, assessment, {
+      ...this.coachConfig,
+      speakGood: settings.speakGood,
+    });
+    const { utterance } = step;
+    const coach: StrokeCoaching = {
+      utterance: utterance.kind,
+      correctionId: utterance.correctionId ?? null,
+      focus: step.state.byStroke[assessment.strokeType].focus?.correctionId ?? null,
+    };
     const record: StrokeRecord = {
       id: this.newId(),
       sessionId: session.id,
       capture,
       metrics: analysis.metrics,
-      cue: analysis.cue,
+      cue: cueForStroke(utterance, assessment),
       analysisVersion: ANALYSIS_VERSION,
       analysisParams,
       calibration,
+      coach,
     };
+    this.coachState.value = step.state;
+    this.assessment.value = assessment;
+    this.utterance.value = utterance;
+    // The stroke was judged against the baseline before it; now it joins it.
+    this.baseline.value = addStrokeToBaseline(this.baseline.value, record);
     this.strokes.value = [...this.strokes.value, record];
 
-    const { severity } = analysis.cue;
-    const speak =
-      settings.mode === 'drill' &&
-      (severity === 'fix' || (severity === 'good' && settings.speakGood));
-    if (speak) this.deps.speaker.say(analysis.cue.text, settings.speechRate);
+    // Rally mode: everything is computed and stored, nothing is said.
+    if (settings.mode === 'drill' && utterance.spoken !== '') {
+      this.deps.speaker.say(utterance.spoken, settings.speechRate);
+    }
 
     void this.safely('Saving stroke', () => this.deps.repository.saveStroke(record));
   }

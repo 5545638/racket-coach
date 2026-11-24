@@ -32,6 +32,8 @@ describe('IndexedDbRepository', () => {
 });
 
 const uniqueName = () => `test-${String(Math.random())}`;
+/** A schema step after the current history. */
+const NEXT_VERSION = Math.max(...MIGRATIONS.map((m) => m.version)) + 1;
 
 const legacyStroke = (id: string, receivedAt: number): StrokeRecord => ({
   id,
@@ -90,18 +92,18 @@ describe('schema migrations', () => {
     const name = uniqueName();
     await createV1Database(name);
     const applied: number[] = [];
-    const v2: Migration = {
-      version: 2,
+    const later: Migration = {
+      version: NEXT_VERSION,
       apply(_database, transaction) {
-        applied.push(2);
+        applied.push(NEXT_VERSION);
         // Rebuild an index: the stored records must survive and stay queryable.
         const strokes = transaction.objectStore('strokes');
         strokes.deleteIndex('bySession');
         strokes.createIndex('bySession', 'sessionId');
       },
     };
-    const repo = await IndexedDbRepository.open(name, { migrations: [...MIGRATIONS, v2] });
-    expect(applied).toEqual([2]);
+    const repo = await IndexedDbRepository.open(name, { migrations: [...MIGRATIONS, later] });
+    expect(applied).toEqual([NEXT_VERSION]);
     expect(await repo.strokesForSession('sess')).toHaveLength(2);
     expect(await repo.loadCalibration('A')).toEqual(SKEWED_MOUNT);
   });
@@ -129,9 +131,9 @@ describe('schema migrations', () => {
     const onBlocking = vi.fn();
     const onBlocked = vi.fn();
     await IndexedDbRepository.open(name, { onBlocking });
-    const v2: Migration = { version: 2, apply: () => undefined };
+    const later: Migration = { version: NEXT_VERSION, apply: () => undefined };
     const upgraded = await IndexedDbRepository.open(name, {
-      migrations: [...MIGRATIONS, v2],
+      migrations: [...MIGRATIONS, later],
       onBlocked,
     });
     expect(onBlocking).toHaveBeenCalledTimes(1);
@@ -198,5 +200,47 @@ describe('stroke provenance', () => {
     expect(normaliseStroke(full)).toEqual(full);
     const legacy = legacyStroke('l', 1);
     expect(normaliseStroke(legacy)).toEqual(legacy);
+  });
+});
+
+describe('recent strokes across sessions', () => {
+  const inSession = (id: string, sessionId: string, receivedAt: number): StrokeRecord => ({
+    ...legacyStroke(id, receivedAt),
+    sessionId,
+  });
+
+  it('returns the newest strokes of all sessions first, up to the limit', async () => {
+    const repo = await IndexedDbRepository.open(uniqueName());
+    await repo.saveStroke(inSession('a', 's1', 10));
+    await repo.saveStroke(inSession('d', 's2', 40));
+    await repo.saveStroke(inSession('b', 's1', 20));
+    await repo.saveStroke(inSession('c', 's2', 30));
+    expect((await repo.recentStrokes(3)).map((s) => s.id)).toEqual(['d', 'c', 'b']);
+    expect((await repo.recentStrokes(10)).map((s) => s.id)).toEqual(['d', 'c', 'b', 'a']);
+    expect(await repo.recentStrokes(0)).toEqual([]);
+  });
+
+  it('indexes the records of a version 1 database during the upgrade', async () => {
+    const name = uniqueName();
+    await createV1Database(name);
+    const repo = await IndexedDbRepository.open(name);
+    const recent = await repo.recentStrokes(5);
+    expect(recent.map((s) => s.id)).toEqual(['b', 'a']);
+    // Old-format records load as they are.
+    expect(recent[0]?.analysisVersion).toBeUndefined();
+    expect(recent[0]?.coach).toBeUndefined();
+    await repo.saveStroke(inSession('new', 'later', 30));
+    expect((await repo.recentStrokes(1)).map((s) => s.id)).toEqual(['new']);
+  });
+
+  it('keeps the coaching outcome of a stroke', async () => {
+    const repo = await IndexedDbRepository.open(uniqueName());
+    const coached: StrokeRecord = {
+      ...legacyStroke('c', 1),
+      coach: { utterance: 'better', correctionId: 'path-flat', focus: 'path-flat' },
+    };
+    await repo.saveStroke(coached);
+    const [loaded] = await repo.recentStrokes(1);
+    expect(loaded?.coach).toEqual(coached.coach);
   });
 });

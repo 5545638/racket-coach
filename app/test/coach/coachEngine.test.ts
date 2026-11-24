@@ -1,0 +1,251 @@
+import { describe, expect, it } from 'vitest';
+import { EMPTY_BASELINE, type PersonalBaseline, buildBaseline } from '../../src/coach/baseline';
+import {
+  type CoachConfig,
+  type CoachState,
+  DEFAULT_COACH_CONFIG,
+  INITIAL_COACH_STATE,
+  type Utterance,
+  coachStep,
+  cueForStroke,
+  focusByStroke,
+} from '../../src/coach/coachEngine';
+import type { StrokeMetrics } from '../../src/domain/types';
+import { assessStroke } from '../../src/elements/assess';
+import { DEFAULT_ANALYSIS_PARAMS, analyzeSwing } from '../../src/metrics/analyzeSwing';
+import { toImuSeries } from '../../src/processing/units';
+import { DEFAULT_SWING, type SwingSpec, simulateSwing } from '../../src/simulation/swingModel';
+import { GOOD_FOREHAND_V3, GOOD_SERVE, strokeRecord } from '../fixtures';
+import { SETUP, SKEWED_MOUNT } from '../helpers';
+
+/** Feeds strokes through assessment and the coach; returns every utterance and the final state. */
+function session(
+  strokes: readonly StrokeMetrics[],
+  options: { baseline?: PersonalBaseline; config?: Partial<CoachConfig>; state?: CoachState } = {},
+): { readonly said: Utterance[]; readonly state: CoachState } {
+  const config = { ...DEFAULT_COACH_CONFIG, ...options.config };
+  let state = options.state ?? INITIAL_COACH_STATE;
+  const said: Utterance[] = [];
+  for (const m of strokes) {
+    const step = coachStep(state, assessStroke(m, options.baseline ?? EMPTY_BASELINE), config);
+    state = step.state;
+    said.push(step.utterance);
+  }
+  return { said, state };
+}
+
+const spoken = (us: readonly Utterance[]): string[] => us.map((u) => u.spoken);
+const path = (deg: number): StrokeMetrics => ({ ...GOOD_FOREHAND_V3, swingPathDeg: deg });
+const repeat = <T>(n: number, x: T): T[] => Array.from({ length: n }, () => x);
+
+describe('coach engine', () => {
+  it('says "Swing low to high" at most three times in a row, then pauses for two strokes', () => {
+    const { said, state } = session(repeat(6, path(0)));
+    expect(spoken(said)).toEqual([
+      'Swing low to high',
+      'Swing low to high',
+      'Swing low to high',
+      '',
+      '',
+      'Swing low to high',
+    ]);
+    expect(said.map((u) => u.kind)).toEqual([
+      'correction',
+      'correction',
+      'correction',
+      'silent',
+      'silent',
+      'correction',
+    ]);
+    expect(said[3]?.reason).toBe('repeat-pause');
+    expect(said[3]?.correctionId).toBe('path-flat');
+    expect(focusByStroke(state).forehand).toBe('path-flat');
+  });
+
+  it('says "Better" after a clear improvement of the focus fault', () => {
+    // d: 12° → 3°; √(3.3² + 3.3²) ≈ 4.7° < 9°.
+    const { said } = session([path(0), path(9)]);
+    expect(said[1]).toMatchObject({ kind: 'better', spoken: 'Better', correctionId: 'path-flat' });
+  });
+
+  it('repeats the cue when the change is within measurement noise', () => {
+    // d: 12° → 9°: 3° < 4.7°.
+    const { said } = session([path(0), path(3)]);
+    expect(said[1]).toMatchObject({ kind: 'correction', reason: 'focus-persists' });
+  });
+
+  it('says "That\'s it" when the fault is gone and clears the focus after three ok strokes', () => {
+    const { said, state } = session([path(0), path(25), path(25)]);
+    expect(said[1]).toMatchObject({ kind: 'keep-it', spoken: "That's it" });
+    expect(said[2]).toMatchObject({ kind: 'good', spoken: '' });
+    expect(focusByStroke(state).forehand).toBe('path-flat');
+    const after = session([path(25)], { state });
+    expect(focusByStroke(after.state).forehand).toBeNull();
+    expect(after.said[0]?.kind).toBe('good');
+  });
+
+  it('says "Good" only when asked to', () => {
+    expect(session([GOOD_FOREHAND_V3]).said[0]).toMatchObject({ kind: 'good', spoken: '' });
+    const loud = session([GOOD_FOREHAND_V3], { config: { speakGood: true } });
+    expect(loud.said[0]).toMatchObject({ kind: 'good', spoken: 'Good' });
+  });
+
+  it('lets a much bigger new fault take over the focus, but not a small one', () => {
+    // Focus: path 8° (d = 4°, score ≈ 0.91).
+    const small = session([path(8), { ...path(8), faceTiltDeg: 2 }]);
+    expect(small.said[1]?.correctionId).toBe('path-flat');
+    const big = session([path(8), { ...path(8), faceTiltDeg: 15 }]);
+    expect(big.said[1]).toMatchObject({
+      kind: 'correction',
+      correctionId: 'face-open',
+      reason: 'focus-replaced',
+      spoken: 'Face too open',
+    });
+    expect(focusByStroke(big.state).forehand).toBe('face-open');
+  });
+
+  it('gives no face cue without an attitude anchor, but can give a timing cue', () => {
+    const noAnchor: StrokeMetrics = {
+      ...GOOD_FOREHAND_V3,
+      swingStyle: null,
+      faceTiltDeg: 25,
+      swingPathDeg: null,
+      backswingPauseMs: 450,
+    };
+    // A face value without its σ (attitude not trusted) must not fire either.
+    const features = GOOD_FOREHAND_V3.features;
+    if (!features) throw new Error('fixture');
+    const stroke = {
+      ...noAnchor,
+      features: { ...features, sigma: { ...features.sigma, faceTiltDeg: null } },
+    };
+    const { said } = session([stroke]);
+    expect(said[0]).toMatchObject({ kind: 'correction', correctionId: 'hitch' });
+  });
+
+  it('stays silent on a shadow swing and keeps its state', () => {
+    const start = session([path(0)]).state;
+    const step = coachStep(
+      start,
+      assessStroke({ ...path(0), impactDetected: false }, EMPTY_BASELINE),
+    );
+    expect(step.utterance).toMatchObject({ kind: 'silent', spoken: '', reason: 'no-contact' });
+    expect(step.state).toBe(start);
+  });
+
+  it('stays silent while the focus cannot be assessed and drops it after five such strokes', () => {
+    const blind = { ...path(0), swingPathDeg: null };
+    const { said, state } = session([path(0), ...repeat(4, blind)]);
+    expect(said.slice(1).every((u) => u.reason === 'focus-not-assessable')).toBe(true);
+    expect(focusByStroke(state).forehand).toBe('path-flat');
+    const after = session([blind], { state });
+    expect(focusByStroke(after.state).forehand).toBeNull();
+  });
+
+  it('keeps a separate focus per stroke type', () => {
+    const backhand: StrokeMetrics = {
+      ...GOOD_FOREHAND_V3,
+      strokeType: 'backhand',
+      faceTiltDeg: 12,
+    };
+    const { said, state } = session([path(0), backhand, path(0)]);
+    expect(said.map((u) => u.correctionId)).toEqual(['path-flat', 'face-open', 'path-flat']);
+    expect(focusByStroke(state)).toEqual({
+      forehand: 'path-flat',
+      backhand: 'face-open',
+      overhead: null,
+    });
+  });
+
+  it('only corrects a backhand on its face without a baseline', () => {
+    const backhand: StrokeMetrics = {
+      ...GOOD_FOREHAND_V3,
+      strokeType: 'backhand',
+      swingPathDeg: 0,
+      racketDropDeg: 5,
+      followThroughArcDeg: 30,
+    };
+    expect(session([backhand]).said[0]?.kind).toBe('good');
+    expect(session([{ ...backhand, faceTiltDeg: -45 }]).said[0]?.correctionId).toBe('face-closed');
+  });
+
+  it('gives no correction to a stable personal style once the baseline exists', () => {
+    const style = (i: number): StrokeMetrics => ({
+      ...GOOD_FOREHAND_V3,
+      faceTiltDeg: -4 + (i % 3),
+      swingPathDeg: 15 + (i % 4),
+    });
+    const history = Array.from({ length: 20 }, (_, i) => strokeRecord(style(i), i + 1));
+    const { said } = session(
+      Array.from({ length: 10 }, (_, i) => style(i)),
+      { baseline: buildBaseline(history) },
+    );
+    expect(said.every((u) => u.kind === 'good')).toBe(true);
+  });
+
+  it('does not correct serves before a baseline exists', () => {
+    const { said } = session([GOOD_SERVE]);
+    expect(said[0]).toMatchObject({ kind: 'silent', reason: 'not-assessable' });
+  });
+});
+
+describe('legacy cue of a coached stroke', () => {
+  const cueOf = (strokes: readonly StrokeMetrics[]) => {
+    const { said } = session(strokes);
+    const last = strokes.at(-1);
+    const u = said.at(-1);
+    if (!last || !u) throw new Error('empty');
+    return cueForStroke(u, assessStroke(last, EMPTY_BASELINE));
+  };
+
+  it('records the fault even when the coach says "Better" or stays silent', () => {
+    expect(cueOf([path(0)])).toEqual({
+      ruleId: 'path-flat',
+      severity: 'fix',
+      text: 'Swing low to high',
+    });
+    expect(cueOf([path(0), path(9)]).ruleId).toBe('path-flat');
+    expect(cueOf(repeat(4, path(0))).severity).toBe('fix');
+  });
+
+  it('marks good strokes good, shadow swings counted and unjudged serves counted', () => {
+    expect(cueOf([path(0), path(25)])).toMatchObject({ severity: 'good', ruleId: 'good' });
+    expect(cueOf([GOOD_FOREHAND_V3]).severity).toBe('good');
+    expect(cueOf([{ ...GOOD_FOREHAND_V3, impactDetected: false }]).ruleId).toBe('not-rated');
+    expect(cueOf([GOOD_SERVE]).ruleId).toBe('not-rated');
+  });
+});
+
+describe('coaching simulated strokes', () => {
+  const LONG = { ...SETUP, durationS: 2.4, contactTimeS: 1.6 };
+  const simulate = (overrides: Partial<SwingSpec>, seed: number): StrokeMetrics => {
+    const spec = {
+      ...DEFAULT_SWING,
+      backswingRateRadPerS: 6,
+      noiseStd: { accelG: 0.01, gyroDps: 0.3 },
+      seed,
+      ...overrides,
+    };
+    const params = { ...DEFAULT_ANALYSIS_PARAMS, leverRadiusM: spec.leverRadiusM };
+    return analyzeSwing(toImuSeries(simulateSwing(spec, LONG).capture), SKEWED_MOUNT, params);
+  };
+
+  it('corrects a flat swing path and then praises the fix', () => {
+    const flat = [1, 2, 3].map((seed) => simulate({ swingPathDeg: 0 }, seed));
+    const fixed = simulate({ swingPathDeg: 25 }, 4);
+    for (const m of [...flat, fixed]) expect(m.impactDetected).toBe(true);
+    const { said } = session([...flat, fixed]);
+    expect(spoken(said)).toEqual([
+      'Swing low to high',
+      'Swing low to high',
+      'Swing low to high',
+      "That's it",
+    ]);
+  });
+
+  it('stays silent on a shadow swing', () => {
+    const shadow = simulate({ swingPathDeg: 0, withImpact: false }, 5);
+    expect(shadow.impactDetected).toBe(false);
+    expect(session([shadow]).said[0]?.kind).toBe('silent');
+  });
+});

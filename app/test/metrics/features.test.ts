@@ -338,12 +338,11 @@ describe('serve', () => {
     expect(metrics.impactDetected).toBe(true);
     expect(metrics.referenceIndex).toBe(truth.contactIndex);
     expect(metrics.quality.gyroSaturated).toBe(false);
-    // Known limitation of the contact extrapolation (not of the serve
-    // features): at contact the serve tip is at the top of its arc, where
-    // elevation is curved, so the linear half-sample extrapolation from the
-    // two pre-impact samples overshoots by ≈ 3° at 28 rad/s.
-    expectNear(s.contactTipDeg, truth.tipElevationDeg, 4);
-    expect(s.contactTipDeg ?? NaN).toBeGreaterThan(truth.tipElevationDeg);
+    // At contact the serve tip is near the top of its arc; the attitude is
+    // carried forward by rotation instead of extrapolating the angle linearly
+    // (which overshot by ≈ 3°), see overheadContactTipDeg.
+    expectNear(s.contactTipDeg, truth.tipElevationDeg, 1.5);
+    expectNear(metrics.tipElevationDeg, truth.tipElevationDeg, 1.5);
     expect(s.contactTipReliable).toBe(true);
   });
 
@@ -378,9 +377,27 @@ describe('serve', () => {
     const peakDps = (SERVE.rollRateRadPerS ?? NaN) * (180 / Math.PI);
     expect(s.rollPeakDps / peakDps).toBeCloseTo(1, 1.5);
     expectNear(s.rollPeakOffsetMs, 20, SAMPLE_MS);
-    const trueRoll = truth.rollAngleDeg(truth.contactTimeS, truth.contactTimeS + 0.1);
+    // Integrated from the second sample after the impact (past the jolt).
+    const from = (truth.contactIndex + 2) / FS;
+    const trueRoll = truth.rollAngleDeg(from, truth.contactTimeS + 0.1);
     expectNear(s.rollAngleDeg, trueRoll, 1);
     expect(s.rollSaturated).toBe(false);
+  });
+
+  it('keeps the impact jolt of an off-centre hit out of roll peak and roll angle', () => {
+    const jolted = (kick: number) => {
+      const spec = { ...DEFAULT_SWING, ...SERVE, impactRollKickRadPerS: kick };
+      const { capture } = simulateSwing(spec, LONG_SETUP);
+      const s = analyse(toImuSeries(capture), spec).features.serve;
+      if (!s) throw new Error('not a serve');
+      return s;
+    };
+    const clean = jolted(0);
+    // A jolt larger than the pronation peak itself, opposite in sign.
+    const hit = jolted(-40);
+    expect(hit.rollPeakDps).toBeCloseTo(clean.rollPeakDps, 6);
+    expect(hit.rollPeakOffsetMs).toBeCloseTo(clean.rollPeakOffsetMs, 6);
+    expect(hit.rollAngleDeg ?? NaN).toBeCloseTo(clean.rollAngleDeg ?? NaN, 6);
   });
 
   it('flags the roll values as lower bounds when the gyro clipped around contact', () => {

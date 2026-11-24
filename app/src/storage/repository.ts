@@ -10,7 +10,11 @@ import type { AnalysisParams } from '../metrics/analyzeSwing';
 
 interface RacketCoachDb extends DBSchema {
   sessions: { key: string; value: SessionInfo };
-  strokes: { key: string; value: StrokeRecord; indexes: { bySession: string } };
+  strokes: {
+    key: string;
+    value: StrokeRecord;
+    indexes: { bySession: string; byReceivedAt: number };
+  };
   kv: { key: string; value: unknown };
 }
 
@@ -24,6 +28,8 @@ export interface Repository {
   listSessions(): Promise<SessionInfo[]>;
   saveStroke(stroke: StrokeRecord): Promise<void>;
   strokesForSession(sessionId: string): Promise<StrokeRecord[]>;
+  /** The `limit` most recently received strokes across all sessions, newest first. */
+  recentStrokes(limit: number): Promise<StrokeRecord[]>;
   /** Calibrations are per sensor: each sensor sits on one racket. */
   loadCalibration(deviceKey: string): Promise<MountCalibration | null>;
   saveCalibration(deviceKey: string, calibration: MountCalibration): Promise<void>;
@@ -46,8 +52,12 @@ export interface Migration {
  * Append a new entry for every schema change and never edit old ones: a
  * database at any earlier version walks through all later steps in order.
  * Per-stroke provenance fields (analysisVersion, analysisParams, calibration)
- * are optional properties of existing records and need no schema change, so
- * the schema is still at version 1.
+ * and the coaching outcome are optional properties of existing records and
+ * need no schema change.
+ *
+ * 2: index `byReceivedAt` on `capture.receivedAt`, so the personal baseline
+ *    can read the most recent strokes across sessions without a full scan.
+ *    Existing records are indexed by the upgrade itself.
  */
 export const MIGRATIONS: readonly Migration[] = [
   {
@@ -57,6 +67,12 @@ export const MIGRATIONS: readonly Migration[] = [
       const strokes = database.createObjectStore('strokes', { keyPath: 'id' });
       strokes.createIndex('bySession', 'sessionId');
       database.createObjectStore('kv');
+    },
+  },
+  {
+    version: 2,
+    apply(_database, transaction) {
+      transaction.objectStore('strokes').createIndex('byReceivedAt', 'capture.receivedAt');
     },
   },
 ];
@@ -126,6 +142,18 @@ export class IndexedDbRepository implements Repository {
   async strokesForSession(sessionId: string): Promise<StrokeRecord[]> {
     const strokes = await this.db.getAllFromIndex('strokes', 'bySession', sessionId);
     return strokes.map(normaliseStroke).sort((a, b) => a.capture.receivedAt - b.capture.receivedAt);
+  }
+
+  async recentStrokes(limit: number): Promise<StrokeRecord[]> {
+    const out: StrokeRecord[] = [];
+    if (limit <= 0) return out;
+    const index = this.db.transaction('strokes').store.index('byReceivedAt');
+    let cursor = await index.openCursor(null, 'prev');
+    while (cursor && out.length < limit) {
+      out.push(normaliseStroke(cursor.value));
+      cursor = await cursor.continue();
+    }
+    return out;
   }
 
   async loadCalibration(deviceKey: string): Promise<MountCalibration | null> {

@@ -30,7 +30,9 @@ has no knowledge of the browser.
 | Protocol | `protocol/` | Message codec, CRC-32, capture reassembly | none |
 | Processing | `processing/` | Unit conversion, calibration, segmentation, attitude | none |
 | Metrics | `metrics/analyzeSwing.ts` | Stroke metrics from one capture | none |
-| Coaching | `coaching/` | Rule engine, default rules, session statistics | none |
+| Coaching | `coaching/` | Rule limits, correction texts, session statistics | none |
+| Elements | `elements/` | Element catalogue and per-stroke assessment (population limits, personal band, Φ(d/σ)) | none |
+| Coach | `coach/` | Personal baseline; live coaching step (one focus per stroke type) | none |
 | Simulation | `simulation/` | Forward model of a swing; demo and tests | none |
 | Adapters | `transport/`, `storage/`, `feedback/` | Web Bluetooth, simulated sensor, IndexedDB, Web Speech | yes |
 | Application | `app/controller.ts` | Wires adapters to the pipeline; owns session state as signals | yes |
@@ -46,16 +48,25 @@ has no knowledge of the browser.
    sample count and CRC-32. Corrupt captures are dropped and logged, never
    analysed.
 3. **`analyzeCapture`**: counts → SI → racket frame → contact detection →
-   attitude anchored in the quiet pre-swing phase → metrics → one cue.
-4. **`CoachController`** voices the cue (drill mode), appends the stroke to the
-   session and persists the raw capture together with its metrics and the
-   provenance needed to reproduce them (see [Persistence](#persistence)).
+   attitude anchored in the quiet pre-swing phase → metrics and features →
+   element assessment against population limits and the personal baseline
+   (`assessStroke`).
+4. **`CoachController`** runs one `coachStep` (focus per stroke type, repeat
+   limits), voices `utterance.spoken` (drill mode only), adds the stroke to
+   the personal baseline, appends it to the session and persists the raw
+   capture together with its metrics, the coaching outcome and the provenance
+   needed to reproduce them (see [Persistence](#persistence)). The baseline is
+   loaded from the most recent stored strokes at session start
+   ([coaching engine](metrics.md#coaching-engine)).
 
 ## Persistence
 
 IndexedDB (`storage/repository.ts`), everything on the device. Stores:
-`sessions`, `strokes` (index `bySession`) and `kv` (per-device calibration,
-settings).
+`sessions`, `strokes` (indexes `bySession` and `byReceivedAt`, the latter on
+`capture.receivedAt` for `recentStrokes(limit)`, the cross-session query the
+personal baseline uses) and `kv` (per-device calibration, settings). Each
+stroke also keeps its coaching outcome (`coach`: utterance kind, correction,
+focus; absent on older records).
 
 **Reproducibility.** Raw data is kept so strokes can be re-analysed, which only
 works if the inputs are kept too. Every stroke record therefore stores, next to
@@ -79,7 +90,8 @@ stroke for offline re-analysis; the CSV has an `analysisVersion` column.
 **Schema migrations.** `MIGRATIONS` is an ordered list of steps, each run only
 if the stored version is older (`oldVersion < step.version`). Add a step for
 every schema change, never edit an old one. The database version is the last
-step's version (still 1: the fields above are optional properties, not schema).
+step's version: 2, which added the `byReceivedAt` index (the upgrade indexes
+existing records; the fields above are optional properties, not schema).
 `blocked` (another tab holds an older version) is logged; `blocking` closes this
 tab's connection so the other tab's upgrade can proceed.
 
@@ -97,7 +109,9 @@ next shot, hence the silent **rally** mode.
 
 ## Testing strategy
 
-- **Unit tests** for math, codec, CRC, calibration, rules, statistics, export.
+- **Unit tests** for math, codec, CRC, calibration, rules, statistics, export,
+  element assessment, baseline and the coach (including scenario tests that
+  feed simulated strokes through assessment and coach).
 - **Simulation tests**: `simulateSwing` produces sensor data from a known
   stroke geometry (face, path, speed, mounting); `analyzeSwing` must recover it,
   including with sensor noise, an arbitrarily rotated sensor, backhands,

@@ -9,6 +9,7 @@ import {
   anglesAtSample,
   countTrue,
   elevationDeg,
+  overheadContactTipDeg,
 } from './kinematics';
 import { attitudeAssessable, featureSigmas } from './uncertainty';
 
@@ -33,8 +34,14 @@ export interface FeatureParams {
   readonly trophySearchS: number;
   /** Roll peak is searched within contact ± this, s. Engineering choice. */
   readonly rollPeakWindowS: number;
-  /** Roll angle is integrated over this long after contact, s. Engineering choice. */
+  /** Roll angle is integrated up to this long after contact, s. Engineering choice. */
   readonly rollAngleWindowS: number;
+  /**
+   * Samples from the impact sample on that roll peak and roll angle skip: the
+   * jolt of an off-centre hit shows at the impact sample and can ring into
+   * the next one. Engineering choice (2: the impact sample and the next).
+   */
+  readonly rollJoltSamples: number;
 }
 
 export const DEFAULT_FEATURE_PARAMS: FeatureParams = {
@@ -47,6 +54,7 @@ export const DEFAULT_FEATURE_PARAMS: FeatureParams = {
   trophySearchS: 0.8,
   rollPeakWindowS: 0.05,
   rollAngleWindowS: 0.1,
+  rollJoltSamples: 2,
 };
 
 /** Tip (long-axis) elevation for attitude `q`, deg. */
@@ -267,10 +275,21 @@ function serveFeatures(
   const last = roll.length - 1;
   const peakFrom = Math.max(0, Math.ceil(tc - fp.rollPeakWindowS * fs));
   const peakTo = Math.min(last, Math.floor(tc + fp.rollPeakWindowS * fs));
-  let rollPeakSample = peakFrom;
+  // The impact sample and the one after it carry the jolt of an off-centre
+  // hit, not the swing's own roll: both are skipped (see rollJoltSamples).
+  const joltFrom = kin.impactIndex;
+  const joltTo = joltFrom === null ? null : joltFrom + fp.rollJoltSamples - 1;
+  const inJolt = (i: number): boolean =>
+    joltFrom !== null && joltTo !== null && i >= joltFrom && i <= joltTo;
+  let rollPeakSample: number | null = null;
   for (let i = peakFrom; i <= peakTo; i++) {
-    if (Math.abs(roll[i] ?? 0) > Math.abs(roll[rollPeakSample] ?? 0)) rollPeakSample = i;
+    if (inJolt(i)) continue;
+    if (rollPeakSample === null || Math.abs(roll[i] ?? 0) > Math.abs(roll[rollPeakSample] ?? 0)) {
+      rollPeakSample = i;
+    }
   }
+  const peakSample = rollPeakSample ?? peakFrom;
+  const angleStart = joltTo === null ? tc : joltTo + 1;
   const angleEnd = tc + fp.rollAngleWindowS * fs;
   return {
     trophySample,
@@ -279,12 +298,14 @@ function serveFeatures(
       trophyTipDeg: trophyQ ? tipDeg(trophyQ) : null,
       dropTipDeg: dropQ ? tipDeg(dropQ) : null,
       dropToContactMs: dropQ && dropSample !== null ? ms(tc - dropSample) : null,
-      rollPeakDps: (roll[rollPeakSample] ?? 0) * RAD_TO_DEG,
-      rollPeakOffsetMs: ms(rollPeakSample - tc),
+      rollPeakDps: (roll[peakSample] ?? 0) * RAD_TO_DEG,
+      rollPeakOffsetMs: ms(peakSample - tc),
       rollAngleDeg:
-        angleEnd <= last ? (integrateSamples(roll, tc, angleEnd) / fs) * RAD_TO_DEG : null,
+        angleEnd <= last && angleStart < angleEnd
+          ? (integrateSamples(roll, angleStart, angleEnd) / fs) * RAD_TO_DEG
+          : null,
       rollSaturated: countTrue(kin.gyroSaturated, Math.floor(peakFrom), Math.ceil(angleEnd)) > 0,
-      contactTipDeg: kin.rawAngles?.tipElevationDeg ?? null,
+      contactTipDeg: kin.rawAngles ? overheadContactTipDeg(kin) : null,
       contactTipReliable: kin.attitudeReliable && kin.rawAngles !== null,
     },
   };

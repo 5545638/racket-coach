@@ -1,15 +1,17 @@
 import type { ImuSeries, MountCalibration } from '../domain/types';
 import { mulVec } from '../math/mat3';
-import { type Quat, IDENTITY_QUAT, rotate } from '../math/quat';
+import { type Quat, IDENTITY_QUAT, fromRotationVector, multiply, rotate } from '../math/quat';
 import {
   type Vec3,
   RAD_TO_DEG,
   UNIT_X,
   UNIT_Z,
+  add,
   cross,
   dot,
   norm,
   normalize,
+  scale,
   sub,
 } from '../math/vec3';
 import {
@@ -135,6 +137,32 @@ function anglesAtContact(samples: ContactAngleSamples, contact: ContactReference
   const fraction = contact.time - contact.sampleIndex;
   if (fraction === 0 || samples.prev === null) return samples.last;
   return extrapolateAngles(samples.prev, samples.last, fraction);
+}
+
+/**
+ * Tip elevation at the contact time for overheads, deg, by carrying the
+ * attitude of the last pre-impact sample forward over the remaining fraction
+ * of a sample with the body rate extrapolated linearly to the middle of that
+ * step. Roll about the long axis does not move the tip, so the roll leak that
+ * rules this out for the swing path (see `extrapolateAngles`) does not apply.
+ *
+ * At contact a serve's tip is near the top of its arc, where the linear angle
+ * extrapolation overshoots. On the simulated serve (SERVE_SWING, 30 rad/s,
+ * tip 70°) the errors were: linear +3.0°, no extrapolation −2.0°, quadratic
+ * through the last three samples +1.7°, this rotation −0.3°; over tips of
+ * 50–80° and 24–34 rad/s the rotation stayed within ≈ 1.5° where the
+ * quadratic reached 4.5°. Null without an attitude.
+ */
+export function overheadContactTipDeg(kin: SwingKinematics): number | null {
+  const ref = kin.contact.sampleIndex;
+  const q = kin.attitude?.[ref];
+  const w = kin.gyro[ref];
+  if (!q || !w) return null;
+  const fraction = kin.contact.time - ref;
+  const prev = kin.gyro[ref - 1] ?? w;
+  const mid = add(w, scale(sub(w, prev), fraction / 2));
+  const carried = multiply(q, fromRotationVector(mid, fraction / kin.sampleRateHz));
+  return elevationDeg(rotate(carried, UNIT_X));
 }
 
 /**

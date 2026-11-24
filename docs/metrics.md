@@ -145,7 +145,8 @@ strokes also change the rotation axis during the swing (wrist, elbow), which
 the model cannot capture either, so swing path must be validated with video
 (see [bring-up](bring-up.md)).
 
-Only the single highest-priority cue is spoken per stroke. A stroke is called
+Only one cue is spoken per stroke; which one is decided by the coaching
+engine above, using these limits as population limits. A stroke is called
 "Good" only when every applicable rule could be evaluated; otherwise it is
 marked "No reading", not spoken, and left out of the good-share statistic.
 A swing without detected ball contact (shadow swing or miss) is **not rated**
@@ -212,15 +213,34 @@ keep the existing rule (`attitudeReliable`).
 | --- | --- |
 | `dropTipDeg`, `dropToContactMs` | Lowest θ in [readyEnd (or anchor), t_c⁻] (the back-scratch), and t_c minus its sample |
 | `trophyTipDeg` | θ at the slowest sample (min ‖ω‖) in the 0.8 s before the drop. The window starts no earlier than `readyEnd`, otherwise the ready position's standstill would always win (engineering choice) |
-| `rollPeakDps`, `rollPeakOffsetMs` | ωx of largest magnitude within t_c ± 50 ms (signed: the sign tells pronation from supination for a given grip) and its time relative to t_c |
-| `rollAngleDeg` | ∫ ωx dt over [t_c, t_c + 100 ms] (piecewise-linear interpolant); null when the capture ends sooner |
+| `rollPeakDps`, `rollPeakOffsetMs` | ωx of largest magnitude over [t_c − 50 ms, t_c⁻] ∪ [impact + 2, t_c + 50 ms] (signed: the sign tells pronation from supination for a given grip) and its time relative to t_c |
+| `rollAngleDeg` | ∫ ωx dt over [impact + 2, t_c + 100 ms] (piecewise-linear interpolant); null when the capture ends sooner |
 | `rollSaturated` | Any clipped gyro sample in [t_c − 50 ms, t_c + 100 ms]: roll peak and angle are then lower bounds |
-| `contactTipDeg`, `contactTipReliable` | θ at t_c from the classification attitude; given even when the displayed angles are withheld for clipping, with `contactTipReliable = false` and σ null |
+| `contactTipDeg`, `contactTipReliable` | θ at t_c from the classification attitude, carried forward to t_c by rotation (below); given even when the displayed angles are withheld for clipping, with `contactTipReliable = false` and σ null |
 
-The window t_c ± 50 ms includes post-impact samples, so an off-centre hit's
-roll jolt (the simulator's assumed 9 rad/s at the impact sample) adds to the
-roll peak and angle. The serve test switches the jolt off to isolate
-pronation; real data must show how large the jolt is.
+**Impact jolt (analysis version 4).** An off-centre hit jolts the roll rate
+at the impact sample and can ring into the next one (the simulator assumes
+9 rad/s at the impact sample). Both samples are excluded: the roll peak is
+searched before contact and from the second sample after the impact on, and
+the roll angle is integrated from that sample (`rollJoltSamples = 2`,
+engineering choice). The angle therefore misses the roll of the first
+≈ 15 ms after contact; it is a personal-trend measure, not an absolute
+pronation angle. Without a detected impact the windows are unchanged
+(nothing to exclude). In simulation a −40 rad/s jolt leaves peak, offset and
+angle unchanged.
+
+**Overhead contact tip (analysis version 4).** At contact a serve's tip is
+near the top of its arc, where the linear half-sample angle extrapolation
+overshoots. For overheads `tipElevationDeg` and `contactTipDeg` instead carry
+the attitude of the last pre-impact sample forward by the remaining fraction
+of a sample, with the body rate extrapolated linearly to the middle of that
+step (`overheadContactTipDeg`). Roll about the long axis does not move the
+tip, so the roll leak that rules this out for the swing path does not apply.
+On the simulated serve (30 rad/s, tip 70°) the errors were: linear +3.0°,
+no extrapolation −2.0°, quadratic through the last three samples +1.7°,
+rotation −0.3°; over tips of 50–80° at 24–34 rad/s the rotation stayed within
+≈ 1.5° (2° at the extreme 80° tip), while the quadratic reached 4.5°.
+Classification (`> 35°`) still uses the linear value.
 
 ### Uncertainty (`features.sigma`)
 
@@ -249,10 +269,166 @@ time since the anchor; with a steady 0.2 g sideways push during the ready
 position the face error stays below 3σ. Not yet checked: whether the σ match
 the scatter of real repeated strokes.
 
-Known gap: the contact extrapolation is linear, so an angle at an extremum at
-contact is biased and its σ (from the rate) does not cover it. For the
-simulated serve the tip is at the top of its arc at contact and `contactTipDeg`
-(like `tipElevationDeg`) reads ≈ 3° high at 28 rad/s.
+Known gap: the contact extrapolation of groundstroke angles is linear, so an
+angle at an extremum at contact is biased and its σ (from the rate) does not
+cover it. For overheads the tip is carried forward by rotation instead (see
+"Overhead contact tip" above).
+
+## Coaching engine
+
+What is said after a stroke comes from three pure steps (analysis version 4):
+element catalogue and assessment (`app/src/elements/`), personal baseline and
+coach (`app/src/coach/`). The controller wires them (below). The fixed rule
+set of the next section is still evaluated (`analyzeCapture(...).cue`) and its
+limits are the population limits of the catalogue, but it no longer decides
+what is spoken.
+
+### Element catalogue (`elements/catalog.ts`)
+
+One or more entries per correction id (`coaching/corrections.ts`). An entry
+names the metric (getter on `StrokeMetrics` / `features`), its σ (from
+`features.sigma`, or an explicit engineering value), the fault side
+(`below` = too little, `above` = too much; two-sided faults have two
+entries), the strokes, swing sizes and styles it applies to, the population
+limit P, the weight w and the noise floor s_min.
+
+| Entry | Metric | Fault | P | w | s_min |
+| --- | --- | --- | --- | --- | --- |
+| face-open / face-closed (drive) | `faceTiltDeg` | above / below | 0° / −30° | 1.0 | 3° |
+| slice-face-closed (slice) | `faceTiltDeg` | below | 0° | 1.0 | 3° |
+| slice-chop (slice) | `swingPathDeg` | below | −35° | 0.9 | 3.5° |
+| path-flat / path-steep (drive) | `swingPathDeg` | below / above | 12° / 55° | 0.9 | 3.5° |
+| unstable-contact | `contactStabilityDps` | above | — | 1.0 | 50 deg/s |
+| accelerated-early (drive) | `peakSpeedOffsetMs` | below | −40 ms | 0.8 | 10 ms |
+| hitch | `backswingPauseMs` | above | 200 ms | 0.8 | 30 ms |
+| hitch (count) | `hitchCount` | above | — | 0.8 | 0.25 |
+| stiff-arm (drive) | `lateGainFraction` (G50) | below | — | 0.5 | 0.05 |
+| no-racket-drop (drive) | `racketDropDeg` | above | −15° | 0.7 | 4° |
+| open-takeback (drive) | `faceAtDropDeg` | above | 20° | 0.6 | 4° |
+| high-takeback | `takebackTipDeg` | above | — | 0.6 | 4° |
+| late-preparation | `takebackTimeMs` | below | — | 0.4 | 30 ms |
+| small-turn | `takebackTurnDeg` | below | — | 0.4 | 4° |
+| short-finish | `followThroughArcDeg` / `brakingTimeMs` | below | 120° / — | 0.5 | 4° / 30 ms |
+| slow-recovery | `recoveryMs` | above | — | 0.3 | 30 ms |
+| serve-no-drop | `serve.dropTipDeg` | above | — | 0.7 | 4° |
+| serve-low-contact | `serve.contactTipDeg` (only when `contactTipReliable`) | below | — | 0.6 | 4° |
+| serve-no-pronation | \|`serve.rollAngleDeg`\| (never when `rollSaturated`) | below | — | 0.5 | 8° |
+| serve-accelerated-early | `peakSpeedOffsetMs` | below | — | 0.8 | 10 ms |
+| serve-hitch | `hitchCount` | above | — | 0.8 | 0.25 |
+| serve-short-finish | `brakingTimeMs` / `followThroughArcDeg` | below | — | 0.5 | 30 ms / 4° |
+
+Groundstroke entries apply to full forehands and backhands, serve entries to
+full overheads. Population limits are the exported constants of
+`defaultRules.ts` (same values, same sources as the rule table below); "—"
+means no literature or existing heuristic limit, so only the personal
+baseline can fire the entry. **Backhands:** only the face limits (face-open,
+face-closed, slice-face-closed) apply as population limits; every other
+backhand element is personal-baseline only, because the published values are
+for forehands. **Serves:** personal-baseline only (no published racket-level
+serve values, see the rule section). "Loosen the wrist" now reads G50 against
+the personal band; the cue and its "indirect proxy" wording are unchanged.
+
+**Styles.** Face, path, take-back drop/face/height and contact-stability
+entries need a known drive/slice style and keep a baseline per style. Timing
+and rotation entries (hitch, preparation, turn, finish, recovery, all serve
+entries) also apply when the style is unknown (no attitude anchor) and share
+one baseline across styles. Hence without an anchor no angle cue can fire,
+but a timing cue (e.g. "Keep the swing flowing") can; the old rule engine
+gave such strokes "No reading".
+
+**Weights and noise floors.** w: face and contact stability 1.0, path 0.9,
+timing/acceleration/hitch 0.8, racket drop (also serve) 0.7, take-back
+height/face and serve contact height 0.6, stiff-arm, serve roll and finish
+0.5, preparation time/turn 0.4, recovery 0.3. s_min for face (3°) and path
+(3.5°) come from the within-player SDs of advanced players (Knudson &
+Blackwell 2005: face 2.8°, path 3.4°, speed 1.5 m/s; no element uses head
+speed yet); all other
+s_min values are engineering choices (angles 4°, timing 10 ms, durations
+30 ms, G50 0.05, contact stability 50 deg/s, hitch count 0.25 so that one
+extra dip fires, roll angle 8° ≈ a 150 deg/s roll-rate floor over the
+≈ 50 ms roll peak).
+
+**Explicit σ** (engineering choices, no `features.sigma` key): contact
+stability 15 deg/s, G50 0.02, hitch count 0.25, follow-through arc 4°, roll
+angle 3°, backswing pause √2 · T_s/√12 (two quantised edges).
+
+### Assessment (`elements/assess.ts`)
+
+`assessStroke(metrics, baseline, config) → StrokeAssessment`, per element:
+value, σ, band actually used and its source, d, p, status, score.
+
+- Without ball contact every element is not assessable (`no-contact`).
+  Other reasons: `wrong-stroke` (type, size or style rules it out),
+  `no-value`, `no-sigma` (e.g. strokes analysed before version 3, or an
+  attitude not trusted at the event), `saturated` (clipped serve roll,
+  unreliable serve contact tip), `no-baseline` (no P and no active baseline).
+- **Band.** No active baseline: P alone (source `population`). Active
+  baseline (median m, spread s): the personal bound m − k·s (`below`) or
+  m + k·s (`above`), k = 2; with a P as well, the tighter of P and the
+  personal bound (`combined`), except when m itself is beyond P (a habitual
+  clear fault), then P alone (`population`). Without P: `personal`.
+- d = distance outside the band (≥ 0), p = Φ(d/σ) (probability that the true
+  value lies outside), Φ via erf (Abramowitz & Stegun 7.1.26, |error| ≤
+  1.5 · 10⁻⁷, `math/stats.ts`).
+- **Fault** when d > 0 and p ≥ pMin = 0.8. score = w · min(d/s, 3) · p with
+  s the personal spread, or s_min without a baseline; 0 for non-faults.
+
+### Personal baseline (`coach/baseline.ts`)
+
+Key: stroke type × swing style (`any` for style-free entries) × swing size ×
+metric. Per key the newest 60 values; median m and s = max(1.4826 · MAD,
+s_min); active from n ≥ 15. Built at session start from the 600 most recent
+strokes across sessions (`Repository.recentStrokes`, index `byReceivedAt`),
+then updated after every stroke (the stroke is judged first, then added).
+
+Only strokes with ball contact contribute, and only values that could be
+assessed (present, not a clipped roll, a reliable serve contact tip).
+Records older than version 3 have no features and contribute only their
+metrics; serve roll angle and contact tip need version 4 (`minAnalysisVersion`)
+because their definition changed. Faulty strokes are **included**: the median
+is robust to a minority of faults, and excluding them would pull the baseline
+towards whatever band is current. `buildBaseline` takes an optional filter as
+the hook for future outcome tags (e.g. only balls that landed in).
+
+### Coach (`coach/coachEngine.ts`)
+
+`coachStep(state, assessment, config) → { state, utterance }`, utterance kind
+`correction | better | keep-it | good | silent`, with the spoken English
+phrase (from `CORRECTIONS` / `FEEDBACK_PHRASES`, empty when silent) and a
+machine-readable reason. Elements of one correction (e.g. the two hitch
+measures) are merged; the focus is a correction id.
+
+- One focus per stroke type (forehand, backhand and serve independently).
+- No focus: the highest-scoring fault becomes the focus and is spoken. No
+  faults: `good`, spoken ("Good") only with `speakGood`. Nothing assessable:
+  silent.
+- Focus still at fault: "Better" when d_prev − d_now ≥ √(σ_prev² + σ_now²)
+  (the improvement exceeds measurement noise), otherwise its cue again.
+- Focus ok: "That's it" on the first ok stroke; after 3 ok strokes in a row
+  the focus is cleared (and that stroke is coached as without a focus).
+- A different fault replaces the focus only with score ≥ 2 × the focus
+  fault's current score (its last fault score while it is ok or unassessable).
+- Focus not assessable: silent, focus kept; cleared after 5 such strokes.
+- Shadow swings and misses: silent, state unchanged.
+- The same phrase is said at most 3 times in a row, then 2 strokes are silent
+  (silent strokes do not break the run).
+
+**Controller.** Signals: `baseline`, `baselineLoading`, `baselineCounts`
+(strokes with contact per type), `coachState`, `focus` (per stroke type),
+`assessment` and `utterance` of the latest stroke. In drill mode
+`utterance.spoken` is said; in rally mode everything is computed and stored
+but nothing is said. Each stroke record stores `coach: { utterance,
+correctionId, focus }` and keeps the legacy `cue` for the session report and
+export: the stroke's verdict, so a "Better" or a silenced repeat is still a
+fix of the focus, "That's it"/good strokes are good, strokes without contact
+or with nothing applicable yet (e.g. serves before a baseline) are
+"Counted", and strokes with data missing are "No reading".
+
+**Evidence status.** The engine's structure follows the motor-learning notes
+in [research/coaching-engine.md](research/coaching-engine.md) (bandwidth
+feedback, one cue at a time); pMin, k, the window sizes, the repeat limits,
+the weights and all s_min except face/path are engineering choices to be
+tuned on recorded sessions.
 
 ## Coaching thresholds
 
@@ -288,7 +464,8 @@ Kwon et al. also report that unsuccessful strokes show greater variability in
 impact angle; the session view therefore shows the standard deviation of each
 metric as a consistency measure.
 
-Only the single highest-priority cue is spoken per stroke.
+Only one cue is spoken per stroke; which one is decided by the coaching
+engine above, using these limits as population limits.
 
 ### What the sensor cannot say about the wrist
 

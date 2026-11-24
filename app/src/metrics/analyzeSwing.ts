@@ -10,7 +10,7 @@ import { type Quat, rotate } from '../math/quat';
 import { type Vec3, RAD_TO_DEG, UNIT_X } from '../math/vec3';
 import { longestQuietRun, rotationPath } from '../processing/segmentation';
 import { computeFeatures } from './features';
-import { computeSwingKinematics, elevationDeg } from './kinematics';
+import { computeSwingKinematics, elevationDeg, overheadContactTipDeg } from './kinematics';
 
 export interface AnalysisParams {
   /**
@@ -209,6 +209,14 @@ export function analyzeSwing(
         ? 'forehand'
         : 'backhand';
 
+  // Overheads: the tip is near the top of its arc at contact, where the linear
+  // angle extrapolation overshoots; carry the attitude forward instead.
+  const tipElevationDeg = angles
+    ? strokeType === 'overhead'
+      ? overheadContactTipDeg(kin)
+      : angles.tipElevationDeg
+    : null;
+
   const swingPathDeg = angles?.swingPathDeg ?? null;
   const swingStyle: SwingStyle | null =
     swingPathDeg === null ? null : swingPathDeg < params.sliceMaxPathDeg ? 'slice' : 'drive';
@@ -227,7 +235,7 @@ export function analyzeSwing(
     headSpeedMps,
     faceTiltDeg: angles?.faceTiltDeg ?? null,
     swingPathDeg,
-    tipElevationDeg: angles?.tipElevationDeg ?? null,
+    tipElevationDeg,
     peakSpeedOffsetMs: gyroClippedInSwing ? null : msFromSamples(peakIndex - contact.time),
     preparationTimeMs: prepStart === null ? null : msFromSamples(contact.time - prepStart),
     backswingArcDeg,

@@ -1,3 +1,4 @@
+import type { CorrectionId } from '../coaching/corrections';
 import type { Language } from '../coaching/guidance';
 import type { Mat3 } from '../math/mat3';
 import type { AnalysisParams } from '../metrics/analyzeSwing';
@@ -167,11 +168,19 @@ export interface ServeFeatures {
   readonly dropTipDeg: number | null;
   /** Time from that lowest point to contact, ms. */
   readonly dropToContactMs: number | null;
-  /** Roll rate ωx of largest magnitude within contact ± 50 ms, signed, deg/s. A lower bound when `rollSaturated`. */
+  /**
+   * Roll rate ωx of largest magnitude within contact ± 50 ms, skipping the
+   * impact sample and the next (impact jolt), signed, deg/s. A lower bound
+   * when `rollSaturated`.
+   */
   readonly rollPeakDps: number;
   /** Time of that roll peak relative to contact, ms (positive = after). */
   readonly rollPeakOffsetMs: number;
-  /** ∫ωx dt over the 100 ms after contact, deg; null when the capture ends sooner. */
+  /**
+   * ∫ωx dt from the second sample after the impact (past the jolt) to contact
+   * + 100 ms, deg; from contact when no impact was detected. Null when the
+   * capture ends sooner.
+   */
   readonly rollAngleDeg: number | null;
   /** Gyro clipped within contact − 50 ms … contact + 100 ms: the roll values are lower bounds. */
   readonly rollSaturated: boolean;
@@ -264,6 +273,18 @@ export interface SensorStatus {
   readonly firmwareVersion: string;
 }
 
+/** What the live coach did after a stroke (see coach/coachEngine.ts). */
+export type UtteranceKind = 'correction' | 'better' | 'keep-it' | 'good' | 'silent';
+
+/** The coaching outcome kept with a stroke for history. */
+export interface StrokeCoaching {
+  readonly utterance: UtteranceKind;
+  /** The correction spoken, or the focus still at fault ('better', silenced repeat). */
+  readonly correctionId: CorrectionId | null;
+  /** Focus of this stroke type after the stroke. */
+  readonly focus: CorrectionId | null;
+}
+
 /**
  * A stored stroke: the raw capture plus everything needed to reproduce its
  * metrics exactly (`capture` + `calibration` + `analysisParams`, analysed by
@@ -289,6 +310,8 @@ export interface StrokeRecord {
    * overwrites the per-device calibration, cannot orphan old strokes.
    */
   readonly calibration?: MountCalibration;
+  /** Live-coaching outcome; absent on strokes recorded before the coaching engine. */
+  readonly coach?: StrokeCoaching;
 }
 
 export interface SessionInfo {
