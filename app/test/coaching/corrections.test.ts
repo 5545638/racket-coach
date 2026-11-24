@@ -3,6 +3,7 @@ import {
   CORRECTIONS,
   FEEDBACK_LABELS,
   FEEDBACK_PHRASES,
+  FEEDBACK_PHRASES_ET,
   type CorrectionId,
 } from '../../src/coaching/corrections';
 import { DEFAULT_RULES } from '../../src/coaching/defaultRules';
@@ -209,5 +210,44 @@ describe('correction catalogue', () => {
         expect(text, id).not.toMatch(body);
       }
     }
+  });
+  describe('Estonian spoken cues', () => {
+    const words = (x: string) => x.trim().split(/\s+/).length;
+    const LETTERS = /^[A-Za-zÕÄÖÜŠŽõäöüšž ,.!?-]+$/;
+
+    it('has 3 distinct variants and a reinforce for every id, in both languages', () => {
+      for (const lang of LANGS) {
+        for (const id of ids) {
+          const et = CORRECTIONS[lang][id].spokenEt;
+          if (!et) throw new Error(`${lang}/${id}`);
+          expect(new Set(et.variants).size, id).toBe(3);
+          expect(et.reinforce.trim().length, id).toBeGreaterThan(0);
+          expect(CORRECTIONS[lang][id].spokenEt, id).toBe(CORRECTIONS.en[id].spokenEt);
+        }
+      }
+    });
+
+    it('respects word limits, the reinforce prefix and the alphabet', () => {
+      for (const id of ids) {
+        const et = CORRECTIONS.et[id].spokenEt;
+        if (!et) throw new Error(id);
+        for (const v of et.variants) {
+          expect(words(v), `${id}: ${v}`).toBeLessThanOrEqual(4);
+          expect(v, id).toMatch(LETTERS);
+        }
+        expect(words(et.reinforce), id).toBeLessThanOrEqual(5);
+        expect(et.reinforce, id).toMatch(/^(Hea|Tubli)\./);
+        expect(et.reinforce, id).toMatch(LETTERS);
+        if (et.drillShort) expect(words(et.drillShort), id).toBeLessThanOrEqual(3);
+      }
+    });
+
+    it('has complete Estonian feedback phrases with the same keys', () => {
+      expect(Object.keys(FEEDBACK_PHRASES_ET).sort()).toEqual(Object.keys(FEEDBACK_PHRASES).sort());
+      for (const p of Object.values(FEEDBACK_PHRASES_ET)) {
+        expect(words(p), p).toBeLessThanOrEqual(4);
+        expect(p).toMatch(LETTERS);
+      }
+    });
   });
 });

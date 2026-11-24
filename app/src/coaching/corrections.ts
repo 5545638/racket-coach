@@ -61,6 +61,16 @@ export interface CorrectionText {
    * without it the coach says "Try the drill".
    */
   readonly drillShort?: string;
+  /**
+   * Estonian spoken cues for the TTS voice on court (same object in both
+   * language maps). Variants are max 4 words, reinforce max 5 and starts with
+   * "Hea." or "Tubli."; variant 0 is the Estonian counterpart of `spoken`.
+   */
+  readonly spokenEt?: {
+    readonly variants: readonly [string, string, string];
+    readonly reinforce: string;
+    readonly drillShort?: string;
+  };
   /** On-screen name of the weakness in the player profile. */
   readonly weaknessLabel: string;
   /** What the racket showed and why it matters (max 2 sentences). */
@@ -87,6 +97,20 @@ export const FEEDBACK_PHRASES = {
   nowTooFlat: 'Now too flat',
   nowTooSteep: 'Now too steep',
 } as const;
+
+/** Estonian spoken feedback after a corrected stroke (max 4 words each). */
+export const FEEDBACK_PHRASES_ET: Record<keyof typeof FEEDBACK_PHRASES, string> = {
+  better: 'Parem',
+  keepIt: 'Just nii',
+  overcorrected: 'Veidi vähem',
+  consistency: 'Iga kord sama löök',
+  fatigue: 'Tee lühike paus',
+  stuck: 'Proovi harjutust',
+  nowTooOpen: 'Nüüd liiga avatud',
+  nowTooClosed: 'Nüüd liiga suletud',
+  nowTooFlat: 'Nüüd liiga lame',
+  nowTooSteep: 'Nüüd liiga järsk',
+};
 
 /** On-screen titles for the spoken feedback phrases. */
 export const FEEDBACK_LABELS: Record<Language, Record<keyof typeof FEEDBACK_PHRASES, string>> = {
@@ -118,7 +142,7 @@ export const FEEDBACK_LABELS: Record<Language, Record<keyof typeof FEEDBACK_PHRA
 
 type BaseText = Omit<
   CorrectionText,
-  'spokenVariants' | 'reinforce' | 'learningSpoken' | 'weaknessLabel' | 'drillShort'
+  'spokenVariants' | 'reinforce' | 'learningSpoken' | 'weaknessLabel' | 'drillShort' | 'spokenEt'
 >;
 
 const EN_BASE: Record<CorrectionId, BaseText> = {
@@ -696,6 +720,125 @@ const EXTRA: Record<
   },
 };
 
+/** Estonian spoken cues per correction (see `CorrectionText.spokenEt`). */
+const SPOKEN_ET: Record<CorrectionId, NonNullable<CorrectionText['spokenEt']>> = {
+  'face-open': {
+    variants: ['Pind kinnisemaks', 'Kalluta keeled alla', 'Üle lindi, madalalt'],
+    reinforce: 'Hea. Pind on õige.',
+    drillShort: 'teenindusjoon',
+  },
+  'face-closed': {
+    variants: ['Pind avatumaks', 'Kalluta keeled üles', 'Tõsta üle võrgu'],
+    reinforce: 'Hea. Pind piisavalt avatud.',
+    drillShort: 'võrgu ületus',
+  },
+  'slice-face-closed': {
+    variants: ['Ava pinda veidi', 'Keeled veidi taeva poole', 'Lase pallil kanduda'],
+    reinforce: 'Hea. Pind avanes.',
+    drillShort: 'hõljuv lõikelöök',
+  },
+  'slice-chop': {
+    variants: ['Lõika läbi, mitte alla', 'Löö ette, mitte alla', 'Madalalt ja pikalt'],
+    reinforce: 'Hea. Ette, mitte alla.',
+    drillShort: 'libisev lõikelöök',
+  },
+  'path-flat': {
+    variants: ['Löö alt üles', 'Alusta pallist madalamalt', 'Hõõru palli tagant üles'],
+    reinforce: 'Tubli. Hea alt-üles löök.',
+    drillShort: 'palli hõõrumine',
+  },
+  'path-steep': {
+    variants: ['Löö otse läbi palli', 'Enne ette, siis üles', 'Saada sihi suunas'],
+    reinforce: 'Hea. Löök läheb ette.',
+    drillShort: 'sihtjoon',
+  },
+  'accelerated-early': {
+    variants: ['Kiirenda läbi palli', 'Hoia kiirendust kauem', 'Kiireim pärast palli'],
+    reinforce: 'Hea. Hoia seda kiirendust.',
+    drillShort: 'vihin',
+  },
+  'no-racket-drop': {
+    variants: ['Lase reketi pea langeda', 'Lase tipp vajuda', 'Tipp maa poole'],
+    reinforce: 'Tubli. Reketi pea langes.',
+    drillShort: 'tipp alla',
+  },
+  'open-takeback': {
+    variants: ['Pind alla tagahoos', 'Keeled maa poole', 'Patsuta koera'],
+    reinforce: 'Hea. Pind jääb all.',
+    drillShort: 'peegel',
+  },
+  hitch: {
+    variants: ['Hoia löök sujuv', 'Üks sujuv silmus', 'Kõigu nagu pendel'],
+    reinforce: 'Hea. Sujuv, katkematu löök.',
+    drillShort: 'üks-ja-kaks',
+  },
+  'stiff-arm': {
+    variants: ['Lõdvesta ranne', 'Lõdv käsi, kindel tabamus', 'Lase reketil maha jääda'],
+    reinforce: 'Hea. Lõdv ja hiline kiirendus.',
+    drillShort: 'jäik ja lõdv',
+  },
+  'short-finish': {
+    variants: ['Vii löök lõpuni', 'Löö täielikult läbi', 'Hoia lõpetust'],
+    reinforce: 'Hea. Täielik lõpetus.',
+    drillShort: 'püüa reket',
+  },
+  'late-preparation': {
+    variants: ['Valmistu varem', 'Reket varem taha', 'Valmis enne põrget'],
+    reinforce: 'Hea. Vara valmis.',
+    drillShort: 'näita ja pööra',
+  },
+  'small-turn': {
+    variants: ['Pööra rohkem', 'Külg võrgu poole', 'Näita selga'],
+    reinforce: 'Hea. Korralik pööre.',
+    drillShort: 'õlapööre',
+  },
+  'high-takeback': {
+    variants: ['Hoia löök väike', 'Tagahoog madalamaks', 'Väike, korralik silmus'],
+    reinforce: 'Hea. Kompaktne tagahoog.',
+    drillShort: 'sein taga',
+  },
+  'unstable-contact': {
+    variants: ['Hoia kindlalt läbi palli', 'Löö sujuvalt läbi palli', 'Keeled sihi poole'],
+    reinforce: 'Hea. Stabiilne tabamus.',
+    drillShort: 'poolkiirus',
+  },
+  'slow-recovery': {
+    variants: ['Taastu kiiremini', 'Reket ette tagasi', 'Hüpe, valmis'],
+    reinforce: 'Hea. Kiire taastumine.',
+    drillShort: 'valmisasend',
+  },
+  'serve-no-drop': {
+    variants: ['Lase reket langeda', 'Lase selja taha langeda', 'Lase reket madalale'],
+    reinforce: 'Hea. Sügav reketi langus.',
+    drillShort: 'aeglane serv',
+  },
+  'serve-low-contact': {
+    variants: ['Sirutu kõrgemale', 'Viska veidi kõrgemale', 'Löö täies kõrguses'],
+    reinforce: 'Hea. Tabamus kõrgel.',
+    drillShort: 'täis ulatus',
+  },
+  'serve-no-pronation': {
+    variants: ['Pööra reket üle', 'Pööra reket kiiresti üle', 'Lase sel üle veereda'],
+    reinforce: 'Hea. Reket pöördus üle.',
+    drillShort: 'üle pööramine',
+  },
+  'serve-accelerated-early': {
+    variants: ['Kiirenda läbi palli', 'Kiirenda palli suunas', 'Kiireim üleval'],
+    reinforce: 'Hea. Kiirus kasvas tabamuseni.',
+    drillShort: 'vihin üleval',
+  },
+  'serve-hitch': {
+    variants: ['Hoia löök sujuv', 'Ilma pausita, ühe hooga', 'Üks sujuv liigutus'],
+    reinforce: 'Hea. Sujuv serviritm.',
+    drillShort: 'üks-kaks rütm',
+  },
+  'serve-short-finish': {
+    variants: ['Vii löök lõpuni', 'Lõpeta üle keha', 'Ära jää pidama'],
+    reinforce: 'Hea. Täielik lõpetus.',
+    drillShort: 'vastaskoksa',
+  },
+};
+
 function build(
   lang: Language,
   base: Record<CorrectionId, BaseText>,
@@ -709,6 +852,7 @@ function build(
       reinforce: x.reinforce,
       learningSpoken: x.learningSpoken,
       drillShort: x.drillShort,
+      spokenEt: SPOKEN_ET[id],
       weaknessLabel: x.weakness[lang],
     };
   }
