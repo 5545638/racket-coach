@@ -432,25 +432,209 @@ measures) are merged; the focus is a correction id.
   fault's current score (its last fault score while it is ok or unassessable).
 - Focus not assessable: silent, focus kept; cleared after 5 such strokes.
 - Shadow swings and misses: silent, state unchanged.
-- The same phrase is said at most 3 times in a row, then 2 strokes are silent
-  (silent strokes do not break the run).
+- The same phrase (and, for a correction, the same ladder variant) is said at
+  most 3 times in a row, then 2 strokes are silent (silent strokes do not
+  break the run). A persistent fault no longer repeats one cue: it walks the
+  phrase ladder (see "Adaptive coach").
 
 **Controller.** Signals: `baseline`, `baselineLoading`, `baselineCounts`
 (strokes with contact per type), `coachState`, `focus` (per stroke type),
-`assessment` and `utterance` of the latest stroke. In drill mode
-`utterance.spoken` is said; in rally mode everything is computed and stored
-but nothing is said. Each stroke record stores `coach: { utterance,
-correctionId, focus }` and keeps the legacy `cue` for the session report and
-export: the stroke's verdict, so a "Better" or a silenced repeat is still a
-fix of the focus, "That's it"/good strokes are good, strokes without contact
-or with nothing applicable yet (e.g. serves before a baseline) are
-"Counted", and strokes with data missing are "No reading".
+`assessment`, `utterance` and `categories` of the latest stroke, plus the
+adaptive signals of the next section. `coachStep` returns the decision
+(`utterance`, stored in every mode) and separately the `speech` to say now
+(null in match mode). Each stroke record stores `coach: { utterance,
+correctionId, focus, mode, categories, phraseLevel, fatigueActive }` (the
+last four absent on older records) and keeps the legacy `cue` for the
+session report and export: the stroke's verdict, so a "Better", a silenced
+repeat or a frozen focus is still a fix of the focus when it is at fault,
+"That's it"/good strokes are good, strokes without contact or with nothing
+applicable yet (e.g. serves before a baseline) are "Counted", and strokes
+with data missing are "No reading".
 
 **Evidence status.** The engine's structure follows the motor-learning notes
 in [research/coaching-engine.md](research/coaching-engine.md) (bandwidth
 feedback, one cue at a time); pMin, k, the window sizes, the repeat limits,
 the weights and all s_min except face/path are engineering choices to be
 tuned on recorded sessions.
+
+## Adaptive coach
+
+Pure, deterministic and on the device: no network and no AI in the stroke
+loop. Modules in `app/src/coach/`: `profile.ts` (player profile),
+`classify.ts` (deviation categories), `fatigue.ts` (fatigue detector),
+`coachEngine.ts` (ladder, contradictions, modes), `plan.ts` (training plan),
+`phrases.ts` (adapter over the correction texts). Every threshold below is
+an engineering choice unless a source is named; all are to be tuned on
+recorded sessions.
+
+### Phrases (`coach/phrases.ts`)
+
+The coach reads the correction texts only through this adapter, which falls
+back when a richer field is missing, so it works with and without them:
+`spokenVariants` [v0, v1, v2] → [spoken × 3]; `reinforce` → "That's it";
+`learningSpoken` → the English `adjustment`; `weaknessLabel` → `title`;
+FEEDBACK_PHRASES `overcorrected` / `consistency` / `fatigue` / `stuck` →
+"A little less" / "Same swing every time" / "Take a short break" / "Try the
+drill". Ladder variants are told apart by index, so the schedule below is the
+same even while all three variants are the same words.
+
+### Player profile (`coach/profile.ts`)
+
+**Inputs** (Settings version 4): `dominantHand` right | left (default
+right), `backhand` two-handed | one-handed (default two-handed),
+`forehandStyle` topspin | flat | mixed (default mixed), `level` beginner |
+intermediate | advanced (default intermediate). `coachingPolicy(inputs)`
+turns them into the assessment config and two catalogues: the
+profile-adjusted catalogue (all elements; the personal baseline and the
+profile history use it) and the coached catalogue (assessment).
+
+| Input | Changes |
+| --- | --- |
+| `dominantHand` | Serve pronation reads `max(0, sign · rollAngleDeg)` with sign +1 (right) / −1 (left); a roll in the wrong direction counts as no pronation (before: \|roll\|). Convention from the simulator: the right-handed serve pronates with a positive roll rate about racket +x (`rollRateRadPerS` +20 rad/s in the GOOD serve). A left-handed serve is the mirror image, and mirroring flips the long-axis component of the angular velocity (a pseudo-vector); calibrating on the other face only rotates the frame 180° about x, which keeps it. To be confirmed on the real sensor. |
+| `forehandStyle` flat | path-flat population limit 12° → 5° and population-only (the personal band may not tighten it): flat hitters legitimately swing flatter, so a flatter-than-usual drive is not a fault |
+| `forehandStyle` topspin | path-steep 55° → 65°, population-only (topspin hitters legitimately swing steeper) |
+| `level` beginner | only elements with weight ≥ 0.8 are coached (face, path, slice, contact stability, acceleration timing, hitch) and pMin = 0.85 |
+| `level` intermediate / advanced | all elements, pMin = 0.8 (the behaviour before the profile) |
+| `backhand` | stored and shown; no decision uses it yet (no racket-level limits that differ between one- and two-handed backhands) |
+
+Hand and style change what the baseline holds, so changing either rebuilds
+the baseline (and the profile history) at once.
+
+**Derived** (pure functions over `StrokeRecord[]` and the session list):
+
+- *Baseline*: the existing personal baseline (above).
+- *Typical swing* per stroke type: medians over the last 200 strokes with
+  contact of head speed, swing path, face, brush angle, forward-swing time,
+  take-back turn and follow-through.
+- *Weaknesses*: corrections whose fault rate over the last 200 rated strokes
+  (all types) is ≥ 20 %, with faults in ≥ 2 sessions and judged on ≥ 10
+  strokes. The rate is faults / strokes on which the correction was judged
+  (ok or fault). Fatigue-related faults are not counted. Strokes stored with
+  categories give every element's verdict; older records only their legacy
+  cue (one fault at most, judged = every element that applies). Trend from
+  per-session rates (sessions with ≥ 5 judged strokes): the latest against
+  the mean of up to 3 earlier ones, ≤ −10 points improving, ≥ +10 worsening,
+  else stable (also with fewer than 2 sessions).
+- *Progress* per session (oldest first), per element: n (strokes with a
+  value), fault rate (strokes with stored categories only, else null) and
+  median value; per correction: fault rate. For charts.
+
+The controller builds it at session start from the 600 most recent strokes
+(`recentStrokes`, the same load as the baseline) and `listSessions`, and adds
+each stroke with `addStrokeToProfile` (O(window) per stroke: arrays of at
+most 200 values are copied; the current session's element values grow with
+the session). A baseline reset does not erase the profile history.
+
+### Deviation categories (`coach/classify.ts`)
+
+Every applicable element of every stroke (elements that do not apply are
+left out):
+
+| Category | When |
+| --- | --- |
+| `technical-error` | fault (d > 0, p ≥ pMin) |
+| `fatigue-related` | fault while the fatigue detector is active for the stroke type |
+| `improvement` | the focus at fault but significantly better ("Better"), or the focus back inside its band |
+| `uncertain` | outside the band with p < pMin, or inside but σ > s and less than σ inside the bound (cannot be told from a fault) |
+| `variation` | inside the band (personal, or population without a baseline) |
+| `not-assessable` | not judged (no contact, missing value or σ, no baseline …) |
+
+Stored per stroke as `coach.categories: { counts, byElement }`.
+
+### Fatigue (`coach/fatigue.ts`)
+
+Per stroke type, within the session, over rated strokes (contact, no signal
+gap, at least one element judged): the session's first 20 are the reference,
+the last 10 the rolling window. Checked from 40 rated strokes of the type, or
+from 30 minutes into the session with at least 30.
+
+- **Active** when the median head speed of the window is ≥ 8 % below the
+  reference **and** either the median forward-swing time is ≥ 10 % longer or
+  the faults per stroke in the window are ≥ 2 × the reference rate (and at
+  least 0.3) and spread over ≥ 2 different elements.
+- **Clears** when the speed drop is back below 4 % (half the threshold, so it
+  does not flicker), or after a break of ≥ 3 minutes between strokes, which
+  also restarts the rolling window.
+- While active: no new focus is chosen and the focus is frozen (no
+  replacement, no ladder, no clearing); in learning and training "Take a
+  short break" is said once and not again for 10 minutes (without timestamps:
+  once per episode); faults are `fatigue-related`.
+
+### Phrase ladder and silence schedule (`coach/coachEngine.ts`)
+
+Per focus the coach counts the corrections actually heard. A persistent fault
+without improvement gets, on its faulty strokes:
+
+| Faulty stroke on the focus | Said | Utterance |
+| --- | --- | --- |
+| 1, 2 | cue variant v_b | `correction`, level b |
+| 3, 4 | v_(b+1) | `correction` |
+| 5 | v_(b+2) | `correction` |
+| 6 | "Try the drill" (only if no "Better"/"That's it" so far for this focus) | `stuck` |
+| then every 3rd faulty stroke (9, 12, …) | the variants in turn from v_b | `correction` |
+| the other strokes | — | `silent`, reason `ladder-sparse` |
+
+b is 0 for a new focus. A heard "Better" (or "That's it") resets the ladder:
+the count starts again and b becomes the variant that worked (the last one
+said). After a success the 6th stroke skips "Try the drill" and goes straight
+to the sparse schedule. Fixed → the correction's `reinforce` phrase (e.g.
+"Good. Keep that acceleration."), else "That's it"; the focus clears after 3
+ok strokes. The 3-in-a-row / 2-silent repeat limit still applies to every
+phrase, but for corrections it compares the ladder variant, so the ladder
+(never more than 2 equal variants in a row) never trips it; it limits
+"Better", "A little less" and the like.
+
+### Opposites, overcorrection, oscillation
+
+Opposite pairs (same metric, other side): face-open ↔ face-closed, path-flat
+↔ path-steep. slice-chop (slice path) and slice-face-closed (slice face) read
+different metrics and are **not** opposite; high-takeback, no-racket-drop,
+the timing and serve cues have no opposite element.
+
+- **Overcorrection**: focus X and X's opposite at fault (p ≥ pMin): "A little
+  less", focus stays X; after 3 such strokes in a row the focus switches to
+  the opposite.
+- **No contradiction**: a correction whose opposite was spoken (heard) in the
+  previous 5 strokes of that type is not said; "A little less" instead
+  (reason `contradiction`), the ladder does not advance.
+- **Oscillation**: when the faults of a pair switch sides ≥ 3 times in the
+  last 6 strokes of the type: "Same swing every time" (at most once per 10
+  strokes of the type) instead of either cue, silent otherwise; the focus is
+  kept.
+
+### Modes
+
+| Mode | Per stroke | Extra |
+| --- | --- | --- |
+| learning | as training; a correction is followed by its one-sentence `learningSpoken`, in one utterance (the speaker cancels a running phrase, so two queued phrases would cut each other off) | details on screen |
+| training | one short phrase: the ladder, "Better", reinforce, the feedback phrases | |
+| match | silent | a persistent major fault — the same correction in ≥ 5 of the last 8 rated strokes of a type, mean p ≥ 0.9, weight ≥ 0.8 — is said (variant 0) only between points: once no stroke has come for 8 s after the previous stroke's `capture.receivedAt` (a timer the controller restarts on every stroke, `matchIdle`), and at most once per 10 minutes. Never praise, no fatigue phrase |
+
+In match mode the coach still decides as if nothing were heard (focus,
+categories, fatigue), so every mode stores the same decisions for the session
+report. Settings before version 4: drill → training, rally → match.
+
+### Training plan (`coach/plan.ts`)
+
+`buildPlan(profile, language)`: up to 2 weaknesses, worsening first, then by
+weight × fault rate; each with the catalogue drill, 3 × 15 balls, the cue
+variant with the most "Better"s (stored per stroke as `coach.phraseLevel`;
+variant 0 when none) and a success criterion: fault rate on the next session
+below max(10 %, half the current rate), rounded up to 5 %. Plus one
+maintenance item (1 × 15 balls) for the correction whose per-session fault
+rate fell most (≥ 10 points) from its first to its latest session, target:
+no worse than now. `PlanEnhancer` is an optional asynchronous interface
+(e.g. a future AI rewriting the explanations); it is not implemented and
+never called in the stroke loop.
+
+### Controller signals
+
+`policy` (assessment config and catalogues from the inputs), `profile`
+(inputs + baseline, typical swing, weaknesses, progress, "Better"s per
+variant), `weaknesses`, `progress`, `plan`, `fatigue` / `fatigueActive`,
+`categories` (latest stroke), `lastSpeech`, and `utterance` with the kinds
+`correction | better | keep-it | good | silent | overcorrected | consistency
+| fatigue | stuck`.
 
 ## Coaching thresholds
 

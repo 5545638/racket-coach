@@ -28,7 +28,22 @@ const earlierStroke = (id: string, receivedAt: number): StrokeRecord => ({
   analysisVersion: 2,
 });
 
-async function setup(repository = new InMemoryRepository()) {
+/** Timers that run only when the test fires them. */
+class ManualTimers {
+  readonly pending: { fn: () => void; ms: number; cancelled: boolean }[] = [];
+  readonly set = (fn: () => void, ms: number): (() => void) => {
+    const timer = { fn, ms, cancelled: false };
+    this.pending.push(timer);
+    return () => {
+      timer.cancelled = true;
+    };
+  };
+  live() {
+    return this.pending.filter((t) => !t.cancelled);
+  }
+}
+
+async function setup(repository = new InMemoryRepository(), timers = new ManualTimers()) {
   const speaker = new SilentSpeaker();
   let id = 0;
   const controller = new CoachController({
@@ -37,6 +52,7 @@ async function setup(repository = new InMemoryRepository()) {
     now: () => 1_700_000_000_000,
     newId: () => `id-${++id}`,
     sleep: () => Promise.resolve(),
+    setTimer: timers.set,
     reconnectAttempts: 2,
   });
   await controller.init();
@@ -159,17 +175,92 @@ describe('CoachController end-to-end with the simulated sensor', () => {
     expect(again.metrics).toEqual(first.metrics);
   });
 
-  it('stays silent in rally mode', async () => {
+  it('stays silent per stroke in match mode', async () => {
     const { controller, speaker, transport } = await setup();
     await controller.capturePose('faceUp');
     await controller.capturePose('tipUp');
-    await controller.updateSettings({ mode: 'rally', speakGood: true });
+    await controller.updateSettings({ mode: 'match', speakGood: true });
     for (let i = 0; i < 4; i++) transport.emitSwing();
     expect(controller.strokes.value).toHaveLength(4);
     expect(speaker.spoken).toHaveLength(0);
     // Coaching still runs, so the session can be reviewed afterwards.
     expect(controller.utterance.value).not.toBeNull();
     expect(controller.strokes.value.every((s) => s.coach !== undefined)).toBe(true);
+  });
+
+  it('stores the adaptive coaching outcome and keeps the profile up to date', async () => {
+    const repository = new InMemoryRepository();
+    for (let i = 0; i < 20; i++) {
+      await repository.saveStroke(earlierStroke(`old-${String(i)}`, i));
+    }
+    const { controller, transport } = await setup(repository);
+    expect(controller.profile.value.typical.forehand.n).toBe(20);
+    await controller.capturePose('faceUp');
+    await controller.capturePose('tipUp');
+    for (let i = 0; i < 3; i++) transport.emitSwing();
+    for (const s of controller.strokes.value) {
+      expect(s.coach?.mode).toBe('training');
+      expect(s.coach?.fatigueActive).toBe(false);
+      expect(s.coach?.categories?.counts).toBeDefined();
+      expect(s.coach?.phraseLevel === null || typeof s.coach?.phraseLevel === 'number').toBe(true);
+    }
+    const typed = controller.strokes.value.filter((s) => s.metrics.impactDetected).length;
+    const total = Object.values(controller.profile.value.typical).reduce((n, t) => n + t.n, 0);
+    expect(total).toBe(20 + typed);
+    expect(controller.categories.value).not.toBeNull();
+    expect(controller.fatigueActive.value).toBe(false);
+    expect(controller.plan.value.items.length).toBeLessThanOrEqual(3);
+    expect(controller.weaknesses.value).toEqual(controller.profile.value.weaknesses);
+    expect(controller.progress.value.map((p) => p.sessionId)).toContain('id-1');
+  });
+
+  it('match mode: checks for a persistent major fault once play pauses, at most once per 10 min', async () => {
+    const timers = new ManualTimers();
+    const { controller, speaker, transport } = await setup(new InMemoryRepository(), timers);
+    await controller.capturePose('faceUp');
+    await controller.capturePose('tipUp');
+    await controller.updateSettings({ mode: 'match' });
+    transport.emitSwing();
+    transport.emitSwing();
+    // One live timer: the previous stroke's check is cancelled by the next stroke.
+    expect(timers.live()).toHaveLength(1);
+    expect(timers.live()[0]?.ms).toBe(8_000);
+    expect(speaker.spoken).toHaveLength(0);
+
+    // A pending major fault and a pause long enough: the cue is said once.
+    const state = controller.coachState.value;
+    controller.coachState.value = {
+      ...state,
+      lastStrokeAt: 1_700_000_000_000 - 9_000,
+      match: { pending: { correctionId: 'face-open', strokeType: 'forehand' }, lastSpokenAt: null },
+    };
+    timers.live()[0]?.fn();
+    expect(speaker.spoken).toEqual(['Face too open']);
+    expect(controller.utterance.value?.reason).toBe('persistent-major-fault');
+    controller.coachState.value = {
+      ...controller.coachState.value,
+      match: {
+        pending: { correctionId: 'face-open', strokeType: 'forehand' },
+        lastSpokenAt: 1_700_000_000_000,
+      },
+    };
+    controller.checkMatchBreak();
+    expect(speaker.spoken).toEqual(['Face too open']);
+  });
+
+  it('rebuilds the baseline when the playing hand changes', async () => {
+    const repository = new InMemoryRepository();
+    for (let i = 0; i < 20; i++) {
+      await repository.saveStroke(earlierStroke(`old-${String(i)}`, i));
+    }
+    const { controller } = await setup(repository);
+    const before = controller.baseline.value;
+    await controller.updateSettings({ dominantHand: 'left' });
+    expect(controller.policy.value.inputs.dominantHand).toBe('left');
+    expect(controller.baseline.value).not.toBe(before);
+    expect(controller.baselineCounts.value.forehand).toBe(20);
+    await controller.updateSettings({ level: 'beginner' });
+    expect(controller.policy.value.assess.pMin).toBe(0.85);
   });
 
   it('refuses the second calibration pose before the first', async () => {

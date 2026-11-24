@@ -181,6 +181,25 @@ function headlineFrom(
         detail: detailFor(utterance.reason),
         correctionId: null,
       };
+    case 'overcorrected':
+    case 'consistency':
+    case 'fatigue':
+    case 'stuck': {
+      const titles = {
+        overcorrected: t.live.overcorrected,
+        consistency: t.live.consistency,
+        fatigue: t.live.fatigue,
+        stuck: t.live.stuck,
+      } as const;
+      return {
+        kind: utterance.kind,
+        tone: utterance.kind === 'fatigue' ? 'none' : 'fix',
+        title: titles[utterance.kind],
+        spoken,
+        detail: id ? titleFor(id, language) : detailFor(utterance.reason),
+        correctionId: id,
+      };
+    }
     case 'silent': {
       // A stroke without contact is not a rated stroke at all.
       const reason: UtteranceReason =

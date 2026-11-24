@@ -28,14 +28,14 @@ describe('settings', () => {
     expect(resolveSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(
       resolveSettings({
-        mode: 'rally',
+        mode: 'match',
         speechRate: 9,
         leverRadiusM: 1.2,
         language: 'fr' as never,
       }),
     ).toEqual({
       ...DEFAULT_SETTINGS,
-      mode: 'rally',
+      mode: 'match',
       leverRadiusM: 1.2,
     });
   });

@@ -69,6 +69,11 @@ export interface Strings {
     readonly good: string;
     readonly counted: string;
     readonly voice: string;
+    /** Titles of the adaptive feedback phrases. */
+    readonly overcorrected: string;
+    readonly consistency: string;
+    readonly fatigue: string;
+    readonly stuck: string;
     /** Detail line under the headline, by what the coach decided (missing = none). */
     readonly detail: Readonly<Partial<Record<UtteranceReason, string>>>;
     readonly why: string;
@@ -117,8 +122,24 @@ export interface Strings {
     readonly saved: string;
     readonly feedback: string;
     readonly mode: string;
-    readonly drillMode: string;
-    readonly rallyMode: string;
+    readonly learningMode: string;
+    readonly trainingMode: string;
+    readonly matchMode: string;
+    readonly player: string;
+    readonly dominantHand: string;
+    readonly handRight: string;
+    readonly handLeft: string;
+    readonly backhand: string;
+    readonly twoHanded: string;
+    readonly oneHanded: string;
+    readonly forehandStyle: string;
+    readonly styleTopspin: string;
+    readonly styleFlat: string;
+    readonly styleMixed: string;
+    readonly level: string;
+    readonly levelBeginner: string;
+    readonly levelIntermediate: string;
+    readonly levelAdvanced: string;
     readonly speakGood: string;
     readonly speechRate: string;
     readonly language: string;
@@ -223,7 +244,15 @@ const en: Strings = {
     good: 'Good',
     counted: 'Counted',
     voice: 'Voice',
+    overcorrected: 'A little less',
+    consistency: 'Same swing every time',
+    fatigue: 'Take a short break',
+    stuck: 'Try the drill',
     detail: {
+      'ladder-sparse': 'Cue said less often now: try the drill below.',
+      oscillation: 'Faults swing between opposites: aim for the same swing.',
+      'fatigue-hold': 'You seem tired: no new corrections for now.',
+      contradiction: 'Too far the other way after the last cue.',
       'no-contact': 'No ball contact detected.',
       'not-assessable': 'Not enough data to judge this stroke yet.',
       'focus-not-assessable': 'The focus could not be judged on this stroke.',
@@ -283,8 +312,24 @@ const en: Strings = {
     saved: 'Calibration saved.',
     feedback: 'Feedback',
     mode: 'Mode',
-    drillMode: 'Drill: spoken cue after every stroke',
-    rallyMode: 'Rally: silent, review afterwards',
+    learningMode: 'Learning: cue plus a short explanation',
+    trainingMode: 'Training: one short cue per stroke',
+    matchMode: 'Match: silent, only a persistent major fault between points',
+    player: 'Player',
+    dominantHand: 'Playing hand',
+    handRight: 'Right',
+    handLeft: 'Left',
+    backhand: 'Backhand',
+    twoHanded: 'Two-handed',
+    oneHanded: 'One-handed',
+    forehandStyle: 'Forehand style',
+    styleTopspin: 'Topspin',
+    styleFlat: 'Flat',
+    styleMixed: 'Mixed',
+    level: 'Level',
+    levelBeginner: 'Beginner (fewer, basic cues)',
+    levelIntermediate: 'Intermediate',
+    levelAdvanced: 'Advanced',
     speakGood: 'Say “Good” when there is nothing to fix',
     speechRate: 'Speech rate',
     language: 'Language of explanations (voice is English)',
@@ -386,7 +431,15 @@ const et: Strings = {
     good: 'Hea',
     counted: 'Löök loetud',
     voice: 'Hääl',
+    overcorrected: 'Natuke vähem',
+    consistency: 'Iga kord sama löök',
+    fatigue: 'Tee väike paus',
+    stuck: 'Proovi harjutust',
     detail: {
+      'ladder-sparse': 'Märkust öeldakse nüüd harvem: proovi allolevat harjutust.',
+      oscillation: 'Vead kõiguvad vastassuundade vahel: püüa lüüa iga kord ühtemoodi.',
+      'fatigue-hold': 'Tundub, et oled väsinud: uusi parandusi praegu ei tule.',
+      contradiction: 'Eelmise märkuse järel liiga palju teisele poole.',
       'no-contact': 'Palli tabamust ei tuvastatud.',
       'not-assessable': 'Selle löögi hindamiseks on andmeid veel liiga vähe.',
       'focus-not-assessable': 'Fookust ei saanud sellel löögil hinnata.',
@@ -441,8 +494,24 @@ const et: Strings = {
     saved: 'Kalibreerimine salvestatud.',
     feedback: 'Tagasiside',
     mode: 'Režiim',
-    drillMode: 'Harjutus: hääl pärast iga lööki',
-    rallyMode: 'Rally: vaikne, vaata hiljem üle',
+    learningMode: 'Õppimine: märkus koos lühikese selgitusega',
+    trainingMode: 'Treening: üks lühike märkus löögi kohta',
+    matchMode: 'Mäng: vaikne, ainult püsiv suur viga punktide vahel',
+    player: 'Mängija',
+    dominantHand: 'Mängiv käsi',
+    handRight: 'Parem',
+    handLeft: 'Vasak',
+    backhand: 'Backhand',
+    twoHanded: 'Kahe käega',
+    oneHanded: 'Ühe käega',
+    forehandStyle: 'Forehandi stiil',
+    styleTopspin: 'Topspin',
+    styleFlat: 'Lame',
+    styleMixed: 'Segatud',
+    level: 'Tase',
+    levelBeginner: 'Algaja (vähem ja põhilisemad märkused)',
+    levelIntermediate: 'Keskmine',
+    levelAdvanced: 'Edasijõudnu',
     speakGood: 'Ütle „Good“, kui parandada pole midagi',
     speechRate: 'Kõne kiirus',
     language: 'Selgituste keel (hääl on inglise keeles)',

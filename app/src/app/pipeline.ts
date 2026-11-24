@@ -13,6 +13,7 @@ import {
   type StrokeAssessment,
   assessStroke,
 } from '../elements/assess';
+import { ELEMENT_CATALOG, type ElementSpec } from '../elements/catalog';
 import {
   type AnalysisParams,
   DEFAULT_ANALYSIS_PARAMS,
@@ -40,13 +41,15 @@ export function analyzeCapture(
   rules: RuleSet,
   baseline: PersonalBaseline = EMPTY_BASELINE,
   assessConfig: AssessConfig = DEFAULT_ASSESS_CONFIG,
+  /** Elements assessed: the player profile's coaching catalogue (coach/profile.ts). */
+  catalog: readonly ElementSpec[] = ELEMENT_CATALOG,
 ): StrokeAnalysis {
   // v2 M416 captures are spliced to 416 Hz (processing/highRate.ts).
   const metrics = analyzeSwing(seriesFromCapture(capture), calibration, params);
   return {
     metrics,
     cue: selectCue(metrics, rules),
-    assessment: assessStroke(metrics, baseline, assessConfig),
+    assessment: assessStroke(metrics, baseline, assessConfig, catalog),
   };
 }
 

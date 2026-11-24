@@ -32,7 +32,7 @@ has no knowledge of the browser.
 | Metrics | `metrics/analyzeSwing.ts` | Stroke metrics from one capture | none |
 | Coaching | `coaching/` | Rule limits, correction texts, session statistics | none |
 | Elements | `elements/` | Element catalogue and per-stroke assessment (population limits, personal band, Φ(d/σ)) | none |
-| Coach | `coach/` | Personal baseline; live coaching step (one focus per stroke type) | none |
+| Coach | `coach/` | Personal baseline; player profile, deviation categories, fatigue detector; live coaching step (one focus per stroke type, phrase ladder, modes); training plan | none |
 | Simulation | `simulation/` | Forward model of a swing; demo and tests | none |
 | Adapters | `transport/`, `storage/`, `feedback/` | Web Bluetooth, simulated sensor, IndexedDB, Web Speech | yes |
 | Application | `app/controller.ts` | Wires adapters to the pipeline; owns session state as signals | yes |
@@ -51,13 +51,20 @@ has no knowledge of the browser.
    attitude anchored in the quiet pre-swing phase → metrics and features →
    element assessment against population limits and the personal baseline
    (`assessStroke`).
-4. **`CoachController`** runs one `coachStep` (focus per stroke type, repeat
-   limits), voices `utterance.spoken` (drill mode only), adds the stroke to
-   the personal baseline, appends it to the session and persists the raw
-   capture together with its metrics, the coaching outcome and the provenance
-   needed to reproduce them (see [Persistence](#persistence)). The baseline is
+4. **`CoachController`** assesses with the player's policy (level, style,
+   hand), updates the fatigue detector, runs one `coachStep` (focus per
+   stroke type, phrase ladder, overcorrection, mode), voices `step.speech`
+   (learning and training; in match mode only a persistent major fault, from
+   a timer once play pauses), adds the stroke to the personal baseline and
+   the profile history, appends it to the session and persists the raw
+   capture together with its metrics, the coaching outcome (with categories,
+   mode, phrase level and fatigue flag) and the provenance needed to
+   reproduce them (see [Persistence](#persistence)). Baseline and profile are
    loaded from the most recent stored strokes at session start
-   ([coaching engine](metrics.md#coaching-engine)).
+   ([coaching engine](metrics.md#coaching-engine),
+   [adaptive coach](metrics.md#adaptive-coach)). The training plan is
+   derived from the profile; an optional asynchronous `PlanEnhancer` hook is
+   kept out of the stroke loop.
 
 ## Persistence
 
@@ -66,7 +73,9 @@ IndexedDB (`storage/repository.ts`), everything on the device. Stores:
 `capture.receivedAt` for `recentStrokes(limit)`, the cross-session query the
 personal baseline uses) and `kv` (per-device calibration, settings). Each
 stroke also keeps its coaching outcome (`coach`: utterance kind, correction,
-focus; absent on older records).
+focus, and since the adaptive coach mode, deviation categories, phrase level
+and fatigue flag; absent on older records). Settings (version 4) hold the
+coaching mode and the player inputs.
 
 **Reproducibility.** Raw data is kept so strokes can be re-analysed, which only
 works if the inputs are kept too. Every stroke record therefore stores, next to
@@ -105,13 +114,15 @@ tab's connection so the other tab's upgrade can proceed.
 | Speech start | 0.1–0.3 s |
 
 This is fast enough between fed balls; in rallies the cue would overlap the
-next shot, hence the silent **rally** mode.
+next shot, hence the **match** mode, silent per stroke and speaking only
+between points.
 
 ## Testing strategy
 
 - **Unit tests** for math, codec, CRC, calibration, rules, statistics, export,
-  element assessment, baseline and the coach (including scenario tests that
-  feed simulated strokes through assessment and coach).
+  element assessment, baseline, profile, categories, fatigue, plan and the
+  coach (including simulated-stroke tests and step-table scenario tests in
+  `app/test/coach/scenarios.test.ts`: stroke → what is said).
 - **Simulation tests**: `simulateSwing` produces sensor data from a known
   stroke geometry (face, path, speed, mounting); `analyzeSwing` must recover it,
   including with sensor noise, an arbitrarily rotated sensor, backhands,
