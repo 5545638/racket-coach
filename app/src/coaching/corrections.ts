@@ -723,7 +723,7 @@ const EXTRA: Record<
 /** Estonian spoken cues per correction (see `CorrectionText.spokenEt`). */
 const SPOKEN_ET: Record<CorrectionId, NonNullable<CorrectionText['spokenEt']>> = {
   'face-open': {
-    variants: ['Pind kinnisemaks', 'Kalluta keeled alla', 'Üle lindi, madalalt'],
+    variants: ['Sulge pinda veidi', 'Kalluta keeled alla', 'Üle lindi, madalalt'],
     reinforce: 'Hea. Pind on õige.',
     drillShort: 'teenindusjoon',
   },
@@ -773,7 +773,7 @@ const SPOKEN_ET: Record<CorrectionId, NonNullable<CorrectionText['spokenEt']>> =
     drillShort: 'üks-ja-kaks',
   },
   'stiff-arm': {
-    variants: ['Lõdvesta ranne', 'Lõdv käsi, kindel tabamus', 'Lase reketil maha jääda'],
+    variants: ['Lõdvesta ranne', 'Lõdv käsi, kindel tabamus', 'Lase reketil hilineda'],
     reinforce: 'Hea. Lõdv ja hiline kiirendus.',
     drillShort: 'jäik ja lõdv',
   },
@@ -803,12 +803,12 @@ const SPOKEN_ET: Record<CorrectionId, NonNullable<CorrectionText['spokenEt']>> =
     drillShort: 'poolkiirus',
   },
   'slow-recovery': {
-    variants: ['Taastu kiiremini', 'Reket ette tagasi', 'Hüpe, valmis'],
+    variants: ['Taastu kiiremini', 'Reket ette tagasi', 'Tee hüpe, valmis'],
     reinforce: 'Hea. Kiire taastumine.',
     drillShort: 'valmisasend',
   },
   'serve-no-drop': {
-    variants: ['Lase reket langeda', 'Lase selja taha langeda', 'Lase reket madalale'],
+    variants: ['Lase reketil langeda', 'Lase selja taha langeda', 'Reket madalale'],
     reinforce: 'Hea. Sügav reketi langus.',
     drillShort: 'aeglane serv',
   },
@@ -818,7 +818,7 @@ const SPOKEN_ET: Record<CorrectionId, NonNullable<CorrectionText['spokenEt']>> =
     drillShort: 'täis ulatus',
   },
   'serve-no-pronation': {
-    variants: ['Pööra reket üle', 'Pööra reket kiiresti üle', 'Lase sel üle veereda'],
+    variants: ['Pööra reket üle', 'Pööra reket kiiresti üle', 'Reket üle, keeled eemale'],
     reinforce: 'Hea. Reket pöördus üle.',
     drillShort: 'üle pööramine',
   },
