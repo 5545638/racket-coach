@@ -8,7 +8,10 @@ import {
 } from '../coach/baseline';
 import {
   type CoachConfig,
+  type CoachContext,
+  type CoachLane,
   type CoachState,
+  type CoachStep,
   DEFAULT_COACH_CONFIG,
   INITIAL_COACH_STATE,
   type Utterance,
@@ -16,8 +19,10 @@ import {
   cueForStroke,
   focusByStroke,
   focusOf,
+  laneOf,
   matchIdle,
   phraseLevelOf,
+  withCueUnheard,
   withoutFocus,
 } from '../coach/coachEngine';
 import { type FatigueState, initialFatigue, isFatigued, updateFatigue } from '../coach/fatigue';
@@ -42,11 +47,27 @@ import type {
   SensorDiagnostics,
   SensorStatus,
   SessionInfo,
+  SpokenLanguage,
   StrokeCoaching,
   StrokeRecord,
 } from '../domain/types';
 import type { StrokeAssessment } from '../elements/assess';
-import type { Speaker } from '../feedback/speech';
+import {
+  type DropReason,
+  type SpeechCategory,
+  type Speaker,
+  type VoiceInfo,
+  hasVoiceFor,
+} from '../feedback/speech';
+import {
+  FeedbackGate,
+  RallyDetector,
+  type SuppressReason,
+  categoryOf,
+  quantile,
+} from '../feedback/speechPolicy';
+import { TEST_PHRASES, type SystemPhrase } from '../feedback/speechStrings';
+import { strokeSpeech, systemSpeech } from '../feedback/spokenText';
 import { NO_SCREEN_LOCK, type ScreenLock } from '../feedback/wakeLock';
 import { type AnalysisParams, DEFAULT_ANALYSIS_PARAMS } from '../metrics/analyzeSwing';
 import { ANALYSIS_VERSION } from '../metrics/version';
@@ -92,6 +113,36 @@ export interface ControllerDeps {
 
 const MAX_LOG = 20;
 
+/** Battery level at or below which "Sensor battery low" is said (once per connection), %. */
+export const BATTERY_LOW_PERCENT = 15;
+
+/** Most latency samples kept per session. */
+const MAX_LATENCY_SAMPLES = 1000;
+
+/** Speech diagnostics of the current session. */
+export interface SpeechSessionStats {
+  /** Time from the stroke's `receivedAt` to `onstart`, per spoken stroke cue, ms. */
+  readonly latenciesMs: readonly number[];
+  readonly p50Ms: number | null;
+  readonly p95Ms: number | null;
+  /** Stroke cues the queue dropped (never started), by reason. */
+  readonly dropped: Readonly<Partial<Record<DropReason, number>>>;
+  /** Stroke cues the coach decided on but that were not spoken, by reason. */
+  readonly suppressed: Readonly<Partial<Record<SuppressReason, number>>>;
+}
+
+export const EMPTY_SPEECH_STATS: SpeechSessionStats = {
+  latenciesMs: [],
+  p50Ms: null,
+  p95Ms: null,
+  dropped: {},
+  suppressed: {},
+};
+
+/** Sum of the counts of a stats record (e.g. `speechStats.dropped`). */
+export const countOf = (counts: Readonly<Partial<Record<string, number>>>): number =>
+  Object.values(counts).reduce<number>((a, b) => a + (b ?? 0), 0);
+
 /**
  * A gap this long without a stroke ends the session: the next stroke (or a
  * reconnect after it) starts a new one. Engineering choice.
@@ -135,8 +186,26 @@ export class CoachController {
   readonly utterance = signal<Utterance | null>(null);
   /** Category counts of the latest stroke's elements. */
   readonly categories = signal<CategoryCounts | null>(null);
-  /** The latest phrase actually spoken by the coach (any kind), or null. */
+  /** The latest stroke phrase actually spoken (started) by the coach (any kind), or null. */
   readonly lastSpeech = signal<string | null>(null);
+
+  /* Speech (feedback/speech.ts, feedback/speechPolicy.ts). */
+  /** Quick mute (persisted in the settings): no stroke speech; system messages still spoken. */
+  readonly speechMuted = computed(() => this.settings.value.speechMuted);
+  /** Voices of the device (updated on voiceschanged). */
+  readonly voices = signal<readonly VoiceInfo[]>([]);
+  /** Language actually spoken: Estonian only when the device has an Estonian voice. */
+  readonly spokenLanguage = computed<SpokenLanguage>(() =>
+    this.settings.value.voice.lang === 'et' && hasVoiceFor(this.voices.value, 'et') ? 'et' : 'en',
+  );
+  /** Estonian is wanted but the device has no Estonian voice (English is spoken). */
+  readonly estonianVoiceMissing = computed(
+    () => this.settings.value.voice.lang === 'et' && this.spokenLanguage.value !== 'et',
+  );
+  /** Rally play detected from stroke timing (cues silenced when `autoRallyMute` is on). */
+  readonly rallyActive = signal(false);
+  /** Speech latency and drop counts of the current session. */
+  readonly speechStats = signal<SpeechSessionStats>(EMPTY_SPEECH_STATS);
   /** Fatigue detector of the current session (coach/fatigue.ts). */
   readonly fatigue = signal<FatigueState>(initialFatigue());
   /** The fatigue detector is active for any stroke type. */
@@ -210,6 +279,9 @@ export class CoachController {
   private readonly staticTimeoutMs: number;
   private readonly reconnectAttempts: number;
   private readonly reconnectDelayMs: number;
+  private gate = new FeedbackGate();
+  private rally = new RallyDetector();
+  private batteryWarned = false;
 
   constructor(private readonly deps: ControllerDeps) {
     this.screenLock = deps.screenLock ?? NO_SCREEN_LOCK;
@@ -230,12 +302,21 @@ export class CoachController {
     this.reconnectAttempts = deps.reconnectAttempts ?? 5;
     this.reconnectDelayMs = deps.reconnectDelayMs ?? 2000;
     this.assembler = new CaptureAssembler(this.now);
+    this.refreshVoices();
+    deps.speaker.onVoicesChanged?.(() => {
+      this.refreshVoices();
+    });
   }
 
   async init(): Promise<void> {
     await this.safely('Loading settings', async () => {
       this.settings.value = resolveSettings(await this.deps.repository.loadSettings());
     });
+  }
+
+  /** Re-reads the device's voices (iOS fills the list lazily). */
+  refreshVoices(): void {
+    this.voices.value = this.deps.speaker.voices?.() ?? [];
   }
 
   /* ---------------------------------------------------------- connection */
@@ -247,6 +328,8 @@ export class CoachController {
    */
   async connect(transport: SensorTransport): Promise<void> {
     this.deps.speaker.prime();
+    this.refreshVoices();
+    this.batteryWarned = false;
     const generation = ++this.generation;
     await this.closeLink();
     if (generation !== this.generation) return; // disconnect() was called meanwhile
@@ -335,9 +418,8 @@ export class CoachController {
   /** The link dropped without the user asking: say so and try to recover. */
   private async reconnect(transport: SensorTransport, generation: number): Promise<void> {
     this.reconnecting = true;
-    const rate = this.settings.value.speechRate;
     this.appendLog('Sensor disconnected.');
-    this.deps.speaker.say('Sensor disconnected', rate);
+    this.saySystem('disconnected');
     try {
       for (let attempt = 1; attempt <= this.reconnectAttempts; attempt++) {
         await this.sleep(this.reconnectDelayMs);
@@ -351,7 +433,7 @@ export class CoachController {
           }
           await transport.send(Uint8Array.of(Command.RequestStatus));
           this.appendLog(`Reconnected (attempt ${attempt}).`);
-          this.deps.speaker.say('Sensor connected', rate);
+          this.saySystem('connected');
           // Back after a long gap: that is a new session.
           if (this.sessionEnded(this.now())) await this.startSession();
           return;
@@ -362,7 +444,7 @@ export class CoachController {
       if (generation === this.generation) {
         // Said after disconnect(), which drops queued speech.
         await this.disconnect();
-        this.deps.speaker.say('Sensor lost', rate);
+        this.saySystem('lost');
       }
     } finally {
       this.reconnecting = false;
@@ -402,6 +484,10 @@ export class CoachController {
     this.utterance.value = null;
     this.categories.value = null;
     this.lastSpeech.value = null;
+    this.gate = new FeedbackGate();
+    this.rally.reset();
+    this.rallyActive.value = false;
+    this.speechStats.value = EMPTY_SPEECH_STATS;
     this.fatigue.value = initialFatigue(startedAt);
     this.stopMatchTimer();
     await this.safely('Saving session', () => this.deps.repository.saveSession(session));
@@ -459,10 +545,29 @@ export class CoachController {
     this.settings.value = next;
     if (modeChanged) this.transport?.setSensorMode?.(this.sensorMode());
     if (next.mode !== 'match') this.stopMatchTimer();
+    // Silenced now: cues still queued or speaking are dropped (system messages stay).
+    const silenced = (x: Settings) => x.speechMuted || x.feedbackFrequency === 'off';
+    if (silenced(next) && !silenced(before)) this.deps.speaker.cancel?.('stroke');
     // A cue heard in one coaching mode is not built on in another.
     if (next.mode !== before.mode) this.coachState.value = withoutFocus(this.coachState.value);
     await this.safely('Saving settings', () => this.deps.repository.saveSettings(next));
     if (catalogChanged && this.session.value) await this.loadBaseline();
+  }
+
+  /** Quick mute toggle for the training screen (persisted). */
+  async toggleMute(): Promise<void> {
+    await this.updateSettings({ speechMuted: !this.settings.value.speechMuted });
+  }
+
+  /** Speaks a sample phrase with the current voice profile. Call from a tap (it unlocks iOS speech). */
+  testSpeech(): void {
+    const lang = this.spokenLanguage.value;
+    this.deps.speaker.say({
+      text: TEST_PHRASES[lang],
+      lang,
+      category: 'info',
+      voice: this.settings.value.voice,
+    });
   }
 
   /* --------------------------------------------------------- calibration */
@@ -565,6 +670,10 @@ export class CoachController {
       switch (event.type) {
         case 'status':
           this.status.value = event.status;
+          if (event.status.batteryPercent <= BATTERY_LOW_PERCENT && !this.batteryWarned) {
+            this.batteryWarned = true;
+            this.saySystem('batteryLow');
+          }
           break;
         case 'diagnostics':
           this.diagnostics.value = event.diagnostics;
@@ -606,6 +715,9 @@ export class CoachController {
     // startSession() switches everything synchronously before its first await.
     if (this.sessionEnded(capture.receivedAt)) void this.startSession();
     const session = this.session.value;
+    // Cues of earlier strokes that have not started yet are superseded by this
+    // stroke. Dropping them first lets the coach step below see what was really heard.
+    this.deps.speaker.cancel?.('queued-stroke');
 
     const settings = this.settings.value;
     const analysisParams: AnalysisParams = {
@@ -637,12 +749,30 @@ export class CoachController {
       capture.receivedAt,
     );
     const fatigueActive = isFatigued(fatigue, assessment.strokeType);
-    const step = coachStep(this.coachState.value, assessment, this.fullCoachConfig(), true, {
+    const config = this.fullCoachConfig();
+    const context: CoachContext = {
       mode: settings.mode,
       receivedAt: capture.receivedAt,
       fatigueActive,
       preferredLevels: this.preferredLevels.value,
-    });
+    };
+    const before = this.coachState.value;
+    const lane = laneOf(assessment.strokeType, assessment.swingStyle);
+    const strokeNo = this.gate.nextStroke();
+    const inRally = this.rally.observe(capture.receivedAt);
+    this.rallyActive.value = inRally;
+    let step = coachStep(before, assessment, config, true, context);
+    // The coach decided; mute, rally and frequency decide whether it is said.
+    // A cue that will not be said is decided again as unheard, so the coach
+    // does not build on it (no ladder step, no "Better" / reinforce for it).
+    if (step.speech !== null) {
+      const reason = this.suppression(step, lane, inRally);
+      if (reason !== null) {
+        this.countSpeech('suppressed', reason);
+        step = coachStep(before, assessment, config, false, context);
+      }
+    }
+    const unheard = () => coachStep(before, assessment, config, false, context).state;
     const { utterance } = step;
     const coach: StrokeCoaching = {
       utterance: utterance.kind,
@@ -679,7 +809,9 @@ export class CoachController {
     this.strokes.value = [...this.strokes.value, record];
 
     // Match mode: everything is computed and stored; speech only between points.
-    if (step.speech !== null) this.speak(step.speech);
+    if (step.speech !== null) {
+      this.speakStroke(step, step.speech, lane, strokeNo, capture.receivedAt, unheard);
+    }
     if (settings.mode === 'match') this.scheduleMatchCheck();
 
     void this.safely('Saving stroke', () => this.deps.repository.saveStroke(record));
@@ -691,9 +823,84 @@ export class CoachController {
     return { ...this.coachConfig, speakGood: this.settings.value.speakGood };
   }
 
-  private speak(text: string): void {
-    this.lastSpeech.value = text;
-    this.deps.speaker.say(text, this.settings.value.speechRate);
+  /* --------------------------------------------------------------- speech */
+
+  /** Why the coach's phrase for a stroke is not said, or null to say it. Match mode: never per stroke. */
+  private suppression(step: CoachStep, lane: CoachLane, inRally: boolean): SuppressReason | null {
+    const settings = this.settings.value;
+    if (settings.speechMuted) return 'muted';
+    if (settings.autoRallyMute && inRally && settings.mode !== 'match') return 'rally';
+    const text = strokeSpeech(step.utterance, step.speech ?? '', this.spokenLanguage.value).text;
+    return this.gate.allows(settings.feedbackFrequency, step.utterance.kind, lane, text);
+  }
+
+  /**
+   * Queues a stroke's phrase. When it starts, it is heard: the frequency gate
+   * and `lastSpeech` learn it. When the queue drops it, the coach state is
+   * corrected: re-decided as unheard if nothing happened since (`unheard`),
+   * else the cue is marked unheard (withCueUnheard).
+   */
+  private speakStroke(
+    step: CoachStep,
+    speech: string,
+    lane: CoachLane,
+    strokeNo: number,
+    receivedAt: number,
+    unheard: () => CoachState,
+  ): void {
+    const { utterance } = step;
+    const { text, lang } = strokeSpeech(utterance, speech, this.spokenLanguage.value);
+    this.deps.speaker.say({
+      text,
+      lang,
+      category: categoryOf(utterance.kind),
+      voice: this.settings.value.voice,
+      createdAt: receivedAt,
+      onStart: (latencyMs) => {
+        this.lastSpeech.value = text;
+        this.gate.heard(utterance.kind, lane, text, strokeNo);
+        this.recordLatency(latencyMs);
+      },
+      onDrop: (reason) => {
+        this.countSpeech('dropped', reason);
+        if (this.coachState.value === step.state) {
+          this.coachState.value = unheard();
+        } else if (utterance.kind === 'correction' && utterance.correctionId !== undefined) {
+          this.coachState.value = withCueUnheard(
+            this.coachState.value,
+            lane,
+            utterance.correctionId,
+          );
+        }
+      },
+    });
+  }
+
+  private saySystem(key: SystemPhrase): void {
+    const { text, lang } = systemSpeech(key, this.spokenLanguage.value);
+    this.deps.speaker.say({ text, lang, category: 'system', voice: this.settings.value.voice });
+  }
+
+  private recordLatency(latencyMs: number): void {
+    const stats = this.speechStats.value;
+    const latenciesMs = [...stats.latenciesMs, Math.max(0, latencyMs)].slice(-MAX_LATENCY_SAMPLES);
+    this.speechStats.value = {
+      ...stats,
+      latenciesMs,
+      p50Ms: quantile(latenciesMs, 0.5),
+      p95Ms: quantile(latenciesMs, 0.95),
+    };
+  }
+
+  private countSpeech(field: 'dropped', reason: DropReason): void;
+  private countSpeech(field: 'suppressed', reason: SuppressReason): void;
+  private countSpeech(field: 'dropped' | 'suppressed', reason: string): void {
+    const stats = this.speechStats.value;
+    const counts: Partial<Record<string, number>> = stats[field];
+    this.speechStats.value = {
+      ...stats,
+      [field]: { ...counts, [reason]: (counts[reason] ?? 0) + 1 },
+    };
   }
 
   /** Checks for a persistent major fault once play has paused (no stroke for the quiet time). */
@@ -709,11 +916,23 @@ export class CoachController {
   /** Speaks a pending persistent major fault if play has paused (match mode). */
   checkMatchBreak(): void {
     if (this.settings.value.mode !== 'match') return;
+    // Muted: the pending fault waits for the next break after unmuting.
+    if (this.settings.value.speechMuted) return;
     const idle = matchIdle(this.coachState.value, this.now(), this.fullCoachConfig());
     if (idle === null) return;
     this.coachState.value = idle.state;
     this.utterance.value = idle.utterance;
-    this.speak(idle.speech);
+    const { text, lang } = strokeSpeech(idle.utterance, idle.speech, this.spokenLanguage.value);
+    const category: SpeechCategory = 'correction';
+    this.deps.speaker.say({
+      text,
+      lang,
+      category,
+      voice: this.settings.value.voice,
+      onStart: () => {
+        this.lastSpeech.value = text;
+      },
+    });
   }
 
   private stopMatchTimer(): void {

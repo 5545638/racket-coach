@@ -67,11 +67,6 @@ describe('settings version 3: baseline reset timestamp', () => {
 });
 
 describe('settings version 4: coaching modes and player inputs', () => {
-  it('is version 4', () => {
-    expect(SETTINGS_VERSION).toBe(4);
-    expect(DEFAULT_SETTINGS.version).toBe(4);
-  });
-
   it('maps the old modes: drill → training, rally → match', () => {
     expect(resolveSettings(legacy({ version: 3, mode: 'drill' })).mode).toBe('training');
     expect(resolveSettings(legacy({ version: 3, mode: 'rally' })).mode).toBe('match');
@@ -89,7 +84,7 @@ describe('settings version 4: coaching modes and player inputs', () => {
   it('defaults the player inputs for version 3 settings and keeps valid ones', () => {
     const migrated = resolveSettings(legacy({ version: 3, mode: 'drill', language: 'en' }));
     expect(migrated).toMatchObject({
-      version: 4,
+      version: SETTINGS_VERSION,
       dominantHand: 'right',
       backhand: 'two-handed',
       forehandStyle: 'mixed',
@@ -117,5 +112,130 @@ describe('settings version 4: coaching modes and player inputs', () => {
       forehandStyle: 'mixed',
       level: 'intermediate',
     });
+  });
+});
+
+describe('settings version 5: speech', () => {
+  it('is version 5 with the speech defaults', () => {
+    expect(SETTINGS_VERSION).toBe(5);
+    expect(DEFAULT_SETTINGS).toMatchObject({
+      version: 5,
+      feedbackFrequency: 'every',
+      voice: { lang: 'en', rate: 1.1, pitch: 1, volume: 1 },
+      speechMuted: false,
+      autoRallyMute: false,
+    });
+    expect(DEFAULT_SETTINGS.voice.voiceURI).toBeUndefined();
+  });
+
+  /** Settings as stored by each earlier version (with the then-current fields). */
+  const stored: Record<string, Record<string, unknown>> = {
+    unversioned: {
+      mode: 'drill',
+      language: 'et',
+      speakGood: true,
+      speechRate: 1.4,
+      leverRadiusM: 1.0,
+    },
+    v2: {
+      version: 2,
+      mode: 'rally',
+      language: 'en',
+      speakGood: false,
+      speechRate: 0.8,
+      leverRadiusM: 0.9,
+    },
+    v3: {
+      version: 3,
+      mode: 'drill',
+      language: 'et',
+      speakGood: false,
+      speechRate: 1.6,
+      leverRadiusM: 0.72,
+      baselineResetAt: 5,
+    },
+    v4: {
+      version: 4,
+      mode: 'learning',
+      language: 'en',
+      speakGood: true,
+      speechRate: 1.2,
+      leverRadiusM: 0.72,
+      baselineResetAt: 0,
+      experimentalM416: true,
+      dominantHand: 'left',
+      backhand: 'one-handed',
+      forehandStyle: 'flat',
+      level: 'advanced',
+    },
+  };
+
+  it.each(Object.entries(stored))(
+    'migrates %s settings: rate from speechRate, other speech fields default',
+    (_name, old) => {
+      const migrated = resolveSettings(legacy(old));
+      expect(migrated.version).toBe(5);
+      expect(migrated.voice).toEqual({
+        lang: 'en',
+        rate: old['speechRate'],
+        pitch: 1,
+        volume: 1,
+      });
+      expect(migrated.feedbackFrequency).toBe('every');
+      expect(migrated.speechMuted).toBe(false);
+      expect(migrated.autoRallyMute).toBe(false);
+      expect('speechRate' in migrated).toBe(false);
+      expect(migrated.speakGood).toBe(old['speakGood']);
+      expect(migrated.language).toBe(old['language']);
+    },
+  );
+
+  it('keeps the other fields of version 4 settings', () => {
+    expect(resolveSettings(legacy(stored['v4'] ?? {}))).toMatchObject({
+      mode: 'learning',
+      experimentalM416: true,
+      dominantHand: 'left',
+      backhand: 'one-handed',
+      forehandStyle: 'flat',
+      level: 'advanced',
+    });
+  });
+
+  it('falls back to the default rate for a missing or invalid old speechRate', () => {
+    expect(resolveSettings(legacy({ version: 4 })).voice.rate).toBe(1.1);
+    expect(resolveSettings(legacy({ version: 4, speechRate: 7 })).voice.rate).toBe(1.1);
+  });
+
+  it('keeps valid version 5 speech settings and repairs malformed ones', () => {
+    const current = resolveSettings({
+      feedbackFrequency: 'every3',
+      voice: { lang: 'et', voiceURI: 'com.apple.voice.Karl', rate: 0.9, pitch: 1.3, volume: 0.5 },
+      speechMuted: true,
+      autoRallyMute: true,
+    });
+    expect(current).toMatchObject({
+      feedbackFrequency: 'every3',
+      voice: { lang: 'et', voiceURI: 'com.apple.voice.Karl', rate: 0.9, pitch: 1.3, volume: 0.5 },
+      speechMuted: true,
+      autoRallyMute: true,
+    });
+    // A round trip keeps it (the version 5 rate wins over any leftover speechRate).
+    expect(resolveSettings(legacy({ ...current, speechRate: 2 }))).toEqual(current);
+    const broken = resolveSettings(
+      legacy({
+        feedbackFrequency: 'sometimes',
+        voice: { lang: 'fi', voiceURI: '', rate: 5, pitch: -1, volume: 3 },
+        speechMuted: 'yes',
+        autoRallyMute: 1,
+      }),
+    );
+    expect(broken).toMatchObject({
+      feedbackFrequency: 'every',
+      voice: { lang: 'en', rate: 1.1, pitch: 1, volume: 1 },
+      speechMuted: false,
+      autoRallyMute: false,
+    });
+    expect(broken.voice.voiceURI).toBeUndefined();
+    expect(resolveSettings(legacy({ voice: 'loud' })).voice).toEqual(DEFAULT_SETTINGS.voice);
   });
 });

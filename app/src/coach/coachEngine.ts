@@ -1213,3 +1213,24 @@ export function cueForStroke(utterance: Utterance, assessment: StrokeAssessment)
   );
   return counted ? NOT_RATED_CUE : NO_READING_CUE;
 }
+
+/**
+ * Hook for speech that was decided as heard but never reached the player
+ * (dropped by the speech queue after later state changes, e.g. a stuck
+ * engine): forgets that the lane's focus cue `correctionId` was heard, so no
+ * "Better" or reinforce phrase builds on it until a cue is heard again.
+ * Everything else stays. Unchanged state when the lane's focus is another.
+ */
+export function withCueUnheard(
+  state: CoachState,
+  lane: CoachLane,
+  correctionId: CorrectionId,
+): CoachState {
+  const own = state.byLane[lane];
+  const focus = own.focus;
+  if (focus?.correctionId !== correctionId || focus.lastHeardLevel === null) return state;
+  return {
+    ...state,
+    byLane: { ...state.byLane, [lane]: { ...own, focus: { ...focus, lastHeardLevel: null } } },
+  };
+}

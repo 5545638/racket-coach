@@ -2,6 +2,7 @@ import type { CoachController } from '../app/controller';
 import { DEFAULT_ASSESS_CONFIG } from '../elements/assess';
 import { DEFAULT_BASELINE_CONFIG } from '../coach/baseline';
 import type { Settings } from '../domain/types';
+import { SpeechSettings } from './SpeechSettings';
 import { strings } from './strings';
 
 /** One radio group bound to a settings field. */
@@ -179,19 +180,7 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
         />
         {t.setup.speakGood}
       </label>
-      <label class="field">
-        {t.setup.speechRate} {settings.speechRate.toFixed(1)}×
-        <input
-          type="range"
-          min="0.5"
-          max="2"
-          step="0.1"
-          value={settings.speechRate}
-          onChange={(e) => {
-            void controller.updateSettings({ speechRate: Number(e.currentTarget.value) });
-          }}
-        />
-      </label>
+      <SpeechSettings controller={controller} />
 
       <h2>{t.setup.model}</h2>
       <label class="field">
