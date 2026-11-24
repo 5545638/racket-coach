@@ -204,7 +204,8 @@ const en: Strings = {
     language: 'Language of explanations (voice is English)',
     model: 'Model',
     lever: 'Swing radius (centre of rotation to sweet spot)',
-    leverHint: 'Scales the racket speed estimate only (default 0.72 m). Angles do not depend on it.',
+    leverHint:
+      'Scales the racket speed estimate only (default 0.72 m). Angles do not depend on it.',
     firmware: 'Firmware',
     protocol: 'protocol',
   },
@@ -313,7 +314,8 @@ const et: Strings = {
     language: 'Selgituste keel (hääl on inglise keeles)',
     model: 'Mudel',
     lever: 'Hoova pikkus (pöördekeskmest tabamispunktini)',
-    leverHint: 'Mõjutab ainult reketi kiiruse hinnangut (vaikimisi 0,72 m). Nurgad sellest ei sõltu.',
+    leverHint:
+      'Mõjutab ainult reketi kiiruse hinnangut (vaikimisi 0,72 m). Nurgad sellest ei sõltu.',
     firmware: 'Püsivara',
     protocol: 'protokoll',
   },
