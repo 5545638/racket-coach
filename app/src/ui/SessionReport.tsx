@@ -13,6 +13,7 @@ import { sessionAdaptive, planViews } from './profileViewModel';
 import { type ReportStrings, reportStrings } from './reportStrings';
 import { strings } from './strings';
 import { titleFor } from './viewModel';
+import { CORRECTIONS } from '../coaching/corrections';
 
 const percent = (share: number | null): string =>
   share === null ? '—' : `${Math.round(share * 100)}%`;
@@ -82,6 +83,10 @@ export function SessionReport({ controller }: { readonly controller: CoachContro
   const report = buildTrainingReport(strokes);
   const adaptive = sessionAdaptive(strokes, language);
   const focus = planViews(controller.plan.value, language).find((p) => p.kind === 'weakness');
+  // No profile weakness yet (first sessions): fall back to this session's most
+  // frequent fault when it is clear (≥ 5 faults on ≥ 20 % of judged strokes).
+  const sessionFocus =
+    focus === undefined ? report.errors.find((e) => e.count >= 5 && e.share >= 0.2) : undefined;
   const mode = report.mode ?? controller.settings.value.mode;
   const duration = durationText(report.durationMs, r);
   const typeName: Record<StrokeType, string> = r.totals;
@@ -284,6 +289,17 @@ export function SessionReport({ controller }: { readonly controller: CoachContro
                   <dd>{focus.drill}</dd>
                 </dl>
                 <p class="plan-target">{focus.target}</p>
+              </>
+            ) : sessionFocus ? (
+              <>
+                <p class="cue fix small">
+                  {CORRECTIONS[language][sessionFocus.correctionId].title}
+                </p>
+                <dl class="guidance">
+                  <dt>{r.drill}</dt>
+                  <dd>{CORRECTIONS[language][sessionFocus.correctionId].drill}</dd>
+                </dl>
+                <p class="hint">{r.focusFromSession}</p>
               </>
             ) : (
               <p class="hint">{r.focusEmpty}</p>

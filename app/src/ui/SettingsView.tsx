@@ -57,7 +57,11 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
       <h2>{t.setup.calibration}</h2>
       <p class="hint">
         {calibration
-          ? t.setup.calibrated(new Date(calibration.createdAt).toLocaleDateString())
+          ? t.setup.calibrated(
+              new Date(calibration.createdAt).toLocaleDateString(
+                settings.language === 'et' ? 'et-EE' : 'en-GB',
+              ),
+            )
           : t.setup.calibrationNeeded}
       </p>
       {controller.temperatureWarning.value && (
@@ -226,7 +230,13 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
         </button>
       </div>
       {settings.baselineResetAt > 0 && (
-        <p class="hint">{t.setup.resetDone(new Date(settings.baselineResetAt).toLocaleString())}</p>
+        <p class="hint">
+          {t.setup.resetDone(
+            new Date(settings.baselineResetAt).toLocaleString(
+              settings.language === 'et' ? 'et-EE' : 'en-GB',
+            ),
+          )}
+        </p>
       )}
 
       <h2>{t.setup.sensor}</h2>

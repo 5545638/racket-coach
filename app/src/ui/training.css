@@ -51,6 +51,14 @@ button.big {
   height: 12px;
 }
 
+/* On narrow phones the green dot alone shows the link; a name cut to
+   "R…" helps nobody. */
+@media (max-width: 400px) {
+  .sb-name {
+    display: none;
+  }
+}
+
 .sb-name {
   font-weight: 600;
   font-size: 0.95rem;

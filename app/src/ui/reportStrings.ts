@@ -44,6 +44,7 @@ export interface ReportStrings {
   readonly noHalfData: string;
   readonly focusTitle: string;
   readonly focusEmpty: string;
+  readonly focusFromSession: string;
   readonly drill: string;
   readonly detailsTitle: string;
   readonly verdictTitle: string;
@@ -104,6 +105,7 @@ const et: ReportStrings = {
   noHalfData: 'vähe andmeid',
   focusTitle: 'Järgmise trenni fookus',
   focusEmpty: 'Selget fookust veel pole. Tee rohkem lööke, et kavast saaks plaan.',
+  focusFromSession: 'Selle trenni sagedasem viga. Profiili plaan täpsustub järgmistel trennidel.',
   drill: 'Harjutus',
   detailsTitle: 'Detailid löögitüübi kaupa',
   verdictTitle: 'Löögid hinnangu järgi',
@@ -193,6 +195,8 @@ const en: ReportStrings = {
   noHalfData: 'little data',
   focusTitle: 'Focus for the next session',
   focusEmpty: 'No clear focus yet. Hit more strokes to get a plan.',
+  focusFromSession:
+    'The most frequent fault in this session. The profile plan sharpens over the next sessions.',
   drill: 'Drill',
   detailsTitle: 'Details by stroke type',
   verdictTitle: 'Strokes by reading',
