@@ -170,7 +170,7 @@ const EN: Record<CorrectionId, CorrectionText> = {
     spoken: 'Turn earlier',
     title: 'Small turn',
     explanation:
-      'During the take-back the racket turned less about the vertical than in your usual stroke, which usually means the body turned less too.',
+      'During the take-back the racket turned less about the vertical than in your usual stroke. The sensor sees only the racket, not how much your body turned.',
     adjustment: 'Turn your shoulders sideways to the net as the racket goes back.',
     drill:
       'Shadow swings, turning until your back shoulder points at the net and holding for a moment before swinging.',
@@ -374,7 +374,7 @@ const ET: Record<CorrectionId, CorrectionText> = {
     spoken: EN['small-turn'].spoken,
     title: 'Väike pööre',
     explanation:
-      'Tagahoo ajal pöördus reket vertikaaltelje ümber vähem kui sinu tavalisel löögil, mis tähendab tavaliselt, et ka keha pöördus vähem.',
+      'Tagahoo ajal pöördus reket vertikaaltelje ümber vähem kui sinu tavalisel löögil. Andur näeb ainult reketit, mitte seda, kui palju keha pöördus.',
     adjustment: 'Pööra õlad reketi taha minnes võrguga risti.',
     drill: 'Varjulöögid: pööra, kuni tagumine õlg näitab võrgu poole, ja hoia hetk enne löömist.',
   },
