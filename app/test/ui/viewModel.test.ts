@@ -111,7 +111,7 @@ describe('live view model: focus and baseline', () => {
     expect(m.focus.correctionId).toBe('path-flat');
     expect(m.focus.status).toBe('fault');
     const p = assessStroke(flat, EMPTY_BASELINE).faults[0]?.probability ?? 0;
-    expect(m.focus.confidencePercent).toBe(Math.round(p * 100));
+    expect(m.focus.confidencePercent).toBe(Math.min(99, Math.round(p * 100)));
     expect(m.focus.comparedWith).toBe('Võrdlus: viitepiirid');
   });
 
