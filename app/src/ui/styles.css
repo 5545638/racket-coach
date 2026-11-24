@@ -335,7 +335,7 @@ h4 {
 
 .gauge-label {
   fill: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .wrist {
@@ -354,4 +354,9 @@ h4 {
 .wrist.unknown {
   color: var(--muted);
   font-weight: 400;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

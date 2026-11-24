@@ -1,3 +1,5 @@
+import { TARGET_BANDS } from '../coaching/defaultRules';
+
 const DASH = '—';
 
 export function deg(value: number | null): string {
@@ -17,3 +19,12 @@ export function ms(value: number | null, signed = true): string {
 export function dps(value: number | null): string {
   return value === null ? DASH : `${value.toFixed(0)} °/s`;
 }
+
+const signed = (n: number): string => (n < 0 ? `−${-n}` : `${n}`);
+
+/** Target bands shown next to each value, derived from the rule limits (defaultRules.ts). */
+export const TARGETS = {
+  face: `${signed(TARGET_BANDS.face.min)}…${signed(TARGET_BANDS.face.max)}°`,
+  path: `${TARGET_BANDS.path.min}…${TARGET_BANDS.path.max}°`,
+  timing: `≥ ${signed(TARGET_BANDS.peakSpeedOffsetMs.min)} ms`,
+} as const;

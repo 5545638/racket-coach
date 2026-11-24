@@ -18,19 +18,20 @@ export interface Guidance {
 export const GUIDANCE: Record<Language, Record<string, Guidance>> = {
   en: {
     'face-open': {
-      meaning: 'At contact the strings pointed up, so the ball flies long or floats.',
-      fix: 'Close the face slightly: keep the knuckles over the handle and lead with the edge of the racket.',
+      meaning: 'At contact the strings pointed up, so the ball may fly long or float.',
+      fix: 'Aim the ball a little lower over the net, just above the tape, and let the racket keep moving forward after contact.',
       drill: 'Feed 20 easy balls and aim to land them inside the service line with full swings.',
     },
     'face-closed': {
       meaning: 'At contact the strings pointed down, so the ball dives into the net.',
-      fix: 'Open the face a little and meet the ball further in front of you.',
-      drill: 'Rally to a target one metre over the net tape; count clearances out of 20.',
+      fix: 'Aim the ball higher over the net and meet it further in front of you.',
+      drill:
+        'Rally to a target one metre above the net tape; count how many of 20 balls clear that target.',
     },
     'slice-face-closed': {
       meaning:
         'On a slice the strings should point slightly up; here they pointed down, so the ball dives.',
-      fix: 'Lay the face back a little and carry the ball on the strings.',
+      fix: 'Send the ball out slightly higher and let it ride on the strings for a moment.',
       drill: 'Slice from the service line and make the ball float deep with backspin.',
     },
     'slice-chop': {
@@ -58,7 +59,8 @@ export const GUIDANCE: Record<Language, Record<string, Guidance>> = {
     'path-steep': {
       meaning: 'The racket went almost straight up: lots of spin but no depth or pace.',
       fix: 'Send the racket out towards the target before it rises.',
-      drill: 'Hit through three balls in a row laid on the court in front of you (imagined line).',
+      drill:
+        'Lay three balls or cones in a line towards the target and swing out along that line before the racket rises.',
     },
     'accelerated-early': {
       meaning: 'The racket was already slowing down when it met the ball.',
@@ -80,9 +82,10 @@ export const GUIDANCE: Record<Language, Record<string, Guidance>> = {
     },
     'stiff-arm': {
       meaning:
-        'The racket moved together with the arm instead of lagging and whipping through. This is an indirect hint of a tight wrist or grip.',
-      fix: 'Hold the grip at 4 out of 10 and let the racket head trail the hand into contact.',
-      drill: 'Hit with only three fingers and the thumb on the handle to feel the lag.',
+        "The racket moved together with the arm instead of lagging and whipping through, which can go with a tight wrist. This signal is an indirect proxy (the timing of the racket's peak angular acceleration) and has not been shown to measure wrist looseness.",
+      fix: 'Keep the wrist relaxed through the swing and let it firm up only at contact.',
+      drill:
+        'Shadow swings, alternating deliberately stiff and deliberately relaxed ones to feel the difference; then slow feeds with the relaxed version.',
     },
     'short-finish': {
       meaning: 'The swing stopped soon after contact.',
@@ -96,7 +99,7 @@ export const GUIDANCE: Record<Language, Record<string, Guidance>> = {
       drill: '',
     },
     good: {
-      meaning: 'Everything measured was inside the target range.',
+      meaning: 'Every assessed metric was inside the target range.',
       fix: 'Repeat it.',
       drill: '',
     },
@@ -104,19 +107,20 @@ export const GUIDANCE: Record<Language, Record<string, Guidance>> = {
   et: {
     'face-open': {
       meaning:
-        'Tabamuse hetkel olid keeled suunatud üles, seepärast lendab pall pikaks või jääb hõljuma.',
-      fix: 'Sulge reketipinda veidi: hoia sõrmenukid käepideme peal ja juhi lööki reketi servaga.',
+        'Tabamuse hetkel olid keeled suunatud üles, seepärast võib pall minna pikaks või jääda hõljuma.',
+      fix: 'Sihi pall võrgu kohal veidi madalamale, lindi lähedale, ja lase reketil pärast tabamust edasi liikuda.',
       drill: 'Sööda 20 kerget palli ja löö need täishooga teenindusjoone sisse.',
     },
     'face-closed': {
       meaning: 'Tabamuse hetkel olid keeled suunatud alla, seepärast läheb pall võrku.',
-      fix: 'Ava pinda veidi ja taba palli rohkem enda ees.',
-      drill: 'Löö sihtmärki, mis on meeter võrgulindist kõrgemal; loe 20 löögist, mitu läks üle.',
+      fix: 'Sihi pall võrgu kohal kõrgemale ja taba see rohkem enda ees.',
+      drill:
+        'Löö sihtmärki, mis on meeter võrgulindist kõrgemal; loe 20 löögist kokku, mitu palli läks sellest sihtmärgist kõrgemalt üle.',
     },
     'slice-face-closed': {
       meaning:
         "Slice'i puhul peavad keeled olema veidi üles suunatud; siin olid need alla ja pall sukeldub.",
-      fix: 'Kalluta pinda veidi taha ja kanna palli keelte peal.',
+      fix: 'Saada pall veidi kõrgemale ja lase sel hetkeks keelte peal kanduda.',
       drill: "Löö slice'i teenindusjoonelt nii, et pall hõljub tagasipöörlemisega sügavale.",
     },
     'slice-chop': {
@@ -139,35 +143,37 @@ export const GUIDANCE: Record<Language, Record<string, Guidance>> = {
     },
     'no-racket-drop': {
       meaning: 'Reketi pea jäi enne ettelööki üles, seega polnud kust üles lüüa.',
-      fix: 'Lase hooväljavõtte lõpus reketi pea käest madalamale vajuda ja löö siis üles.',
-      drill: 'Varilöögid: peata reket nii, et tipp näitab selja taga maha, ja löö sealt.',
+      fix: 'Lase tagahoo lõpus reketi pea käest madalamale vajuda ja löö siis üles.',
+      drill: 'Varjulöögid: peata reket nii, et tipp näitab selja taga maha, ja löö sealt.',
     },
     'path-steep': {
       meaning: 'Reket liikus peaaegu otse üles: palju spinni, aga pikkust ja kiirust pole.',
       fix: 'Saada reket enne tõusu sihtmärgi suunas välja.',
-      drill: 'Kujutle kolme palli reas enda ees ja löö neist kõigist läbi.',
+      drill:
+        'Pane kolm palli või koonust sihtmärgi suunas ritta ja lase reketil enne tõusu mööda seda joont edasi liikuda.',
     },
     'accelerated-early': {
-      meaning: 'Reket juba aeglustus, kui see pallini jõudis.',
+      meaning: 'Reket oli juba aeglustumas, kui see pallini jõudis.',
       fix: 'Alusta sujuvamalt ja hoia löögi kiireim osa tabamuse ja sellele järgneva hetke jaoks.',
-      drill: 'Löö 60% jõuga ja kuula, et „vihin" kostaks keha eest, mitte kõrvalt.',
+      drill: 'Löö 60% jõuga ja kuula, et „vihin“ kostaks keha ees, mitte küljel.',
     },
     'open-takeback': {
       meaning:
-        'Hooväljavõtte madalaimas punktis olid keeled taeva poole; pinda tuleb siis teel üles parandada.',
-      fix: 'Hoia keeled reketi langemisel maa poole („patsuta koera").',
-      drill: 'Varilöögid peegli ees, kontrolli pinda madalaimas punktis.',
+        'Tagahoo madalaimas punktis olid keeled taeva poole; pinda tuleb siis teel üles korrigeerida.',
+      fix: 'Hoia keeled reketi langemisel maa poole („patsuta koera“).',
+      drill: 'Varjulöögid peegli ees: kontrolli pinda madalaimas punktis.',
     },
     hitch: {
-      meaning: 'Reket jäi hooväljavõtte ja ettelöögi vahel seisma ning hoog läks kaotsi.',
+      meaning: 'Reket jäi tagahoo ja ettelöögi vahel seisma ning hoog läks kaotsi.',
       fix: 'Tee üks katkematu silmus: taha, alla ja üles ilma peatuseta.',
-      drill: 'Loe löögi ajal „üks-ja-kaks"; „ja" peal ei tohi pausi olla.',
+      drill: 'Loe löögi ajal „üks-ja-kaks“; „ja“ peal ei tohi pausi olla.',
     },
     'stiff-arm': {
       meaning:
-        'Reket liikus käega koos, selle asemel et maha jääda ja piitsana läbi tulla. See on kaudne vihje pinges randmele või haardele.',
-      fix: 'Hoia haaret tugevusega 4/10 ja lase reketi peal käest maha jääda kuni tabamuseni.',
-      drill: 'Löö nii, et käepidemel on ainult kolm sõrme ja pöial, et tunda reketi mahajäämist.',
+        'Reket liikus käega koos, selle asemel et maha jääda ja piitsana läbi tulla; see võib viidata pingul olevale randmele. See signaal on kaudne näitaja (reketi nurkkiirenduse tipu ajastus) ja pole tõestatud, et see mõõdab randme lõtvust.',
+      fix: 'Hoia ranne löögi ajal lõdvana ja lase sel kinnituda alles tabamuse hetkel.',
+      drill:
+        'Varjulöögid, kus vaheldumisi tahtlikult jäigalt ja tahtlikult lõdvalt, et vahet tunda; seejärel aeglased söödud pallid lõdva variandiga.',
     },
     'short-finish': {
       meaning: 'Löök peatus kohe pärast tabamust.',
@@ -176,12 +182,12 @@ export const GUIDANCE: Record<Language, Record<string, Guidance>> = {
     },
     'no-reading': {
       meaning:
-        'Reket ei olnud enne lööki paigal või liikus anduri jaoks liiga kiiresti, seega nurki ei saanud mõõta.',
+        'Reket ei olnud enne lööki paigal või liikus anduri jaoks liiga kiiresti, seega ei saanud nurki mõõta.',
       fix: 'Hoia reketit enne iga palli hetkeks valmisasendis paigal.',
       drill: '',
     },
     good: {
-      meaning: 'Kõik mõõdetu oli sihtvahemikus.',
+      meaning: 'Kõik hinnatud näitajad olid sihtvahemikus.',
       fix: 'Korda sama.',
       drill: '',
     },

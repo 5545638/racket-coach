@@ -125,7 +125,7 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
 
       {status && (
         <p class="hint">
-          {t.setup.firmware} {status.firmwareVersion} · protocol v{status.protocolVersion}
+          {t.setup.firmware} {status.firmwareVersion} · {t.setup.protocol} v{status.protocolVersion}
         </p>
       )}
     </section>

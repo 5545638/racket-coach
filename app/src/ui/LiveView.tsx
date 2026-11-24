@@ -2,15 +2,8 @@ import type { CoachController } from '../app/controller';
 import { guidanceFor } from '../coaching/guidance';
 import { wristHint } from '../coaching/wrist';
 import { FaceGauge } from './FaceGauge';
-import { deg, dps, kmh, ms } from './format';
-import { strings } from './strings';
-
-/** Literature target bands shown next to each value; see docs/metrics.md. */
-const TARGETS = {
-  face: '−20…−5°',
-  path: '17…48°',
-  timing: '≈ 0 ms',
-} as const;
+import { TARGETS, deg, dps, kmh, ms } from './format';
+import { cueLabel, strings } from './strings';
 
 export function LiveView({ controller }: { readonly controller: CoachController }) {
   const language = controller.settings.value.language;
@@ -34,7 +27,7 @@ export function LiveView({ controller }: { readonly controller: CoachController 
   const target = (band: string): string | null => (groundstroke ? `${t.target} ${band}` : null);
 
   return (
-    <section class="live" aria-live="polite">
+    <section class="live">
       <p class="stroke-type">
         <span>
           {t.stroke[m.strokeType]}
@@ -43,7 +36,9 @@ export function LiveView({ controller }: { readonly controller: CoachController 
         </span>
         <span class="count">#{count}</span>
       </p>
-      <p class={`cue ${stroke.cue.severity}`}>{stroke.cue.text}</p>
+      <p class={`cue ${stroke.cue.severity}`} aria-live="polite">
+        {cueLabel(t, stroke.cue.ruleId, stroke.cue.text)}
+      </p>
 
       {guidance && (
         <dl class="guidance">

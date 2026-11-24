@@ -1,10 +1,11 @@
+import { TARGET_BANDS } from '../coaching/defaultRules';
 import type { Strings } from './strings';
 
 const SIZE = 120;
 const CENTRE = SIZE / 2;
 const LENGTH = 46;
-/** Literature target band for topspin groundstrokes, degrees (see docs/metrics.md). */
-const TARGET: readonly [number, number] = [-20, -5];
+/** Target band for topspin groundstrokes, degrees; the face rules' limits. */
+const TARGET: readonly [number, number] = [TARGET_BANDS.face.min, TARGET_BANDS.face.max];
 
 /** End point of the racket face line for a face tilt, seen from the side with the target to the right. */
 function end(tiltDeg: number, sign: 1 | -1): string {

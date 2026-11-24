@@ -3,7 +3,7 @@ import { toCsv, toJson } from '../app/export';
 import { guidanceFor } from '../coaching/guidance';
 import { buildSessionReport } from '../coaching/sessionReport';
 import { type Statistic, summarize } from '../coaching/summary';
-import { strings } from './strings';
+import { cueLabel, strings } from './strings';
 
 /**
  * Hands a file to the user. Uses the share sheet where available (iOS web
@@ -56,7 +56,7 @@ export function SessionView({ controller }: { readonly controller: CoachControll
         <h3>{t.session.focusTitle}</h3>
         {report.focus && focusGuidance ? (
           <>
-            <p class="cue fix small">{report.focus.cue}</p>
+            <p class="cue fix small">{cueLabel(t, report.focus.ruleId, report.focus.cue)}</p>
             <p class="note">
               {t.session.focusLine(
                 t.stroke[report.focus.strokeType],
@@ -120,7 +120,7 @@ export function SessionView({ controller }: { readonly controller: CoachControll
                 <ul class="faults">
                   {faults.slice(0, 3).map((f) => (
                     <li key={f.ruleId}>
-                      {f.cue}{' '}
+                      {cueLabel(t, f.ruleId, f.cue)}{' '}
                       <span class="count">
                         {f.count}× · {percent(f.share)}
                       </span>

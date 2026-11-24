@@ -4,6 +4,7 @@ import { SilentSpeaker, WebSpeechSpeaker } from './feedback/speech';
 import { BrowserScreenLock, NO_SCREEN_LOCK } from './feedback/wakeLock';
 import { IndexedDbRepository } from './storage/repository';
 import { App } from './ui/App';
+import { strings } from './ui/strings';
 import './ui/styles.css';
 
 async function bootstrap(): Promise<void> {
@@ -24,5 +25,7 @@ async function bootstrap(): Promise<void> {
 
 bootstrap().catch((error: unknown) => {
   console.error(error);
-  document.body.textContent = 'Racket Coach failed to start. Is private browsing enabled?';
+  const language = navigator.language.toLowerCase().startsWith('et') ? 'et' : 'en';
+  document.documentElement.lang = language;
+  document.body.textContent = strings(language).startupError;
 });
