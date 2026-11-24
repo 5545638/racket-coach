@@ -114,7 +114,7 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
           type="range"
           min="0.5"
           max="2"
-          step="0.05"
+          step="0.01"
           value={settings.leverRadiusM}
           onChange={(e) => {
             void controller.updateSettings({ leverRadiusM: Number(e.currentTarget.value) });
