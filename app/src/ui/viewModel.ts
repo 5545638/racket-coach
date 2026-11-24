@@ -249,7 +249,8 @@ function focusModel(
       correctionId: focus,
       title,
       status: 'fault',
-      confidencePercent: Math.round(verdict.probability * 100),
+      // Capped at 99 %: a model estimate is never certain.
+      confidencePercent: Math.min(99, Math.round(verdict.probability * 100)),
       comparedWith: comparedWith(verdict, t),
       statusText: null,
     };
@@ -339,13 +340,6 @@ const sigmaOf = (m: StrokeMetrics, key: FeatureSigmaKey): number | null =>
 
 const ROWS: readonly RowSpec[] = [
   {
-    id: 'preparationTime',
-    group: 'preparation',
-    label: (t) => t.metric.preparationTime,
-    unit: 'ms',
-    plain: (m) => ({ value: m.preparationTimeMs }),
-  },
-  {
     id: 'takebackTurn',
     group: 'preparation',
     label: (t) => t.metric.takebackTurn,
@@ -384,7 +378,9 @@ const ROWS: readonly RowSpec[] = [
     unit: 'ms',
     metric: 'takebackTimeMs',
     plain: (m) => ({
-      value: m.features?.takebackTimeMs ?? null,
+      // Same quantity as the legacy preparationTimeMs; strokes analysed
+      // before the features existed fall back to it (without σ).
+      value: m.features?.takebackTimeMs ?? m.preparationTimeMs,
       sigma: sigmaOf(m, 'takebackTimeMs'),
     }),
   },

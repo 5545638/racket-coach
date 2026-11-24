@@ -282,3 +282,12 @@ describe('session coach summary', () => {
     expect(sessionCoachSummary([])).toEqual([]);
   });
 });
+
+describe('display formatting', () => {
+  it('uses a typographic minus and never shows −0', async () => {
+    const { deg, minus } = await import('../../src/ui/format');
+    expect(deg(-12.2)).toBe('−12°');
+    expect(deg(-0.3)).toBe('0°');
+    expect(minus('-18')).toBe('−18');
+  });
+});

@@ -2,6 +2,7 @@ import type { CoachController } from '../app/controller';
 import { toCsv, toJson } from '../app/export';
 import { buildSessionReport } from '../coaching/sessionReport';
 import { type Statistic, summarize } from '../coaching/summary';
+import { minus } from './format';
 import { strings } from './strings';
 import { guidanceBlocks, sessionCoachSummary, titleFor } from './viewModel';
 
@@ -29,8 +30,15 @@ async function saveFile(filename: string, content: string, type: string): Promis
   }, 60_000);
 }
 
+/** Session start in the UI language's own date format. */
+const sessionDate = (startedAt: number, language: 'et' | 'en'): string =>
+  new Date(startedAt).toLocaleString(language === 'et' ? 'et-EE' : 'en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
 const stat = (s: Statistic | null, unit: string, factor = 1): string =>
-  s ? `${(s.mean * factor).toFixed(0)} ± ${(s.sd * factor).toFixed(0)}${unit}` : '—';
+  s ? `${minus((s.mean * factor).toFixed(0))} ± ${(s.sd * factor).toFixed(0)}${unit}` : '—';
 
 const percent = (share: number): string => `${(share * 100).toFixed(0)}%`;
 
@@ -49,7 +57,7 @@ export function SessionView({ controller }: { readonly controller: CoachControll
     <section class="session">
       <h2>
         {t.session.title}
-        {session ? ` · ${session.label}` : ''}
+        {session ? ` · ${sessionDate(session.startedAt, language)}` : ''}
       </h2>
       <p class="hint">{t.session.strokes(report.totalStrokes, report.unrated)}</p>
 

@@ -2,8 +2,13 @@ import { TARGET_BANDS } from '../coaching/defaultRules';
 
 const DASH = '—';
 
+/** Typographic minus for display ("−12", not "-12"); never "−0". */
+export function minus(text: string): string {
+  return text.replace(/^-(?=0*(\.0*)?$)/, '').replace(/^-/, '−');
+}
+
 export function deg(value: number | null): string {
-  return value === null ? DASH : `${value.toFixed(0)}°`;
+  return value === null ? DASH : `${minus(value.toFixed(0))}°`;
 }
 
 export function kmh(mps: number, lowerBound = false): string {
