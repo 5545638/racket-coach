@@ -1,0 +1,1025 @@
+{
+  "version": 1,
+  "phrases": {
+    "en": [
+      {
+        "text": "A bigger turn stores more power and gives the swing more room.",
+        "key": "A bigger turn stores more power and gives the swing more room"
+      },
+      {
+        "text": "A deeper drop gives the racket more distance to build speed.",
+        "key": "A deeper drop gives the racket more distance to build speed"
+      },
+      {
+        "text": "A face pointing down early needs no fixing on the way up.",
+        "key": "A face pointing down early needs no fixing on the way up"
+      },
+      {
+        "text": "A little less",
+        "key": "A little less"
+      },
+      {
+        "text": "A loose arm lets the racket lag, then whip through the ball.",
+        "key": "A loose arm lets the racket lag, then whip through the ball"
+      },
+      {
+        "text": "A pause wastes momentum, so one flowing loop gives more speed.",
+        "key": "A pause wastes momentum, so one flowing loop gives more speed"
+      },
+      {
+        "text": "A slightly open face lets the slice float instead of diving.",
+        "key": "A slightly open face lets the slice float instead of diving"
+      },
+      {
+        "text": "A smaller loop makes your timing simpler and more repeatable.",
+        "key": "A smaller loop makes your timing simpler and more repeatable"
+      },
+      {
+        "text": "A smooth rhythm carries speed all the way up to the ball.",
+        "key": "A smooth rhythm carries speed all the way up to the ball"
+      },
+      {
+        "text": "A steady racket face sends the ball where you aim.",
+        "key": "A steady racket face sends the ball where you aim"
+      },
+      {
+        "text": "Accelerate through contact",
+        "key": "Accelerate through contact"
+      },
+      {
+        "text": "Better",
+        "key": "Better"
+      },
+      {
+        "text": "Brush up the back",
+        "key": "Brush up the back"
+      },
+      {
+        "text": "Building speed late puts the fastest racket moment at the ball.",
+        "key": "Building speed late puts the fastest racket moment at the ball"
+      },
+      {
+        "text": "Carry on past contact",
+        "key": "Carry on past contact"
+      },
+      {
+        "text": "Drive through the ball",
+        "key": "Drive through the ball"
+      },
+      {
+        "text": "Drop the racket",
+        "key": "Drop the racket"
+      },
+      {
+        "text": "Drop the racket head",
+        "key": "Drop the racket head"
+      },
+      {
+        "text": "Dropping the tip gives you room to swing up through the ball.",
+        "key": "Dropping the tip gives you room to swing up through the ball"
+      },
+      {
+        "text": "Early preparation gives you time for a smooth, unhurried swing.",
+        "key": "Early preparation gives you time for a smooth, unhurried swing"
+      },
+      {
+        "text": "Face down on the take-back",
+        "key": "Face down on the take-back"
+      },
+      {
+        "text": "Face too closed",
+        "key": "Face too closed"
+      },
+      {
+        "text": "Face too open",
+        "key": "Face too open"
+      },
+      {
+        "text": "Fastest after the ball",
+        "key": "Fastest after the ball"
+      },
+      {
+        "text": "Fastest at the top",
+        "key": "Fastest at the top"
+      },
+      {
+        "text": "Finish your swing",
+        "key": "Finish your swing"
+      },
+      {
+        "text": "Finishing across your body lets the racket keep speeding through contact.",
+        "key": "Finishing across your body lets the racket keep speeding through contact"
+      },
+      {
+        "text": "Finishing fully means you accelerate through the ball instead of braking.",
+        "key": "Finishing fully means you accelerate through the ball instead of braking"
+      },
+      {
+        "text": "Follow through across you",
+        "key": "Follow through across you"
+      },
+      {
+        "text": "Getting ready quickly prepares you for the next ball.",
+        "key": "Getting ready quickly prepares you for the next ball"
+      },
+      {
+        "text": "Going out toward the target adds depth and pace to your spin.",
+        "key": "Going out toward the target adds depth and pace to your spin"
+      },
+      {
+        "text": "Good",
+        "key": "Good"
+      },
+      {
+        "text": "Good. Compact take-back.",
+        "key": "Good. Compact take-back"
+      },
+      {
+        "text": "Good. Deep racket drop.",
+        "key": "Good. Deep racket drop"
+      },
+      {
+        "text": "Good. Early preparation.",
+        "key": "Good. Early preparation"
+      },
+      {
+        "text": "Good. Face is open enough.",
+        "key": "Good. Face is open enough"
+      },
+      {
+        "text": "Good. Face is square.",
+        "key": "Good. Face is square"
+      },
+      {
+        "text": "Good. Face opened up.",
+        "key": "Good. Face opened up"
+      },
+      {
+        "text": "Good. Face stays down.",
+        "key": "Good. Face stays down"
+      },
+      {
+        "text": "Good. Forward, not down.",
+        "key": "Good. Forward, not down"
+      },
+      {
+        "text": "Good. Full finish.",
+        "key": "Good. Full finish"
+      },
+      {
+        "text": "Good. Full serve finish.",
+        "key": "Good. Full serve finish"
+      },
+      {
+        "text": "Good. Full turn.",
+        "key": "Good. Full turn"
+      },
+      {
+        "text": "Good. Keep that acceleration.",
+        "key": "Good. Keep that acceleration"
+      },
+      {
+        "text": "Good. Loose and late acceleration.",
+        "key": "Good. Loose and late acceleration"
+      },
+      {
+        "text": "Good. Nice low-to-high path.",
+        "key": "Good. Nice low-to-high path"
+      },
+      {
+        "text": "Good. Path drives forward.",
+        "key": "Good. Path drives forward"
+      },
+      {
+        "text": "Good. Quick recovery.",
+        "key": "Good. Quick recovery"
+      },
+      {
+        "text": "Good. Racket head dropped nicely.",
+        "key": "Good. Racket head dropped nicely"
+      },
+      {
+        "text": "Good. Racket tip high at contact.",
+        "key": "Good. Racket tip high at contact"
+      },
+      {
+        "text": "Good. Racket turned over.",
+        "key": "Good. Racket turned over"
+      },
+      {
+        "text": "Good. Smooth serve rhythm.",
+        "key": "Good. Smooth serve rhythm"
+      },
+      {
+        "text": "Good. Smooth, continuous swing.",
+        "key": "Good. Smooth, continuous swing"
+      },
+      {
+        "text": "Good. Speed built toward contact.",
+        "key": "Good. Speed built toward contact"
+      },
+      {
+        "text": "Good. Steady through contact.",
+        "key": "Good. Steady through contact"
+      },
+      {
+        "text": "Hit at full height",
+        "key": "Hit at full height"
+      },
+      {
+        "text": "Hitting higher gives a better angle and more margin.",
+        "key": "Hitting higher gives a better angle and more margin"
+      },
+      {
+        "text": "Hold the finish",
+        "key": "Hold the finish"
+      },
+      {
+        "text": "Keep it compact",
+        "key": "Keep it compact"
+      },
+      {
+        "text": "Keep the racket accelerating longer",
+        "key": "Keep the racket accelerating longer"
+      },
+      {
+        "text": "Keep the swing flowing",
+        "key": "Keep the swing flowing"
+      },
+      {
+        "text": "Let it fall behind",
+        "key": "Let it fall behind"
+      },
+      {
+        "text": "Let it roll over",
+        "key": "Let it roll over"
+      },
+      {
+        "text": "Let the ball ride",
+        "key": "Let the ball ride"
+      },
+      {
+        "text": "Let the racket drop low",
+        "key": "Let the racket drop low"
+      },
+      {
+        "text": "Let the racket lag",
+        "key": "Let the racket lag"
+      },
+      {
+        "text": "Let the tip fall",
+        "key": "Let the tip fall"
+      },
+      {
+        "text": "Lift it over the net",
+        "key": "Lift it over the net"
+      },
+      {
+        "text": "Loose arm, firm contact",
+        "key": "Loose arm, firm contact"
+      },
+      {
+        "text": "Loosen the wrist",
+        "key": "Loosen the wrist"
+      },
+      {
+        "text": "Lower take-back",
+        "key": "Lower take-back"
+      },
+      {
+        "text": "No pause, one motion",
+        "key": "No pause, one motion"
+      },
+      {
+        "text": "Now too closed",
+        "key": "Now too closed"
+      },
+      {
+        "text": "Now too flat",
+        "key": "Now too flat"
+      },
+      {
+        "text": "Now too open",
+        "key": "Now too open"
+      },
+      {
+        "text": "Now too steep",
+        "key": "Now too steep"
+      },
+      {
+        "text": "One smooth loop",
+        "key": "One smooth loop"
+      },
+      {
+        "text": "One smooth motion",
+        "key": "One smooth motion"
+      },
+      {
+        "text": "Open the face for the slice",
+        "key": "Open the face for the slice"
+      },
+      {
+        "text": "Pat the dog",
+        "key": "Pat the dog"
+      },
+      {
+        "text": "Prepare earlier",
+        "key": "Prepare earlier"
+      },
+      {
+        "text": "Racket back in front",
+        "key": "Racket back in front"
+      },
+      {
+        "text": "Racket back sooner",
+        "key": "Racket back sooner"
+      },
+      {
+        "text": "Reach up",
+        "key": "Reach up"
+      },
+      {
+        "text": "Ready before the bounce",
+        "key": "Ready before the bounce"
+      },
+      {
+        "text": "Recover faster",
+        "key": "Recover faster"
+      },
+      {
+        "text": "Same swing every time",
+        "key": "Same swing every time"
+      },
+      {
+        "text": "Send it just over tape",
+        "key": "Send it just over tape"
+      },
+      {
+        "text": "Send it toward the target",
+        "key": "Send it toward the target"
+      },
+      {
+        "text": "Sensor battery low",
+        "key": "Sensor battery low"
+      },
+      {
+        "text": "Sensor connected",
+        "key": "Sensor connected"
+      },
+      {
+        "text": "Sensor disconnected",
+        "key": "Sensor disconnected"
+      },
+      {
+        "text": "Sensor lost",
+        "key": "Sensor lost"
+      },
+      {
+        "text": "Show your back",
+        "key": "Show your back"
+      },
+      {
+        "text": "Skid it low and long",
+        "key": "Skid it low and long"
+      },
+      {
+        "text": "Slice through the ball, not down",
+        "key": "Slice through the ball, not down"
+      },
+      {
+        "text": "Small, tidy loop",
+        "key": "Small, tidy loop"
+      },
+      {
+        "text": "Smooth through the ball",
+        "key": "Smooth through the ball"
+      },
+      {
+        "text": "Snap the racket over",
+        "key": "Snap the racket over"
+      },
+      {
+        "text": "Speed up toward the ball",
+        "key": "Speed up toward the ball"
+      },
+      {
+        "text": "Split step, ready",
+        "key": "Split step, ready"
+      },
+      {
+        "text": "Start below the ball",
+        "key": "Start below the ball"
+      },
+      {
+        "text": "Steady through contact",
+        "key": "Steady through contact"
+      },
+      {
+        "text": "Strings slightly skyward",
+        "key": "Strings slightly skyward"
+      },
+      {
+        "text": "Strings stay on target",
+        "key": "Strings stay on target"
+      },
+      {
+        "text": "Strings tilted down send the ball into the net, so aim higher.",
+        "key": "Strings tilted down send the ball into the net, so aim higher"
+      },
+      {
+        "text": "Strings tilted up send the ball long, so aim lower.",
+        "key": "Strings tilted up send the ball long, so aim lower"
+      },
+      {
+        "text": "Strings toward the ground",
+        "key": "Strings toward the ground"
+      },
+      {
+        "text": "Swing all the way through",
+        "key": "Swing all the way through"
+      },
+      {
+        "text": "Swing forward, not down",
+        "key": "Swing forward, not down"
+      },
+      {
+        "text": "Swing like a pendulum",
+        "key": "Swing like a pendulum"
+      },
+      {
+        "text": "Swing low to high",
+        "key": "Swing low to high"
+      },
+      {
+        "text": "Swing out before up",
+        "key": "Swing out before up"
+      },
+      {
+        "text": "Swinging forward keeps the slice low and deep instead of sitting up.",
+        "key": "Swinging forward keeps the slice low and deep instead of sitting up"
+      },
+      {
+        "text": "Swinging low to high adds topspin and margin over the net.",
+        "key": "Swinging low to high adds topspin and margin over the net"
+      },
+      {
+        "text": "Take a short break",
+        "key": "Take a short break"
+      },
+      {
+        "text": "That's it",
+        "key": "That's it"
+      },
+      {
+        "text": "Tilt the face down",
+        "key": "Tilt the face down"
+      },
+      {
+        "text": "Tilt the face up",
+        "key": "Tilt the face up"
+      },
+      {
+        "text": "Tip toward the ground",
+        "key": "Tip toward the ground"
+      },
+      {
+        "text": "Toss a bit higher",
+        "key": "Toss a bit higher"
+      },
+      {
+        "text": "Try the brush-up drill",
+        "key": "Try the brush-up drill"
+      },
+      {
+        "text": "Try the catch-the-racket drill",
+        "key": "Try the catch-the-racket drill"
+      },
+      {
+        "text": "Try the drill",
+        "key": "Try the drill"
+      },
+      {
+        "text": "Try the floating slice drill",
+        "key": "Try the floating slice drill"
+      },
+      {
+        "text": "Try the full-reach drill",
+        "key": "Try the full-reach drill"
+      },
+      {
+        "text": "Try the half-pace drill",
+        "key": "Try the half-pace drill"
+      },
+      {
+        "text": "Try the mirror drill",
+        "key": "Try the mirror drill"
+      },
+      {
+        "text": "Try the net-clearance drill",
+        "key": "Try the net-clearance drill"
+      },
+      {
+        "text": "Try the one-and-two drill",
+        "key": "Try the one-and-two drill"
+      },
+      {
+        "text": "Try the one-two rhythm drill",
+        "key": "Try the one-two rhythm drill"
+      },
+      {
+        "text": "Try the opposite-hip drill",
+        "key": "Try the opposite-hip drill"
+      },
+      {
+        "text": "Try the point-and-turn drill",
+        "key": "Try the point-and-turn drill"
+      },
+      {
+        "text": "Try the ready-position drill",
+        "key": "Try the ready-position drill"
+      },
+      {
+        "text": "Try the serve whoosh drill",
+        "key": "Try the serve whoosh drill"
+      },
+      {
+        "text": "Try the service-line drill",
+        "key": "Try the service-line drill"
+      },
+      {
+        "text": "Try the shoulder-turn drill",
+        "key": "Try the shoulder-turn drill"
+      },
+      {
+        "text": "Try the skidding slice drill",
+        "key": "Try the skidding slice drill"
+      },
+      {
+        "text": "Try the slow-motion serve drill",
+        "key": "Try the slow-motion serve drill"
+      },
+      {
+        "text": "Try the stiff-loose drill",
+        "key": "Try the stiff-loose drill"
+      },
+      {
+        "text": "Try the target-line drill",
+        "key": "Try the target-line drill"
+      },
+      {
+        "text": "Try the tip-down drill",
+        "key": "Try the tip-down drill"
+      },
+      {
+        "text": "Try the turn-over drill",
+        "key": "Try the turn-over drill"
+      },
+      {
+        "text": "Try the wall drill",
+        "key": "Try the wall drill"
+      },
+      {
+        "text": "Try the whoosh drill",
+        "key": "Try the whoosh drill"
+      },
+      {
+        "text": "Turn more",
+        "key": "Turn more"
+      },
+      {
+        "text": "Turn sideways to the net",
+        "key": "Turn sideways to the net"
+      },
+      {
+        "text": "Turn the racket over",
+        "key": "Turn the racket over"
+      },
+      {
+        "text": "Turning the racket over adds speed and keeps the ball on target.",
+        "key": "Turning the racket over adds speed and keeps the ball on target"
+      },
+      {
+        "text": "Your racket should be fastest at contact, not before it.",
+        "key": "Your racket should be fastest at contact, not before it"
+      }
+    ],
+    "et": [
+      {
+        "text": "Alusta pallist madalamalt",
+        "key": "Alusta pallist madalamalt"
+      },
+      {
+        "text": "Andur kadus",
+        "key": "Andur kadus"
+      },
+      {
+        "text": "Andur ühendatud",
+        "key": "Andur ühendatud"
+      },
+      {
+        "text": "Anduri aku on tühjenemas",
+        "key": "Anduri aku on tühjenemas"
+      },
+      {
+        "text": "Anduri ühendus katkes",
+        "key": "Anduri ühendus katkes"
+      },
+      {
+        "text": "Ära jää pidama",
+        "key": "Ära jää pidama"
+      },
+      {
+        "text": "Ava pinda veidi",
+        "key": "Ava pinda veidi"
+      },
+      {
+        "text": "Enne ette, siis üles",
+        "key": "Enne ette, siis üles"
+      },
+      {
+        "text": "Hea",
+        "key": "Hea"
+      },
+      {
+        "text": "Hea. Ette, mitte alla.",
+        "key": "Hea. Ette, mitte alla"
+      },
+      {
+        "text": "Hea. Hoia seda kiirendust.",
+        "key": "Hea. Hoia seda kiirendust"
+      },
+      {
+        "text": "Hea. Kiire taastumine.",
+        "key": "Hea. Kiire taastumine"
+      },
+      {
+        "text": "Hea. Kiirus kasvas tabamuseni.",
+        "key": "Hea. Kiirus kasvas tabamuseni"
+      },
+      {
+        "text": "Hea. Kompaktne tagahoog.",
+        "key": "Hea. Kompaktne tagahoog"
+      },
+      {
+        "text": "Hea. Korralik pööre.",
+        "key": "Hea. Korralik pööre"
+      },
+      {
+        "text": "Hea. Lõdv ja hiline kiirendus.",
+        "key": "Hea. Lõdv ja hiline kiirendus"
+      },
+      {
+        "text": "Hea. Löök läheb ette.",
+        "key": "Hea. Löök läheb ette"
+      },
+      {
+        "text": "Hea. Pind avanes.",
+        "key": "Hea. Pind avanes"
+      },
+      {
+        "text": "Hea. Pind jääb all.",
+        "key": "Hea. Pind jääb all"
+      },
+      {
+        "text": "Hea. Pind on õige.",
+        "key": "Hea. Pind on õige"
+      },
+      {
+        "text": "Hea. Pind piisavalt avatud.",
+        "key": "Hea. Pind piisavalt avatud"
+      },
+      {
+        "text": "Hea. Reket pöördus üle.",
+        "key": "Hea. Reket pöördus üle"
+      },
+      {
+        "text": "Hea. Stabiilne tabamus.",
+        "key": "Hea. Stabiilne tabamus"
+      },
+      {
+        "text": "Hea. Sügav reketi langus.",
+        "key": "Hea. Sügav reketi langus"
+      },
+      {
+        "text": "Hea. Sujuv serviritm.",
+        "key": "Hea. Sujuv serviritm"
+      },
+      {
+        "text": "Hea. Sujuv, katkematu löök.",
+        "key": "Hea. Sujuv, katkematu löök"
+      },
+      {
+        "text": "Hea. Tabamus kõrgel.",
+        "key": "Hea. Tabamus kõrgel"
+      },
+      {
+        "text": "Hea. Täielik lõpetus.",
+        "key": "Hea. Täielik lõpetus"
+      },
+      {
+        "text": "Hea. Vara valmis.",
+        "key": "Hea. Vara valmis"
+      },
+      {
+        "text": "Hoia kiirendust kauem",
+        "key": "Hoia kiirendust kauem"
+      },
+      {
+        "text": "Hoia kindlalt läbi palli",
+        "key": "Hoia kindlalt läbi palli"
+      },
+      {
+        "text": "Hoia löök sujuv",
+        "key": "Hoia löök sujuv"
+      },
+      {
+        "text": "Hoia löök väike",
+        "key": "Hoia löök väike"
+      },
+      {
+        "text": "Hoia lõpetust",
+        "key": "Hoia lõpetust"
+      },
+      {
+        "text": "Hõõru palli tagant üles",
+        "key": "Hõõru palli tagant üles"
+      },
+      {
+        "text": "Iga kord sama löök",
+        "key": "Iga kord sama löök"
+      },
+      {
+        "text": "Ilma pausita, ühe hooga",
+        "key": "Ilma pausita, ühe hooga"
+      },
+      {
+        "text": "Just nii",
+        "key": "Just nii"
+      },
+      {
+        "text": "Kalluta keeled alla",
+        "key": "Kalluta keeled alla"
+      },
+      {
+        "text": "Kalluta keeled üles",
+        "key": "Kalluta keeled üles"
+      },
+      {
+        "text": "Keeled maa poole",
+        "key": "Keeled maa poole"
+      },
+      {
+        "text": "Keeled sihi poole",
+        "key": "Keeled sihi poole"
+      },
+      {
+        "text": "Keeled veidi taeva poole",
+        "key": "Keeled veidi taeva poole"
+      },
+      {
+        "text": "Kiireim pärast palli",
+        "key": "Kiireim pärast palli"
+      },
+      {
+        "text": "Kiireim üleval",
+        "key": "Kiireim üleval"
+      },
+      {
+        "text": "Kiirenda läbi palli",
+        "key": "Kiirenda läbi palli"
+      },
+      {
+        "text": "Kiirenda palli suunas",
+        "key": "Kiirenda palli suunas"
+      },
+      {
+        "text": "Kõigu nagu pendel",
+        "key": "Kõigu nagu pendel"
+      },
+      {
+        "text": "Külg võrgu poole",
+        "key": "Külg võrgu poole"
+      },
+      {
+        "text": "Lase pallil kanduda",
+        "key": "Lase pallil kanduda"
+      },
+      {
+        "text": "Lase reketi pea langeda",
+        "key": "Lase reketi pea langeda"
+      },
+      {
+        "text": "Lase reketil hilineda",
+        "key": "Lase reketil hilineda"
+      },
+      {
+        "text": "Lase reketil langeda",
+        "key": "Lase reketil langeda"
+      },
+      {
+        "text": "Lase selja taha langeda",
+        "key": "Lase selja taha langeda"
+      },
+      {
+        "text": "Lase tipp vajuda",
+        "key": "Lase tipp vajuda"
+      },
+      {
+        "text": "Lõdv käsi, kindel tabamus",
+        "key": "Lõdv käsi, kindel tabamus"
+      },
+      {
+        "text": "Lõdvesta ranne",
+        "key": "Lõdvesta ranne"
+      },
+      {
+        "text": "Lõika läbi, mitte alla",
+        "key": "Lõika läbi, mitte alla"
+      },
+      {
+        "text": "Löö alt üles",
+        "key": "Löö alt üles"
+      },
+      {
+        "text": "Löö ette, mitte alla",
+        "key": "Löö ette, mitte alla"
+      },
+      {
+        "text": "Löö otse läbi palli",
+        "key": "Löö otse läbi palli"
+      },
+      {
+        "text": "Löö sujuvalt läbi palli",
+        "key": "Löö sujuvalt läbi palli"
+      },
+      {
+        "text": "Löö täielikult läbi",
+        "key": "Löö täielikult läbi"
+      },
+      {
+        "text": "Löö täies kõrguses",
+        "key": "Löö täies kõrguses"
+      },
+      {
+        "text": "Lõpeta üle keha",
+        "key": "Lõpeta üle keha"
+      },
+      {
+        "text": "Madalalt ja pikalt",
+        "key": "Madalalt ja pikalt"
+      },
+      {
+        "text": "Näita selga",
+        "key": "Näita selga"
+      },
+      {
+        "text": "Nüüd liiga avatud",
+        "key": "Nüüd liiga avatud"
+      },
+      {
+        "text": "Nüüd liiga järsk",
+        "key": "Nüüd liiga järsk"
+      },
+      {
+        "text": "Nüüd liiga lame",
+        "key": "Nüüd liiga lame"
+      },
+      {
+        "text": "Nüüd liiga suletud",
+        "key": "Nüüd liiga suletud"
+      },
+      {
+        "text": "Parem",
+        "key": "Parem"
+      },
+      {
+        "text": "Patsuta koera",
+        "key": "Patsuta koera"
+      },
+      {
+        "text": "Pind alla tagahoos",
+        "key": "Pind alla tagahoos"
+      },
+      {
+        "text": "Pind avatumaks",
+        "key": "Pind avatumaks"
+      },
+      {
+        "text": "Pööra reket kiiresti üle",
+        "key": "Pööra reket kiiresti üle"
+      },
+      {
+        "text": "Pööra reket üle",
+        "key": "Pööra reket üle"
+      },
+      {
+        "text": "Pööra rohkem",
+        "key": "Pööra rohkem"
+      },
+      {
+        "text": "Proovi harjutust",
+        "key": "Proovi harjutust"
+      },
+      {
+        "text": "Reket ette tagasi",
+        "key": "Reket ette tagasi"
+      },
+      {
+        "text": "Reket madalale",
+        "key": "Reket madalale"
+      },
+      {
+        "text": "Reket üle, keeled eemale",
+        "key": "Reket üle, keeled eemale"
+      },
+      {
+        "text": "Reket varem taha",
+        "key": "Reket varem taha"
+      },
+      {
+        "text": "Saada sihi suunas",
+        "key": "Saada sihi suunas"
+      },
+      {
+        "text": "See on minu hääl",
+        "key": "See on minu hääl"
+      },
+      {
+        "text": "Sirutu kõrgemale",
+        "key": "Sirutu kõrgemale"
+      },
+      {
+        "text": "Sulge pinda veidi",
+        "key": "Sulge pinda veidi"
+      },
+      {
+        "text": "Taastu kiiremini",
+        "key": "Taastu kiiremini"
+      },
+      {
+        "text": "Tagahoog madalamaks",
+        "key": "Tagahoog madalamaks"
+      },
+      {
+        "text": "Tee hüpe, valmis",
+        "key": "Tee hüpe, valmis"
+      },
+      {
+        "text": "Tee lühike paus",
+        "key": "Tee lühike paus"
+      },
+      {
+        "text": "Tipp maa poole",
+        "key": "Tipp maa poole"
+      },
+      {
+        "text": "Tõsta üle võrgu",
+        "key": "Tõsta üle võrgu"
+      },
+      {
+        "text": "Tubli. Hea alt-üles löök.",
+        "key": "Tubli. Hea alt-üles löök"
+      },
+      {
+        "text": "Tubli. Reketi pea langes.",
+        "key": "Tubli. Reketi pea langes"
+      },
+      {
+        "text": "Üks sujuv liigutus",
+        "key": "Üks sujuv liigutus"
+      },
+      {
+        "text": "Üks sujuv silmus",
+        "key": "Üks sujuv silmus"
+      },
+      {
+        "text": "Üle lindi, madalalt",
+        "key": "Üle lindi, madalalt"
+      },
+      {
+        "text": "Väike, korralik silmus",
+        "key": "Väike, korralik silmus"
+      },
+      {
+        "text": "Valmis enne põrget",
+        "key": "Valmis enne põrget"
+      },
+      {
+        "text": "Valmistu varem",
+        "key": "Valmistu varem"
+      },
+      {
+        "text": "Veidi vähem",
+        "key": "Veidi vähem"
+      },
+      {
+        "text": "Vii löök lõpuni",
+        "key": "Vii löök lõpuni"
+      },
+      {
+        "text": "Viska veidi kõrgemale",
+        "key": "Viska veidi kõrgemale"
+      }
+    ]
+  }
+}

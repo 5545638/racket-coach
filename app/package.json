@@ -13,7 +13,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test"
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
+    "voice:export": "node ../tools/voice/export-phrases.mjs",
+    "voice:generate": "npm run voice:export && python3 ../tools/voice/generate.py && python3 ../tools/voice/verify.py",
+    "voice:verify": "python3 ../tools/voice/verify.py"
   },
   "license": "MIT",
   "dependencies": {

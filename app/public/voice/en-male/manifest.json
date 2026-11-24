@@ -1,0 +1,609 @@
+{
+ "version": 1,
+ "lang": "en",
+ "profile": "male",
+ "voice": "kokoro-v1.0/am_michael",
+ "sampleRate": 24000,
+ "clips": {
+  "A bigger turn stores more power and gives the swing more room": {
+   "file": "19f97aef34d0ef73f980b0cdcc2b7fb6117449dd.m4a",
+   "durationMs": 3925
+  },
+  "A deeper drop gives the racket more distance to build speed": {
+   "file": "c3243f9b8e8233d0f82104890f1feaf33fd6ed1b.m4a",
+   "durationMs": 3669
+  },
+  "A face pointing down early needs no fixing on the way up": {
+   "file": "7f764b2a79e1ec2d340b50012793c68233376dd8.m4a",
+   "durationMs": 3968
+  },
+  "A little less": {
+   "file": "e923b64b0da3d31bba573bb47d0380e450f01b26.m4a",
+   "durationMs": 896
+  },
+  "A loose arm lets the racket lag, then whip through the ball": {
+   "file": "a0f101b2710ce16ed5df7e119f4a64c2b8f9699c.m4a",
+   "durationMs": 3627
+  },
+  "A pause wastes momentum, so one flowing loop gives more speed": {
+   "file": "8e08f788a85cfd42f522eb9e127daa400008bff3.m4a",
+   "durationMs": 4181
+  },
+  "A slightly open face lets the slice float instead of diving": {
+   "file": "e9360a37fdd4cf5f4c7073a43fd0e9edf7e7110f.m4a",
+   "durationMs": 4096
+  },
+  "A smaller loop makes your timing simpler and more repeatable": {
+   "file": "b06a9b48009a5814e82e1ef5f2d5eff33feba9a7.m4a",
+   "durationMs": 3669
+  },
+  "A smooth rhythm carries speed all the way up to the ball": {
+   "file": "729d7050af677e6d6fe745271a417b0e04a3eef2.m4a",
+   "durationMs": 3243
+  },
+  "A steady racket face sends the ball where you aim": {
+   "file": "d3f02552fa60d87eaa74707ce5a943d44718cfcf.m4a",
+   "durationMs": 3029
+  },
+  "Accelerate through contact": {
+   "file": "135617fa9192e1bf4a881674a64b8c2628a81701.m4a",
+   "durationMs": 1664
+  },
+  "Better": {
+   "file": "303cfd6ea9aabd9ca03da4eb78810478d0a8ba9e.m4a",
+   "durationMs": 640
+  },
+  "Brush up the back": {
+   "file": "79fa68ef7b5365d0e0a5285f574d6e65085341e2.m4a",
+   "durationMs": 1152
+  },
+  "Building speed late puts the fastest racket moment at the ball": {
+   "file": "a91bf80b76662d56714afbe985e2f947ff764509.m4a",
+   "durationMs": 3883
+  },
+  "Carry on past contact": {
+   "file": "b612353af79958d83ce1c0213f1be7c590e0ee3a.m4a",
+   "durationMs": 1536
+  },
+  "Drive through the ball": {
+   "file": "a4ee9cb49eb54f1c651d32e2284cb0bbd1b2a8c2.m4a",
+   "durationMs": 1237
+  },
+  "Drop the racket": {
+   "file": "93a5b0b84f02151924571b23ec85825a8eb91238.m4a",
+   "durationMs": 1109
+  },
+  "Drop the racket head": {
+   "file": "1549374e9aeed0e2f5304a663d475649311f8410.m4a",
+   "durationMs": 1280
+  },
+  "Dropping the tip gives you room to swing up through the ball": {
+   "file": "937b96259f38284205a071952ffffd87fe2820aa.m4a",
+   "durationMs": 3243
+  },
+  "Early preparation gives you time for a smooth, unhurried swing": {
+   "file": "c006c024fde446d4e512823d4834ed2b4dd5d7c5.m4a",
+   "durationMs": 3712
+  },
+  "Face down on the take-back": {
+   "file": "f34da055c3f71275e1662586f5b315437c704c93.m4a",
+   "durationMs": 1664
+  },
+  "Face too closed": {
+   "file": "e363f62e23e6d86668aecf973e05f887f1bab2d8.m4a",
+   "durationMs": 1152
+  },
+  "Face too open": {
+   "file": "1e88831cb7f9db8c75a33b98c783669dd2e2e8c2.m4a",
+   "durationMs": 1195
+  },
+  "Fastest after the ball": {
+   "file": "db16cb32bc7e0ffc3ed0a1ff6f2615a16f8fcf5b.m4a",
+   "durationMs": 1451
+  },
+  "Fastest at the top": {
+   "file": "77fbfbf2abff9fdfa54509125b9601cc6187ccb0.m4a",
+   "durationMs": 1323
+  },
+  "Finish your swing": {
+   "file": "cc319448dbfd5993662d55ba9c4dc95e4b51a615.m4a",
+   "durationMs": 1109
+  },
+  "Finishing across your body lets the racket keep speeding through contact": {
+   "file": "c898d7fb0790e5cc927a5c42f9e58c3a81082902.m4a",
+   "durationMs": 4267
+  },
+  "Finishing fully means you accelerate through the ball instead of braking": {
+   "file": "d99f9089fffc7be5231babf966e71a7e9a75f2a9.m4a",
+   "durationMs": 4437
+  },
+  "Follow through across you": {
+   "file": "504b29c40b7f90e1db61a9d3926af28cda5099f8.m4a",
+   "durationMs": 1579
+  },
+  "Getting ready quickly prepares you for the next ball": {
+   "file": "186407f82a9b015aa975db02669a8e578d6959f4.m4a",
+   "durationMs": 2987
+  },
+  "Going out toward the target adds depth and pace to your spin": {
+   "file": "0e70b34fe981886d19695d7ecae85d3d969ba3bb.m4a",
+   "durationMs": 3541
+  },
+  "Good": {
+   "file": "61dedcf053ff33692baacbf7789c5d7195d9acbe.m4a",
+   "durationMs": 597
+  },
+  "Good. Compact take-back": {
+   "file": "f13d96e2d853299d04f858e9bd0016ab0a9c3808.m4a",
+   "durationMs": 1621
+  },
+  "Good. Deep racket drop": {
+   "file": "f0b00e43af604ee351e5fe6804ce9b85b374cc04.m4a",
+   "durationMs": 1707
+  },
+  "Good. Early preparation": {
+   "file": "3484db13f234430a90754b9e1952a00eb43b24ee.m4a",
+   "durationMs": 1621
+  },
+  "Good. Face is open enough": {
+   "file": "8c29074feaa10326723051a682bd1a5a39d58274.m4a",
+   "durationMs": 1792
+  },
+  "Good. Face is square": {
+   "file": "54c31f2b6db5955cff9f39231d8bc00206a39afe.m4a",
+   "durationMs": 1451
+  },
+  "Good. Face opened up": {
+   "file": "99cc2d8025e821d9598f71cedc1f40b1dfe4d84a.m4a",
+   "durationMs": 1536
+  },
+  "Good. Face stays down": {
+   "file": "aee78a4c0c8caf5223846ed66da43a7a0238af17.m4a",
+   "durationMs": 1536
+  },
+  "Good. Forward, not down": {
+   "file": "2e2feececf0094f17613b24da55ca0578ed1fe2d.m4a",
+   "durationMs": 1579
+  },
+  "Good. Full finish": {
+   "file": "d400492f2e819793ebeb50389831974135639ab0.m4a",
+   "durationMs": 1237
+  },
+  "Good. Full serve finish": {
+   "file": "04ba55e2268d1ba11cc34943ee34f7946a304650.m4a",
+   "durationMs": 1493
+  },
+  "Good. Full turn": {
+   "file": "265d6fe24c56fac53dca3b66ca06c3ec2a093d7e.m4a",
+   "durationMs": 1237
+  },
+  "Good. Keep that acceleration": {
+   "file": "2bf87a41643b6293cebadc407f8f8330ecd28e94.m4a",
+   "durationMs": 1835
+  },
+  "Good. Loose and late acceleration": {
+   "file": "8d2a792d63718d6a991ceb116c0f1a5b8cd83e6c.m4a",
+   "durationMs": 2261
+  },
+  "Good. Nice low-to-high path": {
+   "file": "5320906f591167cfda186333532ac817e0f3bc78.m4a",
+   "durationMs": 1835
+  },
+  "Good. Path drives forward": {
+   "file": "825a21a8728e849eef51cd8a9cf9309f304a1bb9.m4a",
+   "durationMs": 1792
+  },
+  "Good. Quick recovery": {
+   "file": "ac10c61812b2c87de28da062a0bb35a9b6f08595.m4a",
+   "durationMs": 1408
+  },
+  "Good. Racket head dropped nicely": {
+   "file": "4bfef5910a432ed671d22ce355ee0767a2644c45.m4a",
+   "durationMs": 2091
+  },
+  "Good. Racket tip high at contact": {
+   "file": "16c6b7e3831f43bd95b7890fbde046c410eeec43.m4a",
+   "durationMs": 2133
+  },
+  "Good. Racket turned over": {
+   "file": "0d7f5637272d7f795d47ba765a47abd9581a95fc.m4a",
+   "durationMs": 1621
+  },
+  "Good. Smooth serve rhythm": {
+   "file": "6541737e3fca4764af5336a65593b64f34c2b69f.m4a",
+   "durationMs": 1579
+  },
+  "Good. Smooth, continuous swing": {
+   "file": "e2eafcc4c70108255712d8eaa198d393dd7cbb37.m4a",
+   "durationMs": 1963
+  },
+  "Good. Speed built toward contact": {
+   "file": "f4aa95ae320b1e74f5b3936cdb51617cd29a0887.m4a",
+   "durationMs": 2219
+  },
+  "Good. Steady through contact": {
+   "file": "b24e08ecbfe69023c67d2f5c7519356217d56e4d.m4a",
+   "durationMs": 1707
+  },
+  "Hit at full height": {
+   "file": "dfc4c9486d219c6a5ae1299aacd040121ed33710.m4a",
+   "durationMs": 1152
+  },
+  "Hitting higher gives a better angle and more margin": {
+   "file": "791ee03f4a7aa95397878116479bda757f3e33f4.m4a",
+   "durationMs": 3029
+  },
+  "Hold the finish": {
+   "file": "3d758e16f0f70e6e5ec88d340050bb01b87c903b.m4a",
+   "durationMs": 1109
+  },
+  "Keep it compact": {
+   "file": "09bc212484a020e103f580b8e348d25b63b8e7cb.m4a",
+   "durationMs": 1109
+  },
+  "Keep the racket accelerating longer": {
+   "file": "227b0f845b1a9545b754d8eb9b6ab20cc1e97554.m4a",
+   "durationMs": 2133
+  },
+  "Keep the swing flowing": {
+   "file": "3268713b8b69b6f8f4e0687da937f2330c0033b4.m4a",
+   "durationMs": 1365
+  },
+  "Let it fall behind": {
+   "file": "362e9dd797dfdcb6b0c45baa06900b2975fd8e25.m4a",
+   "durationMs": 1365
+  },
+  "Let it roll over": {
+   "file": "9640c339723f9f2e9509972aa4cc8d2d398b3ee0.m4a",
+   "durationMs": 1152
+  },
+  "Let the ball ride": {
+   "file": "75ab48b07b5d71bc501be538bfec57884b9b307b.m4a",
+   "durationMs": 1195
+  },
+  "Let the racket drop low": {
+   "file": "2c187b3b1bc1aa71fea411ea9e64cba1c222ce24.m4a",
+   "durationMs": 1579
+  },
+  "Let the racket lag": {
+   "file": "ae23a57545b1bc5bb6694cc416ccacf9bc4962ea.m4a",
+   "durationMs": 1237
+  },
+  "Let the tip fall": {
+   "file": "e6f4963810ed280f18ce8f705627d32858699d40.m4a",
+   "durationMs": 1152
+  },
+  "Lift it over the net": {
+   "file": "57fb446cc7a3c1ed5bb80a817c8b2824a9e8f94f.m4a",
+   "durationMs": 1365
+  },
+  "Loose arm, firm contact": {
+   "file": "1d19069314302796b2a4f34a1616295baf64f154.m4a",
+   "durationMs": 1792
+  },
+  "Loosen the wrist": {
+   "file": "ec6e8616596b79305dba5658667f16d9f83dea1d.m4a",
+   "durationMs": 1152
+  },
+  "Lower take-back": {
+   "file": "2ea991b889469e572c9a588a5223374b56ca91cf.m4a",
+   "durationMs": 1152
+  },
+  "No pause, one motion": {
+   "file": "1b2b6a557b06c75d8f6f470a8ebd3e8fbd5dbe7e.m4a",
+   "durationMs": 1621
+  },
+  "Now too closed": {
+   "file": "0f5258db7b60b639225b6b91b45eed2d56328881.m4a",
+   "durationMs": 1195
+  },
+  "Now too flat": {
+   "file": "9a4a9a7b561999a19e4463c0d290ec93201c5164.m4a",
+   "durationMs": 1067
+  },
+  "Now too open": {
+   "file": "15ba569089eab054f5fc7c6ebb2a53ae872b182a.m4a",
+   "durationMs": 1152
+  },
+  "Now too steep": {
+   "file": "80bdb27bf283aff9bf56def1a005130995bad9a7.m4a",
+   "durationMs": 1152
+  },
+  "One smooth loop": {
+   "file": "1fb8d0795d22b21ad2df4e7a25ff8883d747abcd.m4a",
+   "durationMs": 1195
+  },
+  "One smooth motion": {
+   "file": "738fcde9dd91a3ab59b9505f994c37c9ea7473ad.m4a",
+   "durationMs": 1323
+  },
+  "Open the face for the slice": {
+   "file": "8bd784cbe939d9fac1c00d051d0c0960bab1c2bf.m4a",
+   "durationMs": 1707
+  },
+  "Pat the dog": {
+   "file": "ae3b3d02a75797ebae2f9c048af9c27d867e624d.m4a",
+   "durationMs": 1024
+  },
+  "Prepare earlier": {
+   "file": "bbb0ebbaf599adddf767da4d9d7786e4cbceecec.m4a",
+   "durationMs": 1067
+  },
+  "Racket back in front": {
+   "file": "5978bfb9a710a3ee042da574ba5f9065f9e091e9.m4a",
+   "durationMs": 1365
+  },
+  "Racket back sooner": {
+   "file": "7c6f692b54c55549420f624395cf2edadab74b81.m4a",
+   "durationMs": 1237
+  },
+  "Reach up": {
+   "file": "c2d248e5d350affaebfc2b2748f4b53e01afec34.m4a",
+   "durationMs": 811
+  },
+  "Ready before the bounce": {
+   "file": "30c8d98a983b10910a3a491ee15bedc8da8e7ea2.m4a",
+   "durationMs": 1365
+  },
+  "Recover faster": {
+   "file": "be43d6e2d7dc91d7b1b976af9eba59086fb764c1.m4a",
+   "durationMs": 1152
+  },
+  "Same swing every time": {
+   "file": "a661f9f0adb42423efb9c916d9c78d9de99c75f0.m4a",
+   "durationMs": 1536
+  },
+  "Send it just over tape": {
+   "file": "2337f6cd528d75632c5a4a94d6bd8f1374a02523.m4a",
+   "durationMs": 1536
+  },
+  "Send it toward the target": {
+   "file": "14d999f568730a3837305e6b254112892444b7d3.m4a",
+   "durationMs": 1451
+  },
+  "Sensor battery low": {
+   "file": "3163320fe1d5c47db0c314b2a796b0a109624596.m4a",
+   "durationMs": 1451
+  },
+  "Sensor connected": {
+   "file": "6503ab73ce2c86ffd9ceb1ab71824b084f6de1f5.m4a",
+   "durationMs": 1152
+  },
+  "Sensor disconnected": {
+   "file": "1dd1b22e9b1517c07b57be5b4d54f586c0b4741c.m4a",
+   "durationMs": 1408
+  },
+  "Sensor lost": {
+   "file": "8e6560cd40aa639d05bed4d041c5c69859a61e75.m4a",
+   "durationMs": 1024
+  },
+  "Show your back": {
+   "file": "9de85d2667fe3b8ebbd266ac770b18c50e3ad2ee.m4a",
+   "durationMs": 939
+  },
+  "Skid it low and long": {
+   "file": "186d98285ed0ccf035850a592612050f15414760.m4a",
+   "durationMs": 1365
+  },
+  "Slice through the ball, not down": {
+   "file": "18498fdd6be1302faa35fad71ff2dd96f9e6c594.m4a",
+   "durationMs": 1920
+  },
+  "Small, tidy loop": {
+   "file": "c2ac027e52b79c4972c54d607e784b4ce9571932.m4a",
+   "durationMs": 1323
+  },
+  "Smooth through the ball": {
+   "file": "3757ace9ad821c9def5489fec2229b3d35e0e90f.m4a",
+   "durationMs": 1323
+  },
+  "Snap the racket over": {
+   "file": "72665c5e5a51531fc51dbc62ddab6bc44808ea14.m4a",
+   "durationMs": 1365
+  },
+  "Speed up toward the ball": {
+   "file": "d5489cf5de684bcdb8cf8a52a5678c83a6f5db93.m4a",
+   "durationMs": 1365
+  },
+  "Split step, ready": {
+   "file": "c3f6078acb78cf5f9de0d64ea9737c2d766968af.m4a",
+   "durationMs": 1323
+  },
+  "Start below the ball": {
+   "file": "b26bd3b72d9f688fd0c27f3d37e5a55ede49b453.m4a",
+   "durationMs": 1408
+  },
+  "Steady through contact": {
+   "file": "44fe4904fb204cee3cf782817031764c6dcda8d9.m4a",
+   "durationMs": 1408
+  },
+  "Strings slightly skyward": {
+   "file": "b56aae6fec337170d1b7614cf6d97ebc7c41f19e.m4a",
+   "durationMs": 1536
+  },
+  "Strings stay on target": {
+   "file": "d4f111bfddeaca9d327475ded4af57d2b22858e5.m4a",
+   "durationMs": 1579
+  },
+  "Strings tilted down send the ball into the net, so aim higher": {
+   "file": "9368721c4b763ed7f30ddd51e6ee0e04f70de756.m4a",
+   "durationMs": 3925
+  },
+  "Strings tilted up send the ball long, so aim lower": {
+   "file": "5ff0a6003896a08c9198ce6b0d70114eaecbb048.m4a",
+   "durationMs": 3328
+  },
+  "Strings toward the ground": {
+   "file": "fc78ab9fe44cbf577705a6c3efd426a0b7a8ddb1.m4a",
+   "durationMs": 1493
+  },
+  "Swing all the way through": {
+   "file": "8e94855c0b4269eb978040398742c96c78a1ba05.m4a",
+   "durationMs": 1493
+  },
+  "Swing forward, not down": {
+   "file": "7ccf4c568677280511e14ca3f026db056b85336b.m4a",
+   "durationMs": 1664
+  },
+  "Swing like a pendulum": {
+   "file": "ae9920f3a75e63b76919e6427a5ccba79c0de1b5.m4a",
+   "durationMs": 1451
+  },
+  "Swing low to high": {
+   "file": "9d3103767b9eae8824783bbf391ffbd1afebf993.m4a",
+   "durationMs": 1237
+  },
+  "Swing out before up": {
+   "file": "b40a157a0c9ce049199172b3ba4b3d4e571ed08b.m4a",
+   "durationMs": 1365
+  },
+  "Swinging forward keeps the slice low and deep instead of sitting up": {
+   "file": "242bdbb77e803c24ca22419eb1b64426283c7d03.m4a",
+   "durationMs": 4011
+  },
+  "Swinging low to high adds topspin and margin over the net": {
+   "file": "b38cb3ebfbeeb3c0c94a24ea40c19ba89e87a4a2.m4a",
+   "durationMs": 3627
+  },
+  "Take a short break": {
+   "file": "4af515e646e0456e8df2429b142b922313acc318.m4a",
+   "durationMs": 1152
+  },
+  "That's it": {
+   "file": "91b246eac9b0585b2de7f781a19b27687315f37b.m4a",
+   "durationMs": 811
+  },
+  "Tilt the face down": {
+   "file": "8f9e2d0f2c0f366efdbd8327b87c81c0506034c8.m4a",
+   "durationMs": 1408
+  },
+  "Tilt the face up": {
+   "file": "b4ef8a50c45eedc9b7afdc6eb480966c8a245bb0.m4a",
+   "durationMs": 1152
+  },
+  "Tip toward the ground": {
+   "file": "bca0dd853da0509e5d438aaa709ae5934d499cff.m4a",
+   "durationMs": 1237
+  },
+  "Toss a bit higher": {
+   "file": "66a5f3d68bb72121370a1e58462977047dab46ac.m4a",
+   "durationMs": 1152
+  },
+  "Try the brush-up drill": {
+   "file": "1205ff02ef4b5a2a48c378e38ade53c9dc1afbef.m4a",
+   "durationMs": 1365
+  },
+  "Try the catch-the-racket drill": {
+   "file": "21e92474283739bbcc8f5b731ce77250204850b1.m4a",
+   "durationMs": 1707
+  },
+  "Try the drill": {
+   "file": "a790d2a093280496c30133966d0e26963d012fad.m4a",
+   "durationMs": 939
+  },
+  "Try the floating slice drill": {
+   "file": "d19287df4d213d2005f11a3d6cb542825883c4bd.m4a",
+   "durationMs": 1707
+  },
+  "Try the full-reach drill": {
+   "file": "e60641bb8fa7ba3cf34074b6461ba288c775c67b.m4a",
+   "durationMs": 1493
+  },
+  "Try the half-pace drill": {
+   "file": "2d7459f0ba184a94f908e7cc9f75c0a667bd321b.m4a",
+   "durationMs": 1451
+  },
+  "Try the mirror drill": {
+   "file": "f5ab71498bdf78bdccf46fc15d2e7611b79c27d0.m4a",
+   "durationMs": 1195
+  },
+  "Try the net-clearance drill": {
+   "file": "a3a1700e35fcb897788b143c6aaa04733e366c0f.m4a",
+   "durationMs": 1536
+  },
+  "Try the one-and-two drill": {
+   "file": "073230c90ae2496bf50637b62cd6ed6863a17e6e.m4a",
+   "durationMs": 1579
+  },
+  "Try the one-two rhythm drill": {
+   "file": "0d6f9bc788aadcb28c356b25899b8d58902450ce.m4a",
+   "durationMs": 1664
+  },
+  "Try the opposite-hip drill": {
+   "file": "18afbed7530b5ae4b2f7083678c8f603e6453054.m4a",
+   "durationMs": 1621
+  },
+  "Try the point-and-turn drill": {
+   "file": "3879067e72b3e7d65fbd326c3e603ee13fdfaaa5.m4a",
+   "durationMs": 1749
+  },
+  "Try the ready-position drill": {
+   "file": "7df282a66b30aa70cb3c073c5adf9bd997b5e912.m4a",
+   "durationMs": 1749
+  },
+  "Try the serve whoosh drill": {
+   "file": "0937e99f38d24ef3c20da710f6a27aa56ee21620.m4a",
+   "durationMs": 1536
+  },
+  "Try the service-line drill": {
+   "file": "8073f8b6192c651298f2099a3d230a3f936ca862.m4a",
+   "durationMs": 1664
+  },
+  "Try the shoulder-turn drill": {
+   "file": "c30561c97f9a0c2950363d3b0b1c1fe2163ae7ae.m4a",
+   "durationMs": 1536
+  },
+  "Try the skidding slice drill": {
+   "file": "e426cd70d0265483747e20471570eb8350eb11d9.m4a",
+   "durationMs": 1707
+  },
+  "Try the slow-motion serve drill": {
+   "file": "c9a57ba2a4ded05cd7225bf0998c5399dae0c51f.m4a",
+   "durationMs": 1920
+  },
+  "Try the stiff-loose drill": {
+   "file": "5b1d60a9446b625fdcc53230617205ed6b0022f6.m4a",
+   "durationMs": 1451
+  },
+  "Try the target-line drill": {
+   "file": "167ecc46ee7340ffdb4f221ecba89b18c5839935.m4a",
+   "durationMs": 1707
+  },
+  "Try the tip-down drill": {
+   "file": "bf2f218b96c5c5cdf504531e265fd7c872e8202f.m4a",
+   "durationMs": 1451
+  },
+  "Try the turn-over drill": {
+   "file": "7f4a2edec228aef462068e60fd4f2ee1b1b714fb.m4a",
+   "durationMs": 1451
+  },
+  "Try the wall drill": {
+   "file": "ce2072ffda603d934b46a7900de25bddeeea3aba.m4a",
+   "durationMs": 1237
+  },
+  "Try the whoosh drill": {
+   "file": "4d90b16a797648ccbd196afde0214fe42bad9a32.m4a",
+   "durationMs": 1237
+  },
+  "Turn more": {
+   "file": "581a1d5e265174ea35a09c947123073ad7efc57a.m4a",
+   "durationMs": 811
+  },
+  "Turn sideways to the net": {
+   "file": "60fc0241d11f5b71afeeba8f1497f5011597f37d.m4a",
+   "durationMs": 1365
+  },
+  "Turn the racket over": {
+   "file": "3da51645035a9b02e25ef4feacc30832a56e77da.m4a",
+   "durationMs": 1237
+  },
+  "Turning the racket over adds speed and keeps the ball on target": {
+   "file": "c6b554172f218fd5050be9a36d55d68c4cebf4ba.m4a",
+   "durationMs": 4053
+  },
+  "Your racket should be fastest at contact, not before it": {
+   "file": "5ec7037d3a5f9fd3c14578e76e9bf2eaf60e4412.m4a",
+   "durationMs": 3541
+  }
+ }
+}

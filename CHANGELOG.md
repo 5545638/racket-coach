@@ -5,6 +5,12 @@ All notable changes are documented here. Versions follow [SemVer](https://semver
 ## [0.1.0] — unreleased
 
 ### Added
+- Natural coach voice: every spoken phrase pre-recorded with Kokoro-82M
+  (English female `af_heart` / male `am_michael`, `tools/voice`), played with
+  Web Audio; the device voice is the fallback for any text without a clip.
+  Optional one-time download of a natural Estonian voice (TartuNLP), played
+  offline. Settings version 6: `voice.engine`, `voice.profile`,
+  `voice.etSpeaker`.
 - Puck.js firmware: swing trigger, pre-trigger buffer, streaming protocol v1.
 - Web app: Web Bluetooth and demo transports, two-pose calibration, stroke
   metrics, literature-based rules, spoken cues, session statistics, CSV/JSON

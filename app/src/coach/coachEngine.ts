@@ -397,7 +397,8 @@ export interface CoachStep {
   readonly categories: StrokeCategories;
 }
 
-const GOOD_PHRASE = 'Good';
+/** Spoken when no rule fires (with `speakGood`). */
+export const GOOD_PHRASE = 'Good';
 
 const spokenCue = (id: CorrectionId): string => CORRECTIONS.en[id].spoken;
 

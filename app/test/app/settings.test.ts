@@ -115,11 +115,12 @@ describe('settings version 4: coaching modes and player inputs', () => {
   });
 });
 
+/** The version 6 natural voice fields that settings without them get. */
+const NATURAL_DEFAULTS = { engine: 'natural', profile: 'female', etSpeaker: 'mari' } as const;
+
 describe('settings version 5: speech', () => {
-  it('is version 5 with the speech defaults', () => {
-    expect(SETTINGS_VERSION).toBe(5);
+  it('has the speech defaults', () => {
     expect(DEFAULT_SETTINGS).toMatchObject({
-      version: 5,
       feedbackFrequency: 'every',
       voice: { lang: 'en', rate: 1.1, pitch: 1, volume: 1 },
       speechMuted: false,
@@ -174,8 +175,9 @@ describe('settings version 5: speech', () => {
     'migrates %s settings: rate from speechRate, other speech fields default',
     (_name, old) => {
       const migrated = resolveSettings(legacy(old));
-      expect(migrated.version).toBe(5);
+      expect(migrated.version).toBe(SETTINGS_VERSION);
       expect(migrated.voice).toEqual({
+        ...NATURAL_DEFAULTS,
         lang: 'en',
         rate: old['speechRate'],
         pitch: 1,
@@ -209,7 +211,13 @@ describe('settings version 5: speech', () => {
   it('keeps valid version 5 speech settings and repairs malformed ones', () => {
     const current = resolveSettings({
       feedbackFrequency: 'every3',
-      voice: { lang: 'et', voiceURI: 'com.apple.voice.Karl', rate: 0.9, pitch: 1.3, volume: 0.5 },
+      voice: {
+        lang: 'et',
+        voiceURI: 'com.apple.voice.Karl',
+        rate: 0.9,
+        pitch: 1.3,
+        volume: 0.5,
+      } as never,
       speechMuted: true,
       autoRallyMute: true,
     });
@@ -237,5 +245,65 @@ describe('settings version 5: speech', () => {
     });
     expect(broken.voice.voiceURI).toBeUndefined();
     expect(resolveSettings(legacy({ voice: 'loud' })).voice).toEqual(DEFAULT_SETTINGS.voice);
+  });
+});
+
+describe('settings version 6: natural voice', () => {
+  it('is version 6; the natural voice (female, Estonian speaker mari) is the default', () => {
+    expect(SETTINGS_VERSION).toBe(6);
+    expect(DEFAULT_SETTINGS.version).toBe(6);
+    expect(DEFAULT_SETTINGS.voice).toEqual({
+      ...NATURAL_DEFAULTS,
+      lang: 'en',
+      rate: 1.1,
+      pitch: 1,
+      volume: 1,
+    });
+  });
+
+  it('migrates version 5 settings: natural voice added, the device voice choices kept', () => {
+    const v5 = {
+      version: 5,
+      mode: 'training',
+      language: 'et',
+      feedbackFrequency: 'every2',
+      voice: { lang: 'et', voiceURI: 'com.apple.voice.Karl', rate: 1.3, pitch: 0.9, volume: 0.8 },
+      speechMuted: true,
+      autoRallyMute: true,
+    };
+    const migrated = resolveSettings(legacy(v5));
+    expect(migrated.version).toBe(6);
+    expect(migrated.voice).toEqual({
+      ...NATURAL_DEFAULTS,
+      lang: 'et',
+      voiceURI: 'com.apple.voice.Karl',
+      rate: 1.3,
+      pitch: 0.9,
+      volume: 0.8,
+    });
+    expect(migrated).toMatchObject({ feedbackFrequency: 'every2', speechMuted: true });
+  });
+
+  it('keeps valid version 6 voice choices and repairs malformed ones', () => {
+    const chosen = resolveSettings(
+      legacy({
+        voice: {
+          engine: 'system',
+          profile: 'male',
+          etSpeaker: 'tambet',
+          lang: 'et',
+          rate: 1,
+          pitch: 1,
+          volume: 1,
+        },
+      }),
+    );
+    expect(chosen.voice).toMatchObject({ engine: 'system', profile: 'male', etSpeaker: 'tambet' });
+    expect(resolveSettings(legacy({ ...chosen }))).toEqual(chosen);
+    const broken = resolveSettings(
+      legacy({ voice: { engine: 'robot', profile: 'child', etSpeaker: '../../x', lang: 'en' } }),
+    );
+    expect(broken.voice).toMatchObject(NATURAL_DEFAULTS);
+    expect(resolveSettings(legacy({ voice: { etSpeaker: 42 } })).voice.etSpeaker).toBe('mari');
   });
 });

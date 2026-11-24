@@ -109,7 +109,7 @@ tab's connection so the other tab's upgrade can proceed.
 ## Speech
 
 The coach decides *what* to say; three layers decide whether and when it is
-heard (`feedback/`):
+heard, and an engine decides how it sounds (`feedback/`):
 
 1. **Policy** (`speechPolicy.ts`, applied in `CoachController.handleSwing`
    after `coachStep`): quick mute (`speechMuted`, `controller.toggleMute()`),
@@ -122,15 +122,16 @@ heard (`feedback/`):
    silence every stroke cue but never system messages. Match mode keeps its own
    policy (nothing per stroke, the break-time cue respects only mute).
 2. **Text** (`spokenText.ts`, `speechStrings.ts`): the spoken language is
-   `voice.lang`, but Estonian only when the device has an Estonian voice
-   (iOS may have none; the settings then show "Eestikeelset häält pole selles
-   seadmes — kasutan inglise keelt"). Estonian cue texts come through a
+   `voice.lang`, but Estonian only when the device has an Estonian voice or
+   the natural Estonian voice is downloaded (iOS may have neither; the
+   settings then show "Eestikeelset häält pole selles seadmes — kasutan
+   inglise keelt"). Estonian cue texts come through a
    tolerant adapter (`spokenEt` on a correction, `FEEDBACK_PHRASES_ET`); a
    phrase without Estonian text is spoken in English with an English voice.
    System messages (sensor connected / disconnected / lost / battery low)
    exist in both languages.
-3. **Queue** (`SpeechQueue` in `speech.ts`, Web Speech): one utterance at a
-   time, never the engine's own queue; priorities system > correction >
+3. **Queue** (`SpeechQueue` in `speech.ts`): one utterance at a
+   time, never an engine's own queue; priorities system > correction >
    feedback > info; at most one queued item per category; a new stroke's item
    replaces queued older stroke items (and the controller drops not-yet-started
    stroke items when the next stroke arrives); an item older than
@@ -142,7 +143,63 @@ heard (`feedback/`):
    `onstart` (1.5 s) triggers cancel + resume and one retry, a missing `onend`
    (watchdog from the phrase length) cancel + resume. Late events of
    utterances given up on are ignored. The voice object is cached per
-   language/voice; `prime()` runs on the connect tap.
+   language/voice; `prime()` runs on the connect tap. These rules are the
+   same for both engines (below); only the watchdog's expected length comes
+   from the clip when a clip plays.
+
+**Engines: natural voice clips, device voice as fallback.** On iOS, Safari
+and WKWebView browsers such as Bluefy give web pages only the pre-installed
+compact Web Speech voices; Enhanced / Premium voices the user downloaded in
+iOS Settings are not exposed to `speechSynthesis.getVoices()` (WebKit bug
+[290497](https://bugs.webkit.org/show_bug.cgi?id=290497); Apple developer
+forums [thread 723503](https://developer.apple.com/forums/thread/723503)). The cues therefore sounded robotic whatever the
+user installed. Since every phrase is known in advance, the natural voice is
+pre-recorded:
+
+- `phraseCatalog.ts` lists every phrase (`spokenPhrases(lang)`: cue variants,
+  reinforce, "Try the … drill", learning sentences, feedback and system
+  phrases) and finds clips by text (`clipKey`: exact text, outer / repeated
+  white space and a final `.`/`!`/`?` ignored). Learning mode's
+  "cue. explanation" plays as a sequence of the two sentence clips
+  (`clipSequence`, 150 ms apart), so only the parts are recorded.
+- English clips ship in `public/voice/en-female/` and `en-male/` (Kokoro-82M
+  voices `af_heart` and `am_michael`; ~1.7 MB per profile, mono AAC 48 kb/s,
+  24 kHz, −16 LUFS, peak ≤ −1 dBFS), with `manifest.json` {text → file,
+  durationMs}. They are generated offline by `tools/voice` (README there);
+  a unit test fails when a phrase has no clip.
+- `ClipEngine` (`clipEngine.ts`, Web Audio): one `AudioContext`, created on
+  first use and resumed in `prime()` inside the user gesture (iOS needs that;
+  a silent buffer is played too); a context that is `suspended` or
+  `interrupted` (phone call, Siri) is resumed again before playing and on
+  `statechange`. The manifest of the active voice is loaded and all its
+  clips are decoded into `AudioBuffer`s by `speaker.prepare()` at start-up,
+  connect, session start and voice change (decoded lazily otherwise).
+  Playback: `AudioBufferSourceNode`s through a gain node (`voice.volume`);
+  start → `onstart`, `ended` of the last clip → `onend`, `stop()` interrupts.
+  Clips are not rate-shifted (the rate / pitch sliders apply only to the
+  device voice). `main.tsx` sets `navigator.audioSession.type = 'playback'`
+  where available, so the iPhone's silent switch does not mute Web Audio.
+- `WebSpeechEngine` (`webSpeechEngine.ts`): the previous Web Speech code.
+- Per item the queue uses the clip when `voice.engine` is `natural` and the
+  active voice (`en-<profile>`, or `et-<etSpeaker>` for Estonian) has a clip
+  for the text; otherwise the device voice — counted as `synth-fallback` in
+  `speechStats.engines` and listed in `speechStats.fallbackTexts`
+  (Settings → Speech → diagnostics). A clip that does not start within the
+  start timeout (audio still locked, decoding) is retried once with the
+  device voice. `voice.engine = 'system'` always uses the device voice.
+
+**Natural Estonian voice (optional download).** Estonian neural TTS is not
+bundled. The speech settings offer "Laadi loomulik eestikeelne hääl": the
+controller (`downloadEstonianVoice`) POSTs each Estonian phrase (~100) to the
+public TartuNLP API (`https://api.tartunlp.ai/text-to-speech/v2`, JSON
+`{text, speaker, speed: 1}` → WAV; speakers from its GET listing, else
+mari / tambet / liivika / kalev), stores the WAVs and a manifest in Cache
+Storage (`DownloadedVoiceStore`, cache `racket-coach-voice-v1`,
+`<base>voice-cache/et-<speaker>/`), and from then on the ClipEngine plays them
+offline. It is never called from the cue path. A failure (offline, CORS, HTTP
+error, unknown format, storage refused) is shown in Estonian / English; what
+was stored is kept and a new attempt fetches only the rest; English clips and
+the device voice keep working.
 
 **Heard truth.** The coach builds on heard cues only ("Better" and the
 reinforce phrase need a heard cue; the ladder advances per heard cue). A cue
@@ -153,8 +210,9 @@ state back to that unheard decision when nothing happened since; otherwise
 `lastSpeech` learn from `onStart` only.
 
 **Diagnostics.** `controller.speechStats`: stroke-to-`onstart` latency per
-cue with p50 / p95, drops by reason and suppressions by reason, reset per
-session; shown under Settings → Speech.
+cue with p50 / p95, drops by reason, suppressions by reason, and utterances by
+engine (`clip` / `synth` / `synth-fallback`, with the latest fallback texts),
+reset per session; shown under Settings → Speech.
 
 ## Latency budget (target ≤ 1 s from contact to speech)
 

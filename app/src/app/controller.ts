@@ -50,10 +50,22 @@ import type {
   SpokenLanguage,
   StrokeCoaching,
   StrokeRecord,
+  VoiceProfile,
+  VoiceSettings,
 } from '../domain/types';
 import type { StrokeAssessment } from '../elements/assess';
 import {
+  type DownloadFailure,
+  type DownloadedVoiceStore,
+  FALLBACK_ET_SPEAKERS,
+  downloadEstonianVoice,
+  downloadedCount,
+  fetchEtSpeakers,
+} from '../feedback/estonianVoice';
+import { spokenPhrases } from '../feedback/phraseCatalog';
+import {
   type DropReason,
+  type EngineUse,
   type SpeechCategory,
   type Speaker,
   type VoiceInfo,
@@ -109,7 +121,37 @@ export interface ControllerDeps {
   readonly staticCaptureTimeoutMs?: number;
   readonly reconnectAttempts?: number;
   readonly reconnectDelayMs?: number;
+  /** Optional natural Estonian voice download (feedback/estonianVoice.ts); absent = not offered. */
+  readonly estonianVoice?: EstonianVoiceDeps;
 }
+
+export interface EstonianVoiceDeps {
+  readonly fetch: typeof fetch;
+  readonly store: DownloadedVoiceStore;
+  /** The clips of `speaker` changed (the clip engine must reload them). */
+  readonly onInstalled?: (speaker: string) => void;
+}
+
+/** The downloaded Estonian natural voice of the chosen speaker. */
+export type EstonianVoiceStatus =
+  | { readonly state: 'unavailable' }
+  | { readonly state: 'checking' }
+  | {
+      readonly state: 'missing' | 'partial' | 'ready';
+      readonly clips: number;
+      readonly total: number;
+    }
+  | { readonly state: 'downloading'; readonly done: number; readonly total: number }
+  | {
+      readonly state: 'failed';
+      readonly reason: DownloadFailure;
+      readonly status?: number;
+      readonly clips: number;
+      readonly total: number;
+    };
+
+/** Texts voiced by the device voice although the natural voice was chosen, kept for diagnostics. */
+const MAX_FALLBACK_TEXTS = 5;
 
 const MAX_LOG = 20;
 
@@ -129,6 +171,10 @@ export interface SpeechSessionStats {
   readonly dropped: Readonly<Partial<Record<DropReason, number>>>;
   /** Stroke cues the coach decided on but that were not spoken, by reason. */
   readonly suppressed: Readonly<Partial<Record<SuppressReason, number>>>;
+  /** Utterances by how they were voiced (natural clip, device voice, device voice as fallback). */
+  readonly engines: Readonly<Partial<Record<EngineUse, number>>>;
+  /** The latest texts that had no natural voice clip (`synth-fallback`), newest first. */
+  readonly fallbackTexts: readonly string[];
 }
 
 export const EMPTY_SPEECH_STATS: SpeechSessionStats = {
@@ -137,7 +183,13 @@ export const EMPTY_SPEECH_STATS: SpeechSessionStats = {
   p95Ms: null,
   dropped: {},
   suppressed: {},
+  engines: {},
+  fallbackTexts: [],
 };
+
+/** Two voice profiles are the same (every field). */
+const sameVoice = (a: VoiceSettings, b: VoiceSettings): boolean =>
+  (Object.keys({ ...a, ...b }) as (keyof VoiceSettings)[]).every((k) => a[k] === b[k]);
 
 /** Sum of the counts of a stats record (e.g. `speechStats.dropped`). */
 export const countOf = (counts: Readonly<Partial<Record<string, number>>>): number =>
@@ -194,10 +246,20 @@ export class CoachController {
   readonly speechMuted = computed(() => this.settings.value.speechMuted);
   /** Voices of the device (updated on voiceschanged). */
   readonly voices = signal<readonly VoiceInfo[]>([]);
-  /** Language actually spoken: Estonian only when the device has an Estonian voice. */
-  readonly spokenLanguage = computed<SpokenLanguage>(() =>
-    this.settings.value.voice.lang === 'et' && hasVoiceFor(this.voices.value, 'et') ? 'et' : 'en',
-  );
+  /** The downloaded natural Estonian voice of `voice.etSpeaker`. */
+  readonly estonianVoice = signal<EstonianVoiceStatus>({ state: 'unavailable' });
+  /** Speakers the Estonian natural voice can be downloaded in. */
+  readonly etSpeakers = signal<readonly string[]>(FALLBACK_ET_SPEAKERS);
+  /**
+   * Language actually spoken: Estonian only when the device has an Estonian
+   * voice or the natural Estonian voice is downloaded (and chosen).
+   */
+  readonly spokenLanguage = computed<SpokenLanguage>(() => {
+    const voice = this.settings.value.voice;
+    if (voice.lang !== 'et') return 'en';
+    const natural = voice.engine === 'natural' && this.estonianVoice.value.state === 'ready';
+    return natural || hasVoiceFor(this.voices.value, 'et') ? 'et' : 'en';
+  });
   /** Estonian is wanted but the device has no Estonian voice (English is spoken). */
   readonly estonianVoiceMissing = computed(
     () => this.settings.value.voice.lang === 'et' && this.spokenLanguage.value !== 'et',
@@ -312,6 +374,8 @@ export class CoachController {
     await this.safely('Loading settings', async () => {
       this.settings.value = resolveSettings(await this.deps.repository.loadSettings());
     });
+    await this.refreshEstonianVoice();
+    this.prepareVoice();
   }
 
   /** Re-reads the device's voices (iOS fills the list lazily). */
@@ -329,6 +393,7 @@ export class CoachController {
   async connect(transport: SensorTransport): Promise<void> {
     this.deps.speaker.prime();
     this.refreshVoices();
+    this.prepareVoice();
     this.batteryWarned = false;
     const generation = ++this.generation;
     await this.closeLink();
@@ -488,6 +553,7 @@ export class CoachController {
     this.rally.reset();
     this.rallyActive.value = false;
     this.speechStats.value = EMPTY_SPEECH_STATS;
+    this.prepareVoice();
     this.fatigue.value = initialFatigue(startedAt);
     this.stopMatchTimer();
     await this.safely('Saving session', () => this.deps.repository.saveSession(session));
@@ -567,6 +633,8 @@ export class CoachController {
       next.dominantHand !== before.dominantHand || next.forehandStyle !== before.forehandStyle;
     this.settings.value = next;
     if (modeChanged) this.transport?.setSensorMode?.(this.sensorMode());
+    if (next.voice.etSpeaker !== before.voice.etSpeaker) void this.refreshEstonianVoice();
+    if (!sameVoice(next.voice, before.voice)) this.prepareVoice();
     if (next.mode !== 'match') this.stopMatchTimer();
     // Silenced now: cues still queued or speaking are dropped (system messages stay).
     const silenced = (x: Settings) => x.speechMuted || x.feedbackFrequency === 'off';
@@ -582,15 +650,115 @@ export class CoachController {
     await this.updateSettings({ speechMuted: !this.settings.value.speechMuted });
   }
 
-  /** Speaks a sample phrase with the current voice profile. Call from a tap (it unlocks iOS speech). */
-  testSpeech(): void {
-    const lang = this.spokenLanguage.value;
+  /**
+   * Speaks a sample phrase with the current voice profile, or with the natural
+   * English voice `profile` ("Proovi" next to a profile). Call from a tap: it
+   * unlocks iOS audio.
+   */
+  testSpeech(profile?: VoiceProfile): void {
+    const lang = profile ? 'en' : this.spokenLanguage.value;
+    const current = this.settings.value.voice;
+    const voice: VoiceSettings = profile ? { ...current, engine: 'natural', profile } : current;
+    this.deps.speaker.prime();
+    const text = TEST_PHRASES[lang];
     this.deps.speaker.say({
-      text: TEST_PHRASES[lang],
+      text,
       lang,
       category: 'info',
-      voice: this.settings.value.voice,
+      voice,
+      onEngine: this.trackEngine(text),
     });
+  }
+
+  /* ------------------------------------------------- natural voice clips */
+
+  /** Loads and decodes the natural voice clips of the current voice (never in the cue path). */
+  private prepareVoice(): void {
+    void this.deps.speaker.prepare?.(this.settings.value.voice, this.spokenLanguage.value);
+  }
+
+  /** Re-reads how much of the chosen Estonian speaker is downloaded. */
+  async refreshEstonianVoice(): Promise<void> {
+    const deps = this.deps.estonianVoice;
+    if (!deps) return;
+    if (this.estonianVoice.value.state === 'downloading') return;
+    const speaker = this.settings.value.voice.etSpeaker;
+    const phrases = spokenPhrases('et');
+    if (this.estonianVoice.value.state === 'unavailable')
+      this.estonianVoice.value = { state: 'checking' };
+    const clips = await downloadedCount(deps.store, speaker, phrases);
+    if (speaker !== this.settings.value.voice.etSpeaker) return; // changed meanwhile
+    const total = new Set(phrases).size;
+    this.estonianVoice.value = {
+      state: clips === 0 ? 'missing' : clips >= total ? 'ready' : 'partial',
+      clips,
+      total,
+    };
+    if (clips >= total) this.prepareVoice();
+  }
+
+  /** Asks the TTS service which Estonian speakers it has (fallback list on failure). */
+  async loadEtSpeakers(): Promise<void> {
+    const deps = this.deps.estonianVoice;
+    if (!deps) return;
+    this.etSpeakers.value = await fetchEtSpeakers(deps.fetch);
+  }
+
+  /**
+   * One-time download of the natural Estonian voice (button in the speech
+   * settings; needs the network once, then plays offline). Phrases already
+   * downloaded are skipped. Never rejects; a failure shows in `estonianVoice`.
+   */
+  async downloadEstonianVoice(): Promise<void> {
+    const deps = this.deps.estonianVoice;
+    if (!deps || this.estonianVoice.value.state === 'downloading') return;
+    const speaker = this.settings.value.voice.etSpeaker;
+    const phrases = spokenPhrases('et');
+    const total = new Set(phrases).size;
+    this.estonianVoice.value = { state: 'downloading', done: 0, total };
+    const result = await downloadEstonianVoice({
+      fetch: deps.fetch,
+      store: deps.store,
+      speaker,
+      phrases,
+      onProgress: (done, all) => {
+        this.estonianVoice.value = { state: 'downloading', done, total: all };
+      },
+    });
+    deps.onInstalled?.(speaker);
+    if (result.ok) {
+      this.appendLog(`Estonian voice "${speaker}": ${result.clips} clips`);
+      this.estonianVoice.value = { state: 'checking' };
+      await this.refreshEstonianVoice();
+      this.prepareVoice();
+    } else {
+      this.appendLog(
+        `Estonian voice download failed: ${result.reason}${result.status === undefined ? '' : ` ${result.status}`}`,
+      );
+      this.estonianVoice.value = {
+        state: 'failed',
+        reason: result.reason,
+        ...(result.status === undefined ? {} : { status: result.status }),
+        clips: result.clips,
+        total,
+      };
+    }
+  }
+
+  /** Counts how an utterance was voiced; remembers texts without a natural clip. */
+  private trackEngine(text: string): (use: EngineUse) => void {
+    return (use) => {
+      const stats = this.speechStats.value;
+      const fallbackTexts =
+        use === 'synth-fallback'
+          ? [text, ...stats.fallbackTexts.filter((t) => t !== text)].slice(0, MAX_FALLBACK_TEXTS)
+          : stats.fallbackTexts;
+      this.speechStats.value = {
+        ...stats,
+        engines: { ...stats.engines, [use]: (stats.engines[use] ?? 0) + 1 },
+        fallbackTexts,
+      };
+    };
   }
 
   /* --------------------------------------------------------- calibration */
@@ -879,6 +1047,7 @@ export class CoachController {
       category: categoryOf(utterance.kind),
       voice: this.settings.value.voice,
       createdAt: receivedAt,
+      onEngine: this.trackEngine(text),
       onStart: (latencyMs) => {
         this.lastSpeech.value = text;
         this.gate.heard(utterance.kind, lane, text, strokeNo);
@@ -901,7 +1070,13 @@ export class CoachController {
 
   private saySystem(key: SystemPhrase): void {
     const { text, lang } = systemSpeech(key, this.spokenLanguage.value);
-    this.deps.speaker.say({ text, lang, category: 'system', voice: this.settings.value.voice });
+    this.deps.speaker.say({
+      text,
+      lang,
+      category: 'system',
+      voice: this.settings.value.voice,
+      onEngine: this.trackEngine(text),
+    });
   }
 
   private recordLatency(latencyMs: number): void {
@@ -952,6 +1127,7 @@ export class CoachController {
       lang,
       category,
       voice: this.settings.value.voice,
+      onEngine: this.trackEngine(text),
       onStart: () => {
         this.lastSpeech.value = text;
       },

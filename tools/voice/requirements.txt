@@ -1,0 +1,8 @@
+# Pinned for reproducible clips (tools/voice/README.md). Python 3.13, CPU.
+kokoro-onnx==0.6.1
+onnxruntime==1.29.0
+phonemizer==3.6.0
+espeakng-loader==0.2.4
+numpy==2.5.3
+scipy==1.18.1
+pyloudnorm==0.2.0

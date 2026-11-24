@@ -624,15 +624,31 @@ export type FeedbackFrequency = 'every' | 'changes' | 'every2' | 'every3' | 'off
 /** Language of the spoken cues. */
 export type SpokenLanguage = 'en' | 'et';
 
+/**
+ * How cues are voiced: 'natural' plays pre-recorded neural voice clips
+ * (feedback/clipEngine.ts) and falls back to the device voice for any text
+ * without a clip; 'system' always uses the device voice (Web Speech).
+ */
+export type VoiceEngine = 'natural' | 'system';
+
+/** English natural voice: the female or the male coach. */
+export type VoiceProfile = 'female' | 'male';
+
 /** Voice profile of the spoken cues. */
 export interface VoiceSettings {
+  /** Natural voice clips (default) or the device voice. */
+  readonly engine: VoiceEngine;
+  /** English natural voice. */
+  readonly profile: VoiceProfile;
+  /** TartuNLP speaker of the downloaded Estonian natural voice (e.g. "mari"). */
+  readonly etSpeaker: string;
   /** Wanted language; Estonian is only used when the device has an Estonian voice. */
   readonly lang: SpokenLanguage;
   /** `SpeechSynthesisVoice.voiceURI` of the chosen voice; missing = the best voice for `lang`. */
   readonly voiceURI?: string;
-  /** Rate multiplier, 0.5–2. */
+  /** Rate multiplier, 0.5–2 (device voice only: clips play at their recorded pace). */
   readonly rate: number;
-  /** Pitch, 0.5–2. */
+  /** Pitch, 0.5–2 (device voice only). */
   readonly pitch: number;
   /** Volume, 0–1. */
   readonly volume: number;

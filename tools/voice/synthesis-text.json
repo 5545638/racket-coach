@@ -1,0 +1,23 @@
+{
+  "_comment": "What Kokoro reads for a phrase whose spoken prosody should differ from the on-screen text (key: exact phrase text). Phrases not listed get a final full stop. Changing this file changes only the audio.",
+  "en": {
+    "Better": "Better!",
+    "Good": "Good!",
+    "That's it": "That's it!",
+    "Now too open": "Now, too open.",
+    "Now too closed": "Now, too closed.",
+    "Now too flat": "Now, too flat.",
+    "Now too steep": "Now, too steep.",
+    "Split step, ready": "Split step. Ready!",
+    "Reach up": "Reach up!",
+    "Turn more": "Turn more!",
+    "Recover faster": "Recover faster!",
+    "Prepare earlier": "Prepare earlier!",
+    "Hold the finish": "Hold the finish!",
+    "Loose arm, firm contact": "Loose arm. Firm contact.",
+    "No pause, one motion": "No pause. One motion.",
+    "Small, tidy loop": "Small, tidy loop.",
+    "Sensor connected": "Sensor connected.",
+    "Take a short break": "Take a short break."
+  }
+}

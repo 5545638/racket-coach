@@ -5,6 +5,7 @@ import type {
   Settings,
   VoiceSettings,
 } from '../domain/types';
+import { DEFAULT_ET_SPEAKER } from '../feedback/estonianVoice';
 
 export type {
   CoachMode,
@@ -13,6 +14,8 @@ export type {
   PlayerInputs,
   Settings,
   SpokenLanguage,
+  VoiceEngine,
+  VoiceProfile,
   VoiceSettings,
 } from '../domain/types';
 export type { Language } from '../coaching/guidance';
@@ -28,8 +31,12 @@ export type { Language } from '../coaching/guidance';
  * Version 5 moved `speechRate` into the voice profile `voice` ({ lang, voiceURI,
  * rate, pitch, volume }; rate = the old speechRate) and added
  * `feedbackFrequency`, `speechMuted` and `autoRallyMute`.
+ * Version 6 added the natural voice to the profile: `voice.engine` ('natural',
+ * the new default, or 'system'), `voice.profile` (English female / male clips)
+ * and `voice.etSpeaker` (downloaded Estonian voice). Older settings get the
+ * defaults: natural voice, female profile, speaker "mari"; the rest is kept.
  */
-export const SETTINGS_VERSION = 5;
+export const SETTINGS_VERSION = 6;
 
 /** First version whose default lever is 0.72 m. */
 const LEVER_DEFAULT_CHANGED_IN = 2;
@@ -40,7 +47,15 @@ export const DEFAULT_SETTINGS: Settings = {
   language: 'et',
   speakGood: false,
   feedbackFrequency: 'every',
-  voice: { lang: 'en', rate: 1.1, pitch: 1, volume: 1 },
+  voice: {
+    engine: 'natural',
+    profile: 'female',
+    etSpeaker: DEFAULT_ET_SPEAKER,
+    lang: 'en',
+    rate: 1.1,
+    pitch: 1,
+    volume: 1,
+  },
   speechMuted: false,
   autoRallyMute: false,
   leverRadiusM: 0.72,
@@ -140,6 +155,8 @@ export function resolveSettings(stored: Partial<Settings> | null): Settings {
 /**
  * The voice profile of stored settings. Before version 5 only `speechRate`
  * existed: it becomes the profile's rate (language English, pitch and volume 1).
+ * Before version 6 there was no natural voice: engine, profile and Estonian
+ * speaker get their defaults.
  */
 export function migrateVoice(stored: Partial<Settings>): VoiceSettings {
   const legacyRate: unknown = (stored as Record<string, unknown>)['speechRate'];
@@ -148,6 +165,12 @@ export function migrateVoice(stored: Partial<Settings>): VoiceSettings {
     typeof value === 'object' && value !== null ? value : {};
   const d = DEFAULT_SETTINGS.voice;
   const voice: VoiceSettings = {
+    engine: oneOf(raw.engine, ['natural', 'system'], d.engine),
+    profile: oneOf(raw.profile, ['female', 'male'], d.profile),
+    etSpeaker:
+      typeof raw.etSpeaker === 'string' && /^[\p{L}\d_-]{1,40}$/u.test(raw.etSpeaker)
+        ? raw.etSpeaker
+        : d.etSpeaker,
     lang: oneOf(raw.lang, ['en', 'et'], d.lang),
     rate: inRange(raw.rate, 0.5, 2) ?? inRange(legacyRate, 0.5, 2) ?? d.rate,
     pitch: inRange(raw.pitch, 0.5, 2) ?? d.pitch,

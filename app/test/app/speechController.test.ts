@@ -242,7 +242,14 @@ describe('spoken language', () => {
 
   it('passes the voice profile with every item', async () => {
     const { controller, speaker, play } = await setup();
-    const voice = { lang: 'en', rate: 1.4, pitch: 0.8, volume: 0.6 } as const;
+    const voice = {
+      ...controller.settings.value.voice,
+      engine: 'system',
+      lang: 'en',
+      rate: 1.4,
+      pitch: 0.8,
+      volume: 0.6,
+    } as const;
     await controller.updateSettings({ voice });
     play(10);
     expect(speaker.stroke().length).toBeGreaterThan(0);

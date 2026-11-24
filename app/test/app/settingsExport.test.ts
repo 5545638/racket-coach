@@ -29,7 +29,7 @@ describe('settings', () => {
     expect(
       resolveSettings({
         mode: 'match',
-        voice: { lang: 'en', rate: 9, pitch: 1, volume: 1 },
+        voice: { lang: 'en', rate: 9, pitch: 1, volume: 1 } as never,
         leverRadiusM: 1.2,
         language: 'fr' as never,
       }),

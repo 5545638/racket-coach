@@ -250,7 +250,14 @@ describe('voices', () => {
 
     queue.say({
       ...ev.item('Tere', 'info', undefined, 'et'),
-      voice: { lang: 'et', voiceURI: 'uri:Karl', rate: 1.2, pitch: 0.9, volume: 0.5 },
+      voice: {
+        ...ev.item('', 'info').voice,
+        lang: 'et',
+        voiceURI: 'uri:Karl',
+        rate: 1.2,
+        pitch: 0.9,
+        volume: 0.5,
+      },
     });
     const u = synth.utterances.at(-1);
     expect(u?.voice?.name).toBe('Karl');
@@ -261,7 +268,7 @@ describe('voices', () => {
     // An English fallback while Estonian is chosen: the Estonian voice is not used.
     queue.say({
       ...ev.item('Better', 'feedback'),
-      voice: { lang: 'et', voiceURI: 'uri:Karl', rate: 1, pitch: 1, volume: 1 },
+      voice: { ...ev.item('', 'info').voice, lang: 'et', voiceURI: 'uri:Karl' },
     });
     expect(synth.utterances.at(-1)?.voice?.name).toBe('Samantha'); // the browser default
   });

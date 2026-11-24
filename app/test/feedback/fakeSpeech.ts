@@ -175,7 +175,15 @@ export class Events {
       text,
       lang,
       category,
-      voice: { lang: 'en', rate: 1, pitch: 1, volume: 1 },
+      voice: {
+        engine: 'natural',
+        profile: 'female',
+        etSpeaker: 'mari',
+        lang: 'en',
+        rate: 1,
+        pitch: 1,
+        volume: 1,
+      },
       ...(createdAt === undefined ? {} : { createdAt }),
       onStart: (latency) => {
         this.log.push(`start ${text}`);

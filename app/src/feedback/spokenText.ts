@@ -105,3 +105,24 @@ export const systemSpeech = (key: SystemPhrase, lang: SpokenLanguage): SpokenTex
   text: SYSTEM_PHRASES[lang][key],
   lang,
 });
+
+/**
+ * Every Estonian text `strokeSpeech` and `systemSpeech` can return (cue
+ * variants, reinforce phrases, feedback phrases, system messages), without
+ * duplicates. The natural Estonian voice is downloaded for exactly these.
+ */
+export function estonianPhrases(): readonly string[] {
+  const out = new Set<string>();
+  const add = (text: string | null | undefined): void => {
+    if (text) out.add(text);
+  };
+  for (const id of Object.keys(CORRECTIONS.en) as CorrectionId[]) {
+    const et = spokenEt(id);
+    if (et) for (const v of et.variants) add(v);
+    add(et?.reinforce ?? feedbackEt('keepIt'));
+  }
+  for (const key of Object.keys(FEEDBACK_PHRASES)) add(feedbackEt(key));
+  add(BUILT_IN_ET['good']);
+  for (const text of Object.values(SYSTEM_PHRASES.et)) add(text);
+  return [...out];
+}
