@@ -23,6 +23,7 @@ const CSV_COLUMNS = [
   'attitudeReliable',
   'gyroSaturated',
   'cue',
+  'analysisVersion',
 ] as const;
 
 const fmt = (v: number | null): string => (v === null ? '' : v.toFixed(2));
@@ -54,17 +55,24 @@ export function toCsv(strokes: readonly StrokeRecord[]): string {
       String(m.quality.attitudeReliable),
       String(m.quality.gyroSaturated),
       `"${s.cue.text.replace(/"/g, '""')}"`,
+      s.analysisVersion === undefined ? '' : String(s.analysisVersion),
     ].join(',');
   });
   return [CSV_COLUMNS.join(','), ...rows].join('\n') + '\n';
 }
 
-/** Full-fidelity export including raw sensor data (base64), for offline analysis. */
+/**
+ * Full-fidelity export including raw sensor data (base64), for offline analysis.
+ * Each stroke carries its `analysisVersion`, `analysisParams` and `calibration`
+ * (when recorded; strokes saved by older app versions lack them), so a session
+ * can be re-analysed exactly without the app's database. Format version 2 only
+ * adds those optional stroke fields to version 1.
+ */
 export function toJson(session: SessionInfo, strokes: readonly StrokeRecord[]): string {
   return JSON.stringify(
     {
       format: 'racket-coach-session',
-      version: 1,
+      version: 2,
       session,
       strokes: strokes.map((s) => ({
         ...s,

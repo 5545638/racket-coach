@@ -1,11 +1,6 @@
-import type { Language } from '../coaching/guidance';
+import type { Settings } from '../domain/types';
 
-/**
- * `drill`: spoken cue after every stroke (feeding, ball machine).
- * `rally`: silent during play; review the session afterwards.
- */
-export type FeedbackMode = 'drill' | 'rally';
-
+export type { FeedbackMode, Settings } from '../domain/types';
 export type { Language } from '../coaching/guidance';
 
 /**
@@ -13,22 +8,6 @@ export type { Language } from '../coaching/guidance';
  * 1.0 m to 0.72 m; settings stored without a version predate that change.
  */
 export const SETTINGS_VERSION = 2;
-
-export interface Settings {
-  readonly version: typeof SETTINGS_VERSION;
-  readonly mode: FeedbackMode;
-  /** Language of the on-screen explanations. Spoken cues are always English. */
-  readonly language: Language;
-  /** Also say "Good" when no rule fires. */
-  readonly speakGood: boolean;
-  /** Speech rate multiplier, 0.5–2. */
-  readonly speechRate: number;
-  /**
-   * See AnalysisParams.leverRadiusM. Head speed is a model estimate that
-   * scales with this lever; best used as a personal trend.
-   */
-  readonly leverRadiusM: number;
-}
 
 export const DEFAULT_SETTINGS: Settings = {
   version: SETTINGS_VERSION,
