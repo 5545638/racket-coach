@@ -1,7 +1,13 @@
 import { CORRECTIONS, type CorrectionId, FEEDBACK_PHRASES } from '../coaching/corrections';
 import { NOT_RATED_CUE, NO_READING_CUE } from '../coaching/rules';
 import type { Cue, StrokeType, UtteranceKind } from '../domain/types';
-import { type ElementAssessment, type StrokeAssessment, byCorrection } from '../elements/assess';
+import {
+  type Band,
+  type BandSource,
+  type ElementAssessment,
+  type StrokeAssessment,
+  byCorrection,
+} from '../elements/assess';
 
 /**
  * Live coaching: turns one stroke's assessment into at most one spoken
@@ -62,10 +68,20 @@ export interface FocusState {
   /** d and σ of the focus on the previous stroke of this type, when it was a fault there. */
   readonly lastDistance: number | null;
   readonly lastSigma: number | null;
+  /**
+   * Element (catalogue key) whose d and σ those are. One correction can have
+   * several elements in different units, so "Better" compares like with like.
+   */
+  readonly lastKey: string | null;
+  /** Where the band of that stroke came from, and its bounds: d is only comparable within one band. */
+  readonly lastBandSource: BandSource | null;
+  readonly lastBand: Band | null;
   /** Score of the focus when it last was a fault (the bar for a replacement). */
   readonly faultScore: number;
   readonly okStreak: number;
   readonly notAssessableStreak: number;
+  /** "That's it" has been said (heard) for the current ok run. */
+  readonly thatsItSaid: boolean;
 }
 
 export interface StrokeTypeCoachState {
@@ -109,16 +125,24 @@ const newFocus = (e: ElementAssessment): FocusState => ({
   correctionId: e.correctionId,
   lastDistance: e.distance,
   lastSigma: e.sigma,
+  lastKey: e.key,
+  lastBandSource: e.bandSource,
+  lastBand: e.band,
   faultScore: e.score,
   okStreak: 0,
   notAssessableStreak: 0,
+  thatsItSaid: false,
 });
+
+const sameBand = (a: Band | null, b: Band | null): boolean =>
+  a === null || b === null ? a === b : a.lo === b.lo && a.hi === b.hi;
 
 /** Picks the focus and the phrase, before the repeat limit is applied. */
 function decide(
   focus: FocusState | null,
   assessment: StrokeAssessment,
   config: CoachConfig,
+  speaking: boolean,
 ): { readonly focus: FocusState | null; readonly utterance: Utterance } {
   const verdicts = byCorrection(assessment);
   const faults = assessment.faults;
@@ -161,19 +185,31 @@ function decide(
   }
 
   if (current.status === 'fault') {
-    const next: FocusState = {
-      ...focus,
-      lastDistance: current.distance,
-      lastSigma: current.sigma,
-      faultScore: current.score,
-      okStreak: 0,
-      notAssessableStreak: 0,
-    };
+    // Comparable only for the same element (same unit) under the same band.
+    const comparable =
+      focus.lastKey === current.key &&
+      focus.lastBandSource === current.bandSource &&
+      sameBand(focus.lastBand, current.band);
     const improved =
+      comparable &&
       focus.lastDistance !== null &&
       focus.lastSigma !== null &&
       current.sigma !== null &&
       focus.lastDistance - current.distance >= Math.hypot(focus.lastSigma, current.sigma);
+    // An unheard "Better" (rally) is not spent: the reference stays, so it can still be said.
+    const keepReference = improved && !speaking;
+    const next: FocusState = {
+      ...focus,
+      lastDistance: keepReference ? focus.lastDistance : current.distance,
+      lastSigma: keepReference ? focus.lastSigma : current.sigma,
+      lastKey: keepReference ? focus.lastKey : current.key,
+      lastBandSource: keepReference ? focus.lastBandSource : current.bandSource,
+      lastBand: keepReference ? focus.lastBand : current.band,
+      faultScore: current.score,
+      okStreak: 0,
+      notAssessableStreak: 0,
+      thatsItSaid: false,
+    };
     return {
       focus: next,
       utterance: improved
@@ -194,10 +230,15 @@ function decide(
     ...focus,
     lastDistance: null,
     lastSigma: null,
+    lastKey: null,
+    lastBandSource: null,
+    lastBand: null,
     okStreak,
     notAssessableStreak: 0,
+    // "That's it" is said once, and only when heard.
+    thatsItSaid: focus.thatsItSaid || (speaking && okStreak >= 1),
   };
-  if (okStreak === 1) {
+  if (!focus.thatsItSaid && speaking) {
     return {
       focus: next,
       utterance: { kind: 'keep-it', spoken: FEEDBACK_PHRASES.keepIt, reason: 'focus-ok' },
@@ -232,15 +273,27 @@ export function coachStep(
   state: CoachState,
   assessment: StrokeAssessment,
   config: CoachConfig = DEFAULT_COACH_CONFIG,
+  /**
+   * Whether the utterance will be heard (drill). When false (rally) the focus
+   * is still tracked for the record, but the repeat/pause counters and the
+   * once-only "Better" / "That's it" are not spent.
+   */
+  speaking = true,
 ): CoachStep {
   if (!assessment.contact) return { state, utterance: silent('no-contact') };
   const type = assessment.strokeType;
   const own = state.byStroke[type];
-  const decided = decide(own.focus, assessment, config);
+  const decided = decide(own.focus, assessment, config, speaking);
   let utterance = decided.utterance;
   let { lastSpoken, repeat } = own;
 
-  if (utterance.spoken !== '') {
+  if (own.focus !== null && decided.focus === null) {
+    // Focus cleared: a returning cue starts fresh, not mid-pause.
+    lastSpoken = null;
+    repeat = 0;
+  }
+
+  if (speaking && utterance.spoken !== '') {
     repeat = utterance.spoken === lastSpoken ? repeat + 1 : 1;
     lastSpoken = utterance.spoken;
     const position = (repeat - 1) % (config.maxRepeats + config.pauseAfterRepeats);
@@ -277,7 +330,14 @@ const fix = (id: CorrectionId): Cue => ({ ruleId: id, severity: 'fix', text: spo
  */
 export function cueForStroke(utterance: Utterance, assessment: StrokeAssessment): Cue {
   if (!assessment.contact) return NOT_RATED_CUE;
-  if (utterance.correctionId !== undefined) return fix(utterance.correctionId);
+  if (
+    utterance.correctionId !== undefined &&
+    (utterance.kind === 'correction' ||
+      utterance.kind === 'better' ||
+      (utterance.kind === 'silent' && utterance.reason === 'repeat-pause'))
+  ) {
+    return fix(utterance.correctionId);
+  }
   if (utterance.kind === 'keep-it') {
     return { ruleId: 'good', severity: 'good', text: FEEDBACK_PHRASES.keepIt };
   }

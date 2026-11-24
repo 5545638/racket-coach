@@ -7,9 +7,9 @@ import { SilentSpeaker } from '../../src/feedback/speech';
 import { SimulatedTransport } from '../../src/transport/simulatedTransport';
 import type { StrokeRecord } from '../../src/domain/types';
 import { InMemoryRepository, immediateScheduler } from '../fakes';
-import { GOOD_FOREHAND } from '../fixtures';
+import { GOOD_FOREHAND_V3 } from '../fixtures';
 
-/** A stroke from an earlier session (analysis version 2: metrics only). */
+/** A stroke from an earlier session (with features). */
 const earlierStroke = (id: string, receivedAt: number): StrokeRecord => ({
   id,
   sessionId: 'earlier',
@@ -23,7 +23,7 @@ const earlierStroke = (id: string, receivedAt: number): StrokeRecord => ({
     samples: Int16Array.of(1, 2, 3, 4, 5, 6),
     receivedAt,
   },
-  metrics: GOOD_FOREHAND,
+  metrics: GOOD_FOREHAND_V3,
   cue: { ruleId: 'good', severity: 'good', text: 'Good' },
   analysisVersion: 2,
 });
@@ -97,7 +97,7 @@ describe('CoachController end-to-end with the simulated sensor', () => {
     expect(controller.baselineCounts.value.forehand).toBe(20);
     const faceKey = 'forehand|drive|full|faceTiltDeg';
     expect(controller.baseline.value.entries[faceKey]?.active).toBe(true);
-    expect(controller.baseline.value.entries[faceKey]?.median).toBe(GOOD_FOREHAND.faceTiltDeg);
+    expect(controller.baseline.value.entries[faceKey]?.median).toBe(GOOD_FOREHAND_V3.faceTiltDeg);
 
     await controller.capturePose('faceUp');
     await controller.capturePose('tipUp');

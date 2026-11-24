@@ -81,10 +81,10 @@ describe('personal baseline', () => {
     expect(b.entries[baselineKey('forehand', 'any', 'full', 'takebackTimeMs')]?.n).toBe(2);
   });
 
-  it('uses only the metrics old records have, and features of current ones', () => {
+  it('leaves out old records without features: their values have no sigma', () => {
     const old = strokeRecord(GOOD_FOREHAND, 1, null); // before versioning, no features
     const b = buildBaseline([old]);
-    expect(b.entries[PATH]?.n).toBe(1);
+    expect(b.entries[PATH]).toBeUndefined();
     expect(b.entries[baselineKey('forehand', 'any', 'full', 'takebackTimeMs')]).toBeUndefined();
   });
 
@@ -110,5 +110,26 @@ describe('personal baseline', () => {
     const recs = records([10, 30], (v) => ({ ...GOOD_FOREHAND_V3, swingPathDeg: v }));
     const b = buildBaseline(recs, DEFAULT_BASELINE_CONFIG, (r) => r.metrics.swingPathDeg === 30);
     expect(b.entries[PATH]?.values).toEqual([30]);
+  });
+});
+
+describe('personal baseline hardening', () => {
+  it('ignores values without a finite sigma', () => {
+    const features = GOOD_FOREHAND_V3.features;
+    if (!features) throw new Error('fixture');
+    const blind: StrokeMetrics = {
+      ...GOOD_FOREHAND_V3,
+      features: { ...features, sigma: { ...features.sigma, faceTiltDeg: null } },
+    };
+    const b = buildBaseline(records([-4, -4, -4], () => blind));
+    expect(b.entries[FACE]).toBeUndefined();
+    expect(b.entries[PATH]).toBeDefined();
+  });
+
+  it('copes with records lacking receivedAt', () => {
+    const odd = { ...strokeRecord(GOOD_FOREHAND_V3, 1) };
+    const broken = { ...odd, capture: { ...odd.capture, receivedAt: undefined } };
+    const b = buildBaseline([strokeRecord(GOOD_FOREHAND_V3, 2), broken as never]);
+    expect(b.strokeCounts.forehand).toBe(2);
   });
 });

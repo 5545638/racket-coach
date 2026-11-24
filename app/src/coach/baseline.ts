@@ -93,7 +93,10 @@ export function contribution(spec: ElementSpec, record: StrokeRecord): number | 
   }
   if (spec.unavailable?.(m)) return null;
   const value = spec.value(m);
-  return value !== null && Number.isFinite(value) ? value : null;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  // A value without a finite σ cannot be assessed, so it must not shape the baseline.
+  const sigma = spec.sigma(m);
+  return typeof sigma === 'number' && Number.isFinite(sigma) ? value : null;
 }
 
 function entryFrom(values: readonly number[], sMin: number, config: BaselineConfig): BaselineEntry {
@@ -136,6 +139,11 @@ export function addStrokeToBaseline(
   };
 }
 
+const receivedAt = (r: StrokeRecord): number => {
+  const t: unknown = r.capture.receivedAt;
+  return typeof t === 'number' && Number.isFinite(t) ? t : 0;
+};
+
 /**
  * Builds the baseline from stored strokes (any order; current and previous
  * sessions). The newest `windowSize` values per key are kept.
@@ -146,9 +154,7 @@ export function buildBaseline(
   filter: BaselineFilter = () => true,
   catalog: readonly ElementSpec[] = ELEMENT_CATALOG,
 ): PersonalBaseline {
-  const oldestFirst = records
-    .filter(filter)
-    .sort((a, b) => a.capture.receivedAt - b.capture.receivedAt);
+  const oldestFirst = records.filter(filter).sort((a, b) => receivedAt(a) - receivedAt(b));
   return oldestFirst.reduce(
     (acc, record) => addStrokeToBaseline(acc, record, config, catalog),
     EMPTY_BASELINE,
