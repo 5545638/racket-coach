@@ -67,9 +67,11 @@ export function extractStaticPose(
  * - `faceUp`: racket lying flat, forehand face pointing up → gives racket +z.
  * - `tipUp`: racket standing on its butt cap, tip up → gives racket +x.
  *
- * The face normal is taken as exact (the sensor sits on the string bed) and the
- * long axis is orthogonalised against it, so a slightly tilted tip-up pose
- * costs no accuracy in face angle.
+ * The face normal is taken as exact and the long axis is orthogonalised
+ * against it, so a slightly tilted tip-up pose costs no accuracy in face
+ * angle. The face-up pose is trusted because it is easy to repeat (the racket
+ * lies flat on the ground or a bench), not because of where the sensor is
+ * mounted; the sensor sits in the butt cap.
  */
 export function calibrateMount(
   faceUp: StaticPose,

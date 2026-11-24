@@ -52,12 +52,30 @@ export interface RuleEvaluation {
 }
 
 export const NO_READING_CUE: Cue = { ruleId: 'no-reading', severity: 'none', text: 'No reading' };
-/** Strokes the app counts but has no reference values to judge (serve, smash, volley). */
+/**
+ * Strokes the app counts but does not judge: strokes without reference values
+ * (serve, smash, volley), and swings without ball contact (shadow swings and
+ * misses), whose "contact" metrics are only read at peak racket speed.
+ */
 export const NOT_RATED_CUE: Cue = { ruleId: 'not-rated', severity: 'none', text: 'Counted' };
 
+/**
+ * A stroke is only rated when ball contact was detected. Without contact the
+ * metrics describe the moment of peak racket speed, not a hit, and the
+ * thresholds (all taken from studies of real contacts) do not apply.
+ */
+export const isRateable = (metrics: StrokeMetrics): boolean => metrics.impactDetected;
+
+/**
+ * Checks every applicable rule. Unrateable strokes (see `isRateable`) yield no
+ * violations and no unchecked rules. Rules whose metric is null (withheld,
+ * e.g. angles without a reliable attitude or timing after gyro clipping) are
+ * reported as unchecked, never as passed or failed.
+ */
 export function evaluateRules(metrics: StrokeMetrics, ruleSet: RuleSet): RuleEvaluation {
   const violations: RuleViolation[] = [];
   const unchecked: CoachingRule[] = [];
+  if (!isRateable(metrics)) return { violations, unchecked };
   for (const rule of ruleSet.rules) {
     if (!rule.strokes.includes(metrics.strokeType)) continue;
     if (!rule.swingSizes.includes(metrics.swingSize)) continue;
@@ -85,9 +103,11 @@ export function evaluateRules(metrics: StrokeMetrics, ruleSet: RuleSet): RuleEva
  * Selects the single most important cue. One correction at a time is
  * deliberate: players cannot act on several cues between two shots.
  * A stroke is only called good when every applicable rule could be checked,
- * and strokes without any rules are counted, not praised.
+ * and strokes without any rules, or without ball contact, are counted, not
+ * praised or corrected.
  */
 export function selectCue(metrics: StrokeMetrics, ruleSet: RuleSet): Cue {
+  if (!isRateable(metrics)) return NOT_RATED_CUE;
   const { violations, unchecked } = evaluateRules(metrics, ruleSet);
   const [top] = violations;
   if (top) {

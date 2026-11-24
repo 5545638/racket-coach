@@ -4,7 +4,12 @@ import { encodeCapture } from '../protocol/assembler';
 import { Command, PROTOCOL_VERSION } from '../protocol/constants';
 import { encodeStatus } from '../protocol/messages';
 import { createRandom } from '../simulation/random';
-import { DEFAULT_SWING, simulateStatic, simulateSwing } from '../simulation/swingModel';
+import {
+  BUTT_CAP_MOUNT,
+  DEFAULT_SWING,
+  simulateStatic,
+  simulateSwing,
+} from '../simulation/swingModel';
 import { type ConnectionState, Emitter, type SensorTransport, type Unsubscribe } from './transport';
 
 export interface Scheduler {
@@ -21,13 +26,17 @@ const browserScheduler: Scheduler = {
   setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms),
 };
 
-/** Mounting used by the simulated sensor: Puck lying on the strings, rotated 90°. */
-const SIMULATED_MOUNT: MountCalibration = {
+/**
+ * Mounting used by the simulated sensor: the PCB in the butt cap, its z axis
+ * pointing out of the cap (racket −x) and its x axis along the forehand face
+ * normal (racket +z).
+ */
+export const SIMULATED_MOUNT: MountCalibration = {
   version: 1,
   racketFromSensor: [
+    [0, 0, -1],
     [0, 1, 0],
-    [-1, 0, 0],
-    [0, 0, 1],
+    [1, 0, 0],
   ],
   gyroBias: [0.004, -0.006, 0.002],
   createdAt: '1970-01-01T00:00:00.000Z',
@@ -133,12 +142,12 @@ export class SimulatedTransport implements SensorTransport {
     const { capture } = simulateSwing(
       {
         ...DEFAULT_SWING,
+        // Butt-cap sensor: weak acceleration transient, clear jolt in rotation,
+        // and the rate drop the ball causes at contact (DEFAULT_SWING).
+        ...BUTT_CAP_MOUNT,
         hittingFace: backhand ? 'backhand' : 'forehand',
         faceTiltDeg: (slice ? 12 : -12) + (r() - 0.5) * 30,
         swingPathDeg: (slice ? -22 : 25) + (r() - 0.5) * (slice ? 20 : 36),
-        // Handle-mounted sensor: weak acceleration transient, clear jolt in rotation.
-        impactAccelG: 4,
-        impactRollKickRadPerS: 9,
         peakRateRadPerS: 20 + r() * 10,
         peakOffsetS: r() < 0.2 ? -0.07 : 0,
         fallSigmaS: r() < 0.2 ? 0.06 : 0.16,

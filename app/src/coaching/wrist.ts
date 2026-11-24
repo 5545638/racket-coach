@@ -16,5 +16,6 @@ export const STIFF_ACCELERATION_OFFSET_MS = -150;
  */
 export function wristHint(metrics: StrokeMetrics): WristHint | null {
   if (metrics.swingSize !== 'full' || metrics.strokeType === 'overhead') return null;
+  if (metrics.peakAccelerationOffsetMs === null) return null; // gyro clipped: timing unknown
   return metrics.peakAccelerationOffsetMs < STIFF_ACCELERATION_OFFSET_MS ? 'stiff' : 'loose';
 }

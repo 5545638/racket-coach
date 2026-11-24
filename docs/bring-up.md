@@ -35,6 +35,18 @@ order with the first real Puck.js; record results in an issue.
 - [ ] Contact is detected on every hit and on no shadow swing. In the handle
       the impact is weaker than on the strings: if hits are missed, lower
       `impactJumpThresholdG` (default 6 g) using the exported raw data.
+- [ ] Gyro clip point: swing as fast as possible (or spin the racket on a
+      drill) and note the largest raw gyro count the sensor ever reports.
+      The app treats ≥ 28000 counts (1960 dps) as clipped
+      (`GYRO_SATURATION_COUNTS` in `app/src/processing/units.ts`), just below
+      the nominal ±2000 dps = 28571 counts; the int16 limit (32767 counts,
+      2293 dps) is not a reliable clip point. Set the threshold just below the
+      measured plateau.
+- [ ] Ready position: check in the exported data that a normal ready
+      position yields a quiet anchor window (≥ 100 ms, ‖ω‖ < 0.5 rad/s,
+      per-axis accelerometer spread < 0.03 g, drift < 0.01 g, ‖mean‖ within
+      0.05 g of 1 g). If strokes often show "No reading" with
+      `anchorErrorG` empty, the thresholds are too strict for real hands.
 
 ## 4. Validation against video
 

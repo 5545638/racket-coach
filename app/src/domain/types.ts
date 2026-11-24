@@ -97,8 +97,11 @@ export interface StrokeMetrics {
   readonly swingPathDeg: number | null;
   /** Elevation of the racket long axis (tip direction) at contact. */
   readonly tipElevationDeg: number | null;
-  /** Time of peak racket speed relative to contact, ms. Negative = peaked before contact. */
-  readonly peakSpeedOffsetMs: number;
+  /**
+   * Time of peak racket speed relative to contact, ms. Negative = peaked before
+   * contact. Null when the gyro clipped during the forward swing.
+   */
+  readonly peakSpeedOffsetMs: number | null;
   /** Time from the start of the preparation to contact, ms; null when it began before the capture. */
   readonly preparationTimeMs: number | null;
   /** Rotation of the racket from the start of the preparation to the start of the forward swing, deg. */
@@ -116,8 +119,9 @@ export interface StrokeMetrics {
    * Time of peak angular acceleration relative to contact, ms (negative =
    * before). Close to contact = the racket lags and whips through, which
    * suggests a relaxed wrist; an indirect hint, not a wrist measurement.
+   * Null when the gyro clipped during the forward swing.
    */
-  readonly peakAccelerationOffsetMs: number;
+  readonly peakAccelerationOffsetMs: number | null;
   /** Rate at which the hitting face is closing at contact, deg/s (negative = opening). */
   readonly faceClosingRateDps: number | null;
   /** Rotation of the racket from forward-swing start to contact, degrees. */

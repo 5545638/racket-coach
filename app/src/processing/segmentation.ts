@@ -14,6 +14,9 @@ import { STANDARD_GRAVITY } from './units';
  * the acceleration transient is much weaker than on the string bed.
  *
  * Returns the onset of the largest jump, or null for shadow swings and misses.
+ * The jump at sample i compares samples i − 1 and i, so the returned sample
+ * already contains the impact; the ball arrived somewhere in the interval
+ * before it. See `contactReference`.
  */
 export function detectImpact(
   accel: readonly Vec3[],
@@ -43,6 +46,36 @@ export function detectImpact(
     if (jump(i) >= onsetLevel) return i;
   }
   return null;
+}
+
+/** Where in the capture contact kinematics and contact time are taken from. */
+export interface ContactReference {
+  /** Last sample not yet disturbed by the impact; kinematics are read here. */
+  readonly sampleIndex: number;
+  /**
+   * Best estimate of the contact time as a fractional sample index. Timing
+   * metrics are measured from here.
+   */
+  readonly time: number;
+}
+
+/**
+ * Chooses the contact reference.
+ *
+ * With an impact at sample k, contact happened in (t[k−1], t[k]]: sample k
+ * already shows the post-impact racket, whose rate has dropped to roughly
+ * 80 % (Elliott et al. 1989, docs/research/racket-dynamics.md §1.2), and the
+ * impact transient. Kinematics are therefore read from sample k − 1, the last
+ * clean one, and the contact time is taken as the middle of the interval,
+ * k − 0.5, which halves the worst-case timing error (±½ sample ≈ ±4.8 ms at
+ * 104 Hz).
+ *
+ * Without an impact (shadow swing or miss) the peak of racket rate stands in
+ * for contact.
+ */
+export function contactReference(impactIndex: number | null, peakIndex: number): ContactReference {
+  if (impactIndex === null) return { sampleIndex: peakIndex, time: peakIndex };
+  return { sampleIndex: Math.max(0, impactIndex - 1), time: impactIndex - 0.5 };
 }
 
 export function argMax(values: readonly number[]): number {

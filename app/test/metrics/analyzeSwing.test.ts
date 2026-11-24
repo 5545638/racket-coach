@@ -2,10 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_ANALYSIS_PARAMS, analyzeSwing } from '../../src/metrics/analyzeSwing';
 import { toImuSeries } from '../../src/processing/units';
 import { DEFAULT_SWING, type SwingSpec, simulateSwing } from '../../src/simulation/swingModel';
-import { SETUP, SKEWED_MOUNT } from '../helpers';
+import {
+  SETUP,
+  SKEWED_MOUNT,
+  expectNear,
+  jiggleAboutVertical,
+  racketFrame,
+  trueUpInRacket,
+} from '../helpers';
+import { STANDARD_GRAVITY } from '../../src/processing/units';
+import { RAD_TO_DEG, angleBetween, norm } from '../../src/math/vec3';
 
 /** A longer capture with a full second of ready position before the stroke. */
 const LONG_SETUP = { ...SETUP, durationS: 2.4, contactTimeS: 1.6 };
+
+/**
+ * Angle tolerance for noise-free simulated swings, deg. Contact angles are
+ * extrapolated by half a sample from the last two pre-impact samples, and
+ * the anchor window sits just before the swing starts; together these leave
+ * up to ≈ 0.9° in simulation.
+ */
+const ANGLE_TOL_DEG = 1;
 
 function run(overrides: Partial<SwingSpec>, setup = SETUP) {
   const spec = { ...DEFAULT_SWING, ...overrides };
@@ -25,10 +42,10 @@ describe('analyzeSwing on simulated swings', () => {
     expect(metrics.impactDetected).toBe(true);
     expect(metrics.referenceIndex).toBe(truth.contactIndex);
     expect(metrics.quality.attitudeReliable).toBe(true);
-    expect(metrics.faceTiltDeg).toBeCloseTo(truth.faceTiltDeg, 0);
-    expect(metrics.swingPathDeg).toBeCloseTo(truth.swingPathDeg, 0);
+    expectNear(metrics.faceTiltDeg, truth.faceTiltDeg, ANGLE_TOL_DEG);
+    expectNear(metrics.swingPathDeg, truth.swingPathDeg, ANGLE_TOL_DEG);
     expect(metrics.headSpeedMps).toBeCloseTo(truth.headSpeedMps, 0);
-    expect(Math.abs(metrics.peakSpeedOffsetMs)).toBeLessThanOrEqual(10);
+    expect(Math.abs(metrics.peakSpeedOffsetMs ?? Infinity)).toBeLessThanOrEqual(10);
   });
 
   it.each([
@@ -37,15 +54,15 @@ describe('analyzeSwing on simulated swings', () => {
     { faceTiltDeg: 0, swingPathDeg: -10 },
   ])('tracks face $faceTiltDeg° / path $swingPathDeg°', (geometry) => {
     const { metrics, truth } = run(geometry);
-    expect(metrics.faceTiltDeg).toBeCloseTo(truth.faceTiltDeg, 0);
-    expect(metrics.swingPathDeg).toBeCloseTo(truth.swingPathDeg, 0);
+    expectNear(metrics.faceTiltDeg, truth.faceTiltDeg, ANGLE_TOL_DEG);
+    expectNear(metrics.swingPathDeg, truth.swingPathDeg, ANGLE_TOL_DEG);
   });
 
   it('identifies a backhand from the hitting face, with the same angle conventions', () => {
     const { metrics, truth } = run({ hittingFace: 'backhand', faceTiltDeg: 5 });
     expect(metrics.strokeType).toBe('backhand');
-    expect(metrics.faceTiltDeg).toBeCloseTo(truth.faceTiltDeg, 0);
-    expect(metrics.swingPathDeg).toBeCloseTo(truth.swingPathDeg, 0);
+    expectNear(metrics.faceTiltDeg, truth.faceTiltDeg, ANGLE_TOL_DEG);
+    expectNear(metrics.swingPathDeg, truth.swingPathDeg, ANGLE_TOL_DEG);
   });
 
   it('classifies a tip-up contact as an overhead', () => {
@@ -67,6 +84,7 @@ describe('analyzeSwing on simulated swings', () => {
     const { metrics } = run({ withImpact: false });
     expect(metrics.impactDetected).toBe(false);
     expect(metrics.faceTiltDeg).not.toBeNull();
+    expect(metrics.peakSpeedOffsetMs).toBe(0); // the peak is the reference
   });
 
   it('flags gyro saturation so speed is treated as a lower bound', () => {
@@ -91,21 +109,21 @@ describe('analyzeSwing on simulated swings', () => {
 
   it('is unaffected by forearm roll about the racket axis', () => {
     const { metrics, truth } = run({ rollRateRadPerS: 15 });
-    expect(metrics.faceTiltDeg).toBeCloseTo(truth.faceTiltDeg, 0);
-    expect(metrics.swingPathDeg).toBeCloseTo(truth.swingPathDeg, 0);
+    expectNear(metrics.faceTiltDeg, truth.faceTiltDeg, ANGLE_TOL_DEG);
+    expectNear(metrics.swingPathDeg, truth.swingPathDeg, ANGLE_TOL_DEG);
   });
 
   it('handles a backswing before the forward swing', () => {
     const { metrics, truth } = run({ backswingRateRadPerS: 6 });
     expect(metrics.referenceIndex).toBe(truth.contactIndex);
-    expect(metrics.faceTiltDeg).toBeCloseTo(truth.faceTiltDeg, 0);
+    expectNear(metrics.faceTiltDeg, truth.faceTiltDeg, ANGLE_TOL_DEG);
   });
 
   it('measures the racket drop and the face at the bottom of it', () => {
     const { metrics, truth } = run({ backswingRateRadPerS: 6, swingPathDeg: 35 });
     expect(truth.racketDropDeg).toBeLessThan(-10); // the simulated racket really drops
-    expect(metrics.racketDropDeg).toBeCloseTo(truth.racketDropDeg, 0);
-    expect(metrics.faceAtDropDeg).toBeCloseTo(truth.faceAtDropDeg, 0);
+    expectNear(metrics.racketDropDeg, truth.racketDropDeg, ANGLE_TOL_DEG);
+    expectNear(metrics.faceAtDropDeg, truth.faceAtDropDeg, ANGLE_TOL_DEG);
   });
 
   it('times the preparation from the last still moment to contact', () => {
@@ -150,15 +168,21 @@ describe('analyzeSwing on simulated swings', () => {
     const { metrics, truth } = run({ swingPathDeg: -20, faceTiltDeg: 12, hittingFace: 'backhand' });
     expect(metrics.strokeType).toBe('backhand');
     expect(metrics.swingStyle).toBe('slice');
-    expect(metrics.swingPathDeg).toBeCloseTo(truth.swingPathDeg, 0);
+    expectNear(metrics.swingPathDeg, truth.swingPathDeg, ANGLE_TOL_DEG);
     expect(run({}).metrics.swingStyle).toBe('drive');
   });
 
   it('finds contact from the jolt in rotation when the acceleration transient is weak', () => {
-    // A sensor in the handle: 3 g is below the acceleration threshold.
-    const weak = run({ impactAccelG: 3 });
+    // A sensor in the handle: 3 g is below the acceleration threshold. The
+    // rate drop is switched off to isolate the roll jolt (see the butt-cap
+    // tests for the combined, realistic case).
+    const weak = run({ impactAccelG: 3, impactRateRetention: 1 });
     expect(weak.metrics.impactDetected).toBe(false);
-    const { metrics, truth } = run({ impactAccelG: 3, impactRollKickRadPerS: 9 });
+    const { metrics, truth } = run({
+      impactAccelG: 3,
+      impactRateRetention: 1,
+      impactRollKickRadPerS: 9,
+    });
     expect(metrics.impactDetected).toBe(true);
     expect(metrics.referenceIndex).toBe(truth.contactIndex);
     // The jolt itself disturbs the last integration step, so allow a few degrees.
@@ -175,7 +199,7 @@ describe('analyzeSwing on simulated swings', () => {
   it('documents the lever model: a centre of rotation off the racket axis changes speed, not path', () => {
     // Shoulder 0.3 m further out along the racket line than assumed.
     const { metrics, truth } = run({ centreOffsetM: [0, -0.3, 0] });
-    expect(metrics.swingPathDeg).toBeCloseTo(truth.swingPathDeg, 0);
+    expectNear(metrics.swingPathDeg, truth.swingPathDeg, ANGLE_TOL_DEG);
     expect(metrics.headSpeedMps / truth.headSpeedMps).toBeCloseTo(1 / 0.7, 1);
   });
 
@@ -204,5 +228,158 @@ describe('analyzeSwing on simulated swings', () => {
     expect(metrics.quality.attitudeReliable).toBe(false);
     expect(metrics.faceTiltDeg).toBeNull();
     expect(metrics.strokeType).toBe('forehand');
+  });
+});
+
+describe('attitude anchor: a quiet window, not a single sample', () => {
+  const params = { ...DEFAULT_ANALYSIS_PARAMS, leverRadiusM: DEFAULT_SWING.leverRadiusM };
+
+  it.each(['forehand', 'backhand'] as const)(
+    'is not fooled by a swing-onset sample after a slightly restless ready position (%s)',
+    (hittingFace) => {
+      // Regression: the ready position turns ±0.48 rad/s about the vertical, so
+      // no ready sample looks perfectly still. The swing onset then holds a
+      // sample with ‖f‖ within 0.05 g of 1 g and ‖ω‖ < 0.5 rad/s whose
+      // specific force is tilted > 20° by tangential acceleration. The former
+      // single-sample anchor (min |‖f‖ − g| + 0.1‖ω‖) chose exactly that sample
+      // and reported the face ≈ 33° too closed while calling it reliable.
+      const { capture, truth } = simulateSwing({ ...DEFAULT_SWING, hittingFace }, LONG_SETUP);
+      const clean = toImuSeries(capture);
+      const series = jiggleAboutVertical(clean, 0.48, 0.2);
+
+      const { accel, gyro } = racketFrame(series);
+      const up = trueUpInRacket(clean, 5);
+      const trap = accel.findIndex((f, i) => {
+        const w = gyro[i];
+        const u = up[i];
+        if (!w || !u || i >= truth.contactIndex - 10) return false;
+        const gravityErrorG = Math.abs(norm(f) / STANDARD_GRAVITY - 1);
+        return gravityErrorG < 0.05 && norm(w) < 0.5 && angleBetween(f, u) * RAD_TO_DEG > 20;
+      });
+      expect(trap).toBeGreaterThan(0); // the trap is there
+
+      const metrics = analyzeSwing(series, SKEWED_MOUNT, params);
+      expect(metrics.quality.attitudeReliable).toBe(true);
+      expectNear(metrics.faceTiltDeg, truth.faceTiltDeg, ANGLE_TOL_DEG);
+      expectNear(metrics.swingPathDeg, truth.swingPathDeg, ANGLE_TOL_DEG);
+    },
+  );
+
+  it('withholds angles when the ready position is never quiet for 100 ms', () => {
+    const { capture } = simulateSwing(DEFAULT_SWING, LONG_SETUP);
+    const series = jiggleAboutVertical(toImuSeries(capture), 0.7, 0.2);
+    const metrics = analyzeSwing(series, SKEWED_MOUNT, params);
+    expect(metrics.quality.attitudeReliable).toBe(false);
+    expect(metrics.quality.anchorErrorG).toBeNull();
+    expect(metrics.faceTiltDeg).toBeNull();
+    expect(metrics.swingPathDeg).toBeNull();
+    expect(metrics.racketDropDeg).toBeNull();
+  });
+
+  it('withholds angles when the accelerometer is not steady before the swing', () => {
+    const { capture } = simulateSwing(
+      { ...DEFAULT_SWING, noiseStd: { accelG: 0.08, gyroDps: 0.3 } },
+      LONG_SETUP,
+    );
+    const metrics = analyzeSwing(toImuSeries(capture), SKEWED_MOUNT, params);
+    expect(metrics.quality.attitudeReliable).toBe(false);
+    expect(metrics.faceTiltDeg).toBeNull();
+  });
+
+  it('reports the gravity error of the window mean', () => {
+    const { metrics } = run({});
+    expect(metrics.quality.anchorErrorG).not.toBeNull();
+    expect(metrics.quality.anchorErrorG ?? 1).toBeLessThan(DEFAULT_ANALYSIS_PARAMS.maxAnchorErrorG);
+  });
+});
+
+describe('contact sample: kinematics from before the impact', () => {
+  it('reads head speed before the ball takes ≈ 20 % of the rate away', () => {
+    const { capture, truth } = simulateSwing(DEFAULT_SWING, SETUP);
+    expect(DEFAULT_SWING.impactRateRetention).toBe(0.8);
+    const series = toImuSeries(capture);
+    const metrics = analyzeSwing(series, SKEWED_MOUNT, {
+      ...DEFAULT_ANALYSIS_PARAMS,
+      leverRadiusM: DEFAULT_SWING.leverRadiusM,
+    });
+    expect(metrics.referenceIndex).toBe(truth.contactIndex);
+    expect(metrics.headSpeedMps / truth.headSpeedMps).toBeCloseTo(1, 2);
+    // The detected impact sample itself already shows the drop: reading it
+    // (as before) would report the speed about 20 % low.
+    const { gyro } = racketFrame(series);
+    const w = gyro[metrics.referenceIndex] ?? [0, 0, 0];
+    const atImpactSample = Math.hypot(w[1], w[2]) * DEFAULT_SWING.leverRadiusM;
+    expect(atImpactSample / truth.headSpeedMps).toBeCloseTo(0.8, 1);
+  });
+
+  it.each([0.05, 0.5, 1])(
+    'stays within a degree wherever in the sample interval the ball arrives (phase %f)',
+    (contactPhase) => {
+      const { metrics, truth } = run({ contactPhase });
+      expectNear(metrics.faceTiltDeg, truth.faceTiltDeg, ANGLE_TOL_DEG);
+      expectNear(metrics.swingPathDeg, truth.swingPathDeg, ANGLE_TOL_DEG);
+      expect(metrics.headSpeedMps / truth.headSpeedMps).toBeCloseTo(1, 1);
+    },
+  );
+
+  it('times events from the middle of the interval that contains contact', () => {
+    // Peak rate exactly at contact: the last pre-impact sample is half a
+    // sample (4.8 ms at 104 Hz) before the estimated contact time.
+    const { metrics } = run({ peakOffsetS: 0 });
+    expect(metrics.peakSpeedOffsetMs).toBeCloseTo(-500 / SETUP.sampleRateHz, 6);
+  });
+
+  it('documents the timing limit: with fast forearm roll the face is only known to ± half a sample', () => {
+    // 15 rad/s of roll turns the face by 4.1° in half a sample (4.8 ms).
+    for (const contactPhase of [0.05, 1]) {
+      const { metrics, truth } = run({ rollRateRadPerS: 15, contactPhase });
+      expectNear(metrics.faceTiltDeg, truth.faceTiltDeg, 4.5);
+      expectNear(metrics.swingPathDeg, truth.swingPathDeg, ANGLE_TOL_DEG);
+    }
+  });
+});
+
+describe('gyro saturation', () => {
+  /** A part that clips at its nominal ±2000 dps, below the int16 limit. */
+  const CLIPS_AT_2000_DPS = { ...SETUP, gyroClipCounts: 28571 };
+
+  it('detects clipping at the nominal full scale that an int16-based threshold missed', () => {
+    // 38 rad/s ≈ 2180 dps: above 2000 dps, below the int16 limit (2293 dps).
+    const { capture } = simulateSwing({ ...DEFAULT_SWING, peakRateRadPerS: 38 }, CLIPS_AT_2000_DPS);
+    const maxGyroCount = Math.max(
+      ...Array.from(
+        capture.samples.filter((_, i) => i % 6 >= 3),
+        (c) => Math.abs(c),
+      ),
+    );
+    expect(maxGyroCount).toBe(28571);
+    expect(maxGyroCount).toBeLessThan(32767 - 64); // the former threshold
+    const metrics = analyzeSwing(toImuSeries(capture), SKEWED_MOUNT);
+    expect(metrics.quality.gyroSaturated).toBe(true);
+  });
+
+  it('withholds timing metrics when the gyro clipped in the forward swing', () => {
+    // The clipped plateau would put the argmax of the rate up to ≈ 70 ms
+    // early and fire "Accelerate through contact" for a well-timed swing.
+    const { capture } = simulateSwing({ ...DEFAULT_SWING, peakRateRadPerS: 38 }, CLIPS_AT_2000_DPS);
+    const metrics = analyzeSwing(toImuSeries(capture), SKEWED_MOUNT);
+    expect(metrics.peakSpeedOffsetMs).toBeNull();
+    expect(metrics.peakAccelerationOffsetMs).toBeNull();
+    // Unclipped swings keep them.
+    const fine = run({ peakRateRadPerS: 30 }).metrics;
+    expect(fine.quality.gyroSaturated).toBe(false);
+    expect(fine.peakSpeedOffsetMs).not.toBeNull();
+    expect(fine.peakAccelerationOffsetMs).not.toBeNull();
+  });
+
+  it('still recognises an overhead when clipping withholds the displayed angles', () => {
+    const { metrics } = run({ tipElevationDeg: 60, swingPathDeg: 0, peakRateRadPerS: 55 });
+    expect(metrics.quality.saturatedSamples).toBeGreaterThan(
+      DEFAULT_ANALYSIS_PARAMS.maxSaturatedSamples,
+    );
+    expect(metrics.quality.attitudeReliable).toBe(false);
+    expect(metrics.tipElevationDeg).toBeNull();
+    expect(metrics.faceTiltDeg).toBeNull();
+    expect(metrics.strokeType).toBe('overhead');
   });
 });
