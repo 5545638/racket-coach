@@ -1,3 +1,6 @@
+import type { SensorModeCode } from '../protocol/constants';
+import type { LinkEvent } from '../protocol/link';
+
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
 
 export type Unsubscribe = () => void;
@@ -17,6 +20,16 @@ export interface SensorTransport {
   /** Called once per BLE notification payload. */
   onPacket(listener: (packet: Uint8Array) => void): Unsubscribe;
   onStateChange(listener: (state: ConnectionState) => void): Unsubscribe;
+  /**
+   * Transports that negotiate the protocol themselves (protocol v2, see
+   * protocol/link.ts) deliver decoded events here; the app then ignores
+   * onPacket for captures. Transports without it deliver v1 packets only.
+   */
+  onEvent?(listener: (event: LinkEvent) => void): Unsubscribe;
+  /** Requests an IMU mode (v2 firmware only; ignored otherwise). */
+  setSensorMode?(mode: SensorModeCode): void;
+  /** Runs a firmware bench test (v2 only); results arrive as 'bench' events. */
+  bench?(test: number, param?: number): void;
 }
 
 /** Minimal typed event emitter used by transport implementations. */

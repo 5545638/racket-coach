@@ -21,6 +21,7 @@ import type { RuleSet } from '../coaching/rules';
 import type {
   MountCalibration,
   RawCapture,
+  SensorDiagnostics,
   SensorStatus,
   SessionInfo,
   StrokeCoaching,
@@ -33,8 +34,10 @@ import { type AnalysisParams, DEFAULT_ANALYSIS_PARAMS } from '../metrics/analyze
 import { ANALYSIS_VERSION } from '../metrics/version';
 import { type StaticPose, calibrateMount, extractStaticPose } from '../processing/calibration';
 import { toImuSeries } from '../processing/units';
-import { type AssemblerEvent, CaptureAssembler } from '../protocol/assembler';
-import { Command } from '../protocol/constants';
+import { CaptureAssembler } from '../protocol/assembler';
+import { Command, SensorMode } from '../protocol/constants';
+import type { LinkEvent } from '../protocol/link';
+import type { BenchResultMessage } from '../protocol/messagesV2';
 import type { Repository } from '../storage/repository';
 import type { ConnectionState, SensorTransport, Unsubscribe } from '../transport/transport';
 import { analyzeCapture } from './pipeline';
@@ -82,6 +85,10 @@ export class CoachController {
   readonly connection = signal<ConnectionState>('disconnected');
   readonly deviceName = signal<string | null>(null);
   readonly status = signal<SensorStatus | null>(null);
+  /** STATUS2 counters from v2 firmware (null with v1 firmware). */
+  readonly diagnostics = signal<SensorDiagnostics | null>(null);
+  /** Negotiated protocol version, null until known (v1-only transports: 1). */
+  readonly protocolVersion = signal<1 | 2 | null>(null);
   readonly calibration = signal<MountCalibration | null>(null);
   readonly calibrationStep = signal<CalibrationStep>({ step: 'idle' });
   readonly settings = signal<Settings>(DEFAULT_SETTINGS);
@@ -112,6 +119,8 @@ export class CoachController {
   /** Bumped on every connect/disconnect; stale async continuations check it. */
   private generation = 0;
   private reconnecting = false;
+  /** Bench T5: numbered packets received since the test was started. */
+  private benchT5Received = 0;
   private logId = 0;
   private readonly screenLock: ScreenLock;
   private readonly rules: RuleSet;
@@ -158,10 +167,18 @@ export class CoachController {
     if (generation !== this.generation) return; // disconnect() was called meanwhile
     this.transport = transport;
     this.assembler = new CaptureAssembler(this.now);
+    this.diagnostics.value = null;
+    this.protocolVersion.value = transport.onEvent ? null : 1;
     this.subscriptions = [
-      transport.onPacket((p) => {
-        this.handleEvents(this.assembler.push(p));
-      }),
+      // Transports with their own protocol link (v2) deliver decoded events;
+      // others deliver v1 packets, assembled here.
+      transport.onEvent
+        ? transport.onEvent((e) => {
+            this.handleEvents([e]);
+          })
+        : transport.onPacket((p) => {
+            this.handleEvents(this.assembler.push(p));
+          }),
       transport.onStateChange((state) => {
         this.handleStateChange(transport, state);
       }),
@@ -185,6 +202,7 @@ export class CoachController {
     await this.safely('Loading calibration', async () => {
       this.calibration.value = await this.deps.repository.loadCalibration(this.deviceKey());
     });
+    transport.setSensorMode?.(this.sensorMode());
     // The first command also tells the sensor that notifications are enabled.
     await this.safely('Requesting sensor status', () =>
       transport.send(Uint8Array.of(Command.RequestStatus)),
@@ -319,7 +337,9 @@ export class CoachController {
 
   async updateSettings(patch: Partial<Settings>): Promise<void> {
     const next = resolveSettings({ ...this.settings.value, ...patch });
+    const modeChanged = next.experimentalM416 !== this.settings.value.experimentalM416;
     this.settings.value = next;
+    if (modeChanged) this.transport?.setSensorMode?.(this.sensorMode());
     await this.safely('Saving settings', () => this.deps.repository.saveSettings(next));
   }
 
@@ -355,6 +375,36 @@ export class CoachController {
     }
   }
 
+  /**
+   * Runs a firmware bench test (docs/bring-up.md, T1–T7); the raw result
+   * bytes appear in the diagnostics log. Needs v2 firmware. During bring-up
+   * call it from the browser console: `racketCoach.runBench(1, 10)`.
+   */
+  runBench(test: number, param = 0): void {
+    if (this.protocolVersion.value !== 2 || !this.transport?.bench) {
+      this.appendLog('Bench tests need firmware with protocol v2.');
+      return;
+    }
+    if (test === 5) this.benchT5Received = 0;
+    this.transport.bench(test, param);
+  }
+
+  /** Logs a bench result as hex; T5 packets are counted and summarised instead. */
+  private logBench(result: BenchResultMessage): void {
+    const { test, part, payload } = result;
+    if (test === 5 && part !== 0xff) {
+      this.benchT5Received++;
+      return;
+    }
+    const hex = Array.from(payload, (b) => b.toString(16).padStart(2, '0')).join(' ');
+    const extra = test === 5 ? ` (received ${this.benchT5Received} of 200 numbered packets)` : '';
+    this.appendLog(`Bench T${test} part ${part}: ${hex}${extra}`);
+  }
+
+  private sensorMode() {
+    return this.settings.value.experimentalM416 ? SensorMode.M416 : SensorMode.M104;
+  }
+
   private deviceKey(): string {
     return this.deviceName.value ?? 'unknown';
   }
@@ -384,11 +434,21 @@ export class CoachController {
 
   /* ------------------------------------------------------------- strokes */
 
-  private handleEvents(events: readonly AssemblerEvent[]): void {
+  private handleEvents(events: readonly LinkEvent[]): void {
     for (const event of events) {
       switch (event.type) {
         case 'status':
           this.status.value = event.status;
+          break;
+        case 'diagnostics':
+          this.diagnostics.value = event.diagnostics;
+          break;
+        case 'protocol':
+          this.protocolVersion.value = event.version;
+          this.appendLog(`Sensor protocol v${event.version}.`);
+          break;
+        case 'bench':
+          this.logBench(event.result);
           break;
         case 'error':
           this.appendLog(event.reason);

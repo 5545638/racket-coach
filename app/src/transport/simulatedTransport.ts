@@ -48,6 +48,11 @@ const SAMPLE_RATE_HZ = 104;
  * A virtual sensor that speaks the real wire protocol. Used for the in-app
  * demo mode and for end-to-end tests of the capture pipeline. Static captures
  * alternate between the two calibration poses.
+ *
+ * It deliberately stays on protocol v1 (no HELLO handshake, no onEvent): the
+ * demo needs no flow control, and v1 keeps the controller's own assembler
+ * path covered. Protocol v2 is exercised end to end against the real
+ * firmware in test/firmware (harness) and test/transport.
  */
 export class SimulatedTransport implements SensorTransport {
   private readonly packets = new Emitter<Uint8Array>();

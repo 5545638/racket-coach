@@ -7,6 +7,7 @@ export type { Language } from '../coaching/guidance';
  * Schema version of stored settings. Version 2 changed the default lever from
  * 1.0 m to 0.72 m; settings stored without a version predate that change.
  * Version 3 added `baselineResetAt` (missing = never reset, no data change).
+ * `experimentalM416` was added later without a version change (missing = off).
  */
 export const SETTINGS_VERSION = 3;
 
@@ -21,6 +22,7 @@ export const DEFAULT_SETTINGS: Settings = {
   speechRate: 1.1,
   leverRadiusM: 0.72,
   baselineResetAt: 0,
+  experimentalM416: false,
 };
 
 /** Default lever of settings stored before version 2, m. */
@@ -58,6 +60,7 @@ export function resolveSettings(stored: Partial<Settings> | null): Settings {
     speechRate: inRange(stored.speechRate, 0.5, 2) ?? DEFAULT_SETTINGS.speechRate,
     leverRadiusM: inRange(migrateLeverRadius(stored), 0.5, 2) ?? DEFAULT_SETTINGS.leverRadiusM,
     baselineResetAt: inRange(stored.baselineResetAt, 0, Number.MAX_SAFE_INTEGER) ?? 0,
+    experimentalM416: stored.experimentalM416 === true,
   };
 }
 

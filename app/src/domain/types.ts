@@ -61,6 +61,40 @@ export interface RawCapture {
    * without, a non-zero count makes every gap-sensitive metric unavailable.
    */
   readonly droppedSamples?: number;
+
+  /*
+   * Optional fields filled by protocol v2 (docs/ble-protocol.md). Captures
+   * from v1 firmware, and every capture stored before v2, lack them.
+   */
+  /** Wire protocol the capture arrived with (2; absent for v1). */
+  readonly protocolVersion?: number;
+  /** Sensor IMU mode (docs/sensor-v2.md). */
+  readonly mode?: SensorModeName;
+  /** Frame (sample) period measured by the sensor against its IMU timer, ns. */
+  readonly framePeriodNs?: number;
+  /** Raw 416 Hz gyro around the peak (M416): frames startFrame … startFrame + n − 1. */
+  readonly gyroHr?: GyroHighRate;
+  /** IMU OUT_TEMP at the end of the capture: 256 LSB/°C, 0 = 25 °C. */
+  readonly temperatureRaw?: number;
+  /** BEGIN_B flags, see `CaptureFlag` in protocol/constants.ts. */
+  readonly flags?: number;
+  /** Sensitivities as sent by the sensor (exact integers). */
+  readonly accelUgPerLsb?: number;
+  readonly gyroMdpsPerLsb?: number;
+}
+
+export type SensorModeName = 'M104' | 'M416';
+
+/**
+ * High-rate gyro section of a v2 capture: `samplesPerFrame` gyro samples
+ * (x, y, z raw counts) per frame; sub-sample k of frame f is at
+ * time(f) + k/samplesPerFrame frame periods.
+ */
+export interface GyroHighRate {
+  readonly startFrame: number;
+  readonly samplesPerFrame: number;
+  /** Interleaved gx, gy, gz; length = frames × samplesPerFrame × 3. */
+  readonly data: Int16Array;
 }
 
 /** A capture converted to SI units, still in the sensor frame. */
@@ -389,6 +423,21 @@ export interface SensorStatus {
   readonly firmwareVersion: string;
 }
 
+/** Sensor diagnostics from a v2 STATUS2 message. */
+export interface SensorDiagnostics {
+  readonly protocolVersion: number;
+  readonly firmwareVersion: string;
+  readonly batteryPercent: number;
+  readonly mode: SensorModeName;
+  /** DATA payload bytes per block (48 at MTU 53, 18 at MTU 23). */
+  readonly payloadBytes: number;
+  readonly temperatureC: number;
+  readonly fifoOverruns: number;
+  readonly droppedCaptures: number;
+  readonly freeVars: number;
+  readonly errors: number;
+}
+
 /** What the live coach did after a stroke (see coach/coachEngine.ts). */
 export type UtteranceKind = 'correction' | 'better' | 'keep-it' | 'good' | 'silent';
 
@@ -463,4 +512,9 @@ export interface Settings {
    * received before it no longer enter the personal baseline. 0 = never reset.
    */
   readonly baselineResetAt: number;
+  /**
+   * Ask v2 firmware for mode M416 (416 Hz gyro around the peak). Experimental
+   * until bench test T1 confirms the I2C budget (docs/bring-up.md).
+   */
+  readonly experimentalM416: boolean;
 }

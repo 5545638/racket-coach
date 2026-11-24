@@ -10,6 +10,7 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
   const step = controller.calibrationStep.value;
   const calibration = controller.calibration.value;
   const status = controller.status.value;
+  const diagnostics = controller.diagnostics.value;
 
   return (
     <section class="settings">
@@ -156,9 +157,27 @@ export function SettingsView({ controller }: { readonly controller: CoachControl
         <p class="hint">{t.setup.resetDone(new Date(settings.baselineResetAt).toLocaleString())}</p>
       )}
 
+      <h2>{t.setup.sensor}</h2>
+      <label class="field">
+        <input
+          type="checkbox"
+          checked={settings.experimentalM416}
+          onChange={(e) => {
+            void controller.updateSettings({ experimentalM416: e.currentTarget.checked });
+          }}
+        />
+        {t.setup.experimentalM416}
+      </label>
+      <p class="hint">{t.setup.experimentalM416Hint}</p>
       {status && (
         <p class="hint">
-          {t.setup.firmware} {status.firmwareVersion} · {t.setup.protocol} v{status.protocolVersion}
+          {t.setup.firmware} {status.firmwareVersion} · {t.setup.protocol} v
+          {controller.protocolVersion.value ?? status.protocolVersion}
+        </p>
+      )}
+      {diagnostics && (
+        <p class="hint">
+          {t.setup.diagnostics}: {t.setup.diagnosticsLine(diagnostics)}
         </p>
       )}
     </section>
